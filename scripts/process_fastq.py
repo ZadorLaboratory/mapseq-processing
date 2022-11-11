@@ -141,6 +141,10 @@ def process_fastq_pair(config, read1file, read2file, bclist):
     logging.info(f'handled {seqshandled} read sequences. {unmatched} unmatched')
 
 
+def make_summaries(config, bcolist):
+    pass
+
+
 
 
 if __name__ == '__main__':
@@ -205,9 +209,11 @@ if __name__ == '__main__':
     logging.debug(sampdf)
     rtlist = list(sampdf.rtprimer.dropna())
         
-    bclist = load_barcodes(cp, args.barcodes, labels=rtlist)
-    logging.debug(bclist)
-    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bclist)
+    bcolist = load_barcodes(cp, args.barcodes, labels=rtlist)
+    logging.debug(bcolist)
+    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist)
+    make_summaries(cp, bcolist)
+    
     
     
     
