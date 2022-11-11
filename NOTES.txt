@@ -1,0 +1,6 @@
+stage one: 8 hours for  
+
+2022-11-11 03:41:07,016 (UTC) [ INFO ] process_fastq.py:103 root.process_fastq_pair(): handled 391 564 348 read sequences. 34 109 287 unmatched
+real    524m43.817s
+
+400M sequences, 35M unmatched. 

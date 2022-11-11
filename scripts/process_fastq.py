@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 
-
 import argparse
+import gzip
 import logging
 import os
 
 from configparser import ConfigParser
 
+import pandas as pd
+
+
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-
 
 # https://github.com/chapmanb/bcbb/tree/master/gff
 #from BCBio import GFF
@@ -38,7 +40,12 @@ class BarCodeHandler(object):
         self.of.close()
             
 
-def load_barcodes(config, bcfile):
+def load_barcodes(config, bcfile, labels = None):
+    '''
+     labellist is a python list of ids. barcode labels will be checked against
+     BC<id> from labellist. 
+    '''
+    codelist = [ f'BC{x}' for x in labels]
     bclist = []
     with open(bcfile) as fh:
         while True:
@@ -46,11 +53,32 @@ def load_barcodes(config, bcfile):
             if len(ln) < 2:
                 break
             (label, bcseq) = ln.split()
-            bch = BarCodeHandler(label, bcseq)
-            bclist.append(bch)
+            if labels is None or label in codelist:
+                bch = BarCodeHandler(label, bcseq)
+                bclist.append(bch)
     logging.debug(f'made list of {len(bclist)} barcode handlers.')
     return bclist
-        
+
+
+def load_sample_info(config, file_name):    
+    #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
+    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
+    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain','col_num'] 
+    
+    
+    dfs = pd.read_excel(file_name, sheet_name=None)        
+    sidf = dfs['Sample information']
+    # set columns names to first row
+    sidf.columns = sidf.iloc[0]
+    # drop old row of column names. 
+    sidf = sidf.iloc[pd.RangeIndex(len(sidf)).drop(0)]
+    # drop all columsn beyond 7
+    sidf = sidf.iloc[:,:7]
+    sidf.columns = sample_columns
+    logging.debug(f'created reduced sample info df: {sidf}')
+
+    return sidf
+
 
 def process_fastq_pair(config, read1file, read2file, bclist):
 
@@ -61,11 +89,17 @@ def process_fastq_pair(config, read1file, read2file, bclist):
     r2s = int(config.get('fastq','r2start'))
     r2e = int(config.get('fastq','r2end'))   
 
-    recs1 =  SeqIO.parse(read1file, "fastq")
-    recs2 = SeqIO.parse(read2file, "fastq")
+    if read1file.endswith('.gz'):
+         read1f = gzip.open(read1file, "rt")
+    if read2file.endswith('.gz'):
+         read2f = gzip.open(read1file, "rt")         
+        
+    recs1 = SeqIO.parse(read1f, "fastq")
+    recs2 = SeqIO.parse(read2f, "fastq")
 
     seqshandled = 0
     unmatched = 0
+    didmatch = 0
     
     while True:
         try:
@@ -78,19 +112,22 @@ def process_fastq_pair(config, read1file, read2file, bclist):
             for bch in bclist:
                 r = bch.do_match(seqshandled, fullread)
                 if r:
-                    logging.debug(f'found bc {bch.label} in {fullread}!!')
+                    didmatch += 1
+                    if didmatch % 10000 == 0:
+                        logging.debug(f'match {didmatch}: found bc {bch.label} in {fullread}!!')
                     matched = True
                     break
             if not matched:
                 unmatched += 1
-                logging.debug(f'found unmatched. writing...')
+                if unmatched % 10000 == 0:
+                    logging.debug(f'{unmatched} unmatched so far.')
                 id = str(seqshandled)
                 sr = SeqRecord( fullread, id=id, name=id, description=id)
                 SeqIO.write([sr], umf, 'fasta')
             
             seqshandled += 1
             if seqshandled % 50000 == 0: 
-                logging.info(f'handled {seqshandled} read sequences. {unmatched} unmatched so far.')
+                logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
         
         except StopIteration as e:
             logging.debug(f'iteration stopped')
@@ -99,6 +136,7 @@ def process_fastq_pair(config, read1file, read2file, bclist):
     umf.close()
     for bch in bclist:
         bch.finalize()    
+    # close possible gzip filehandles??
     
     logging.info(f'handled {seqshandled} read sequences. {unmatched} unmatched')
 
@@ -132,16 +170,23 @@ if __name__ == '__main__':
     parser.add_argument('-b','--barcodes', 
                         metavar='barcodes',
                         required=False,
-                        default=os.path.expanduser('barcode_v2.txt'),
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
                         type=str, 
                         help='barcode file space separated.')
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
 
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
                         nargs=2,
                         default=None, 
-                        help='Read1file  Read2file')
+                        help='Read1 and Read2 fastq files')
        
     args= parser.parse_args()
     
@@ -155,7 +200,13 @@ if __name__ == '__main__':
     cdict = {section: dict(cp[section]) for section in cp.sections()}
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
-    bclist = load_barcodes(cp, args.barcodes)
+    
+    sampdf = load_sample_info(cp,args.sampleinfo)
+    logging.debug(sampdf)
+    rtlist = list(sampdf.rtprimer.dropna())
+        
+    bclist = load_barcodes(cp, args.barcodes, labels=rtlist)
+    logging.debug(bclist)
     process_fastq_pair(cp, args.infiles[0], args.infiles[1], bclist)
     
     
