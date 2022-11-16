@@ -20,23 +20,22 @@ for i in {1..30}; do
     j=${threshold[$i]} 
     echo $j
     if [ "$j" != "1" ];then
-	awk '$1< '$j' {print NR}' ../Mseq204_YC_inj2BC${BCidx[$i]}_counts.txt | head -n 1 >t
-	thresh=$(cat t)
-	echo $thresh
-	head ../Mseq204_YC_inj2_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > Mseq204_YC_inj2${i}quickout.txt
+		awk '$1< '$j' {print NR}' ../Mseq204_YC_inj2BC${BCidx[$i]}_counts.txt | head -n 1 >t
+		thresh=$(cat t)
+		echo $thresh
+		head ../Mseq204_YC_inj2_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > Mseq204_YC_inj2${i}quickout.txt
 
-   else
-	grep -nr ^${threshold[$i]}$  ../Mseq204_YC_inj2BC${BCidx[$i]}_counts.txt -m 1 | cut -f1 -d":" > t
-	thresh=$(cat t)
-	echo $thresh
+   	else
+		grep -nr ^${threshold[$i]}$  ../Mseq204_YC_inj2BC${BCidx[$i]}_counts.txt -m 1 | cut -f1 -d":" > t
+		thresh=$(cat t)
+		echo $thresh
 
-	head ../Mseq204_YC_inj2_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > Mseq204_YC_inj2${i}quickout.txt
+		head ../Mseq204_YC_inj2_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > Mseq204_YC_inj2${i}quickout.txt
    fi
 done
 
 
 #ok, thats a lot of preprocessing done. Now we have to error correct these sequneces. The all against all mapping of barcodes in using bowtie is done in the command line. after this we move into MATLAB.
-
 
 mkdir indexes
 

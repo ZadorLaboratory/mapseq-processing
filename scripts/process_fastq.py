@@ -4,19 +4,21 @@ import argparse
 import gzip
 import logging
 import os
+import sys
+
+gitpath=os.path.expanduser("~/git/cshlwork")
+sys.path.append(gitpath)
 
 from configparser import ConfigParser
 
 import pandas as pd
 
-
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-# https://github.com/chapmanb/bcbb/tree/master/gff
-#from BCBio import GFF
-#from BCBio.GFF import *
+from cshlwork.utils import JobRunner, JobStack, JobSet
+
 
 class BarCodeHandler(object):
     
@@ -142,6 +144,7 @@ def process_fastq_pair(config, read1file, read2file, bclist):
 
 
 def make_summaries(config, bcolist):
+    # make jobset
     pass
 
 
