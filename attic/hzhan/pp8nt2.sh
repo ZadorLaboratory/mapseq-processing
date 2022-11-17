@@ -41,50 +41,49 @@ mkdir indexes
 
 for i in {1..30}
 do
-echo $i
-in=Mseq204_YC_inj2${i}quickout.txt
-#split off real barcodes from spike-ins
+	echo $i
+	in=Mseq204_YC_inj2${i}quickout.txt
+	#split off real barcodes from spike-ins
 
-grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > Mseq204_YC_inj2BC${i}_quickprocessed.txt
-awk '{print $1}' Mseq204_YC_inj2BC${i}_quickprocessed.txt > Mseq204_YC_inj2${i}_counts.txt
-awk '{print $2}' Mseq204_YC_inj2BC${i}_quickprocessed.txt > Mseq204_YC_inj2${i}_seq.txt
+	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > Mseq204_YC_inj2BC${i}_quickprocessed.txt
+	awk '{print $1}' Mseq204_YC_inj2BC${i}_quickprocessed.txt > Mseq204_YC_inj2${i}_counts.txt
+	awk '{print $2}' Mseq204_YC_inj2BC${i}_quickprocessed.txt > Mseq204_YC_inj2${i}_seq.txt
 
 
-nl Mseq204_YC_inj2${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > Mseq204_YC_inj2_BC${i}fasta2u.txt; 
-bowtie-build -q Mseq204_YC_inj2_BC${i}fasta2u.txt indexes/BC${i}fasta2u; 
-bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u Mseq204_YC_inj2_BC${i}fasta2u.txt bowtiealignment${i}_2u.txt
-awk '{print $1}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_1.txt;awk '{print $3}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_3.txt
+	nl Mseq204_YC_inj2${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > Mseq204_YC_inj2_BC${i}fasta2u.txt; 
+	bowtie-build -q Mseq204_YC_inj2_BC${i}fasta2u.txt indexes/BC${i}fasta2u; 
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u Mseq204_YC_inj2_BC${i}fasta2u.txt bowtiealignment${i}_2u.txt
+	awk '{print $1}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_1.txt;awk '{print $3}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_3.txt
 done
-
 
 # now deal with spike ins
 
 for i in {1..30}; do 
-echo $i; in=Mseq204_YC_inj2${i}quickout.txt 
-grep 'CGTCAGTC$' $in > Mseq204_YC_inj2spikes${i}_quickprocessed.txt; 
-awk '{print $1}' Mseq204_YC_inj2spikes${i}_quickprocessed.txt > Mseq204_YC_inj2spikes${i}_counts.txt; 
-awk '{print $2}' Mseq204_YC_inj2spikes${i}_quickprocessed.txt > Mseq204_YC_inj2spikes${i}_seq.txt;  
-nl Mseq204_YC_inj2spikes${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > Mseq204_YC_inj2_spikes${i}fasta2u.txt; 
-bowtie-build -q Mseq204_YC_inj2_spikes${i}fasta2u.txt indexes/spikes${i}fasta2u; bowtie -v 3 -p 10 -f --best -a indexes/spikes${i}fasta2u Mseq204_YC_inj2_spikes${i}fasta2u.txt bowtiealignmentspikes${i}_2u.txt; 
-awk '{print $1}' bowtiealignmentspikes${i}_2u.txt > bowtiespikes${i}_2u_1.txt;
-awk '{print $3}' bowtiealignmentspikes${i}_2u.txt > bowtiespikes${i}_2u_3.txt; 
+	echo $i; in=Mseq204_YC_inj2${i}quickout.txt 
+	grep 'CGTCAGTC$' $in > Mseq204_YC_inj2spikes${i}_quickprocessed.txt; 
+	awk '{print $1}' Mseq204_YC_inj2spikes${i}_quickprocessed.txt > Mseq204_YC_inj2spikes${i}_counts.txt; 
+	awk '{print $2}' Mseq204_YC_inj2spikes${i}_quickprocessed.txt > Mseq204_YC_inj2spikes${i}_seq.txt;  
+	nl Mseq204_YC_inj2spikes${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > Mseq204_YC_inj2_spikes${i}fasta2u.txt; 
+	bowtie-build -q Mseq204_YC_inj2_spikes${i}fasta2u.txt indexes/spikes${i}fasta2u; bowtie -v 3 -p 10 -f --best -a indexes/spikes${i}fasta2u Mseq204_YC_inj2_spikes${i}fasta2u.txt bowtiealignmentspikes${i}_2u.txt; 
+	awk '{print $1}' bowtiealignmentspikes${i}_2u.txt > bowtiespikes${i}_2u_1.txt;
+	awk '{print $3}' bowtiealignmentspikes${i}_2u.txt > bowtiespikes${i}_2u_3.txt; 
 done
 
 # L1 barcodes
 for i in {1..30}
 do
-echo $i
-in=Mseq204_YC_inj2${i}quickout.txt
-#split off real barcodes from spike-ins
+	echo $i
+	in=Mseq204_YC_inj2${i}quickout.txt
+	#split off real barcodes from spike-ins
 
-grep -v 'CGTCAGTC$' $in | grep '[AG][AG]$' > Mseq204_YC_inj2BC${i}_quickprocessedL1.txt
-awk '{print $1}' Mseq204_YC_inj2BC${i}_quickprocessedL1.txt > Mseq204_YC_inj2${i}_countsL1.txt
-awk '{print $2}' Mseq204_YC_inj2BC${i}_quickprocessedL1.txt > Mseq204_YC_inj2${i}_seqL1.txt
+	grep -v 'CGTCAGTC$' $in | grep '[AG][AG]$' > Mseq204_YC_inj2BC${i}_quickprocessedL1.txt
+	awk '{print $1}' Mseq204_YC_inj2BC${i}_quickprocessedL1.txt > Mseq204_YC_inj2${i}_countsL1.txt
+	awk '{print $2}' Mseq204_YC_inj2BC${i}_quickprocessedL1.txt > Mseq204_YC_inj2${i}_seqL1.txt
 
 
-nl Mseq204_YC_inj2${i}_seqL1.txt | awk '{print ">" $1 "\n" $2}' > Mseq204_YC_inj2_BC${i}fasta2uL1.txt;
-bowtie-build -q Mseq204_YC_inj2_BC${i}fasta2uL1.txt indexes/BC${i}fasta2uL1;
-bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2uL1 Mseq204_YC_inj2_BC${i}fasta2uL1.txt bowtiealignment${i}_2uL1.txt
-awk '{print $1}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_1L1.txt;awk '{print $3}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_3L1.txt
+	nl Mseq204_YC_inj2${i}_seqL1.txt | awk '{print ">" $1 "\n" $2}' > Mseq204_YC_inj2_BC${i}fasta2uL1.txt;
+	bowtie-build -q Mseq204_YC_inj2_BC${i}fasta2uL1.txt indexes/BC${i}fasta2uL1;
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2uL1 Mseq204_YC_inj2_BC${i}fasta2uL1.txt bowtiealignment${i}_2uL1.txt
+	awk '{print $1}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_1L1.txt;awk '{print $3}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_3L1.txt
 done
 

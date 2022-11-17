@@ -1,5 +1,3 @@
-
-
 import logging
 import os
 import sys
@@ -16,6 +14,12 @@ from Bio.SeqRecord import SeqRecord
 from cshlwork.utils import dataframe_to_seqlist
 
 def run_bowtie(config, infile, outfile):
+    '''
+    bowtie-build -q BC1_seq.fasta indexes/BC1_bt 
+    bowtie -v 3 -p 10 -f --best -a indexes/BC1_bt BC1_seq.fasta BC1_bowtie.txt
+    
+    
+    '''
     logging.info(f'running bowtie on {infile} -> {outfile}')
     r = "bowtiefile"
     return r
