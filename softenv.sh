@@ -20,15 +20,6 @@ conda activate mapseq
 
 conda config --add channels conda-forge
 conda config --add channels bioconda
-
-conda install fastx_toolkit bowtie
+conda install bowtie2
 conda install biopython=1.79 ipython=8.2.0 numpy=1.22.3 pandas=1.4.2 scipy=1.8.0 matplotlib seaborn openpyxl
 
-
-
-#conda install pandas numpy scikit-learn matplotlib seaborn biopython ipython jupyter scikit-plot requests
-#conda install -c plotly plotly 
-#conda install scipy pyvis networkx h5py
-#conda install prody
-#pip install dynamicTreeCut
-#conda install -c conda-forge ambertools=22 compilers

@@ -7,19 +7,34 @@ import sys
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
-
 import pandas as pd
 
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+from cshlwork.utils import dataframe_to_seqlist
+
+def run_bowtie(config, infile, outfile):
+    logging.info(f'running bowtie on {infile} -> {outfile}')
+    r = "bowtiefile"
+    return r
 
 def process_bcfasta(config, infile):
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    logging.debug(f'handling {filepath}')
+    
     df = make_counts_df(config, infile)
     df = do_threshold(config, df)
     df = remove_spikeins(config,df)
-    write_fasta_for_bowtie(config, df)
+    of = os.path.join(dirname , f'{base}_seq.fasta')
+    logging.debug(f'fasta for bowtie = {of}') 
+    seqfasta = write_fasta_for_bowtie(config, df, outfile=of)
+    of = os.path.join(dirname , f'{base}_seq.bowtie')
+    a = run_bowtie(config, seqfasta, of )
     return df
 
 def make_counts_df(config, infile):
@@ -68,6 +83,16 @@ def remove_spikeins(config, df):
     df = df[df['sequence'].str.contains(si) == False ]
     logging.debug(f'after filter {len(df)}')    
     return df
+
+def write_fasta_for_bowtie(config, df, outfile=None):
+    logging.debug(f'creating bowtie input')
+    srlist = dataframe_to_seqlist(df)
+    logging.debug(f'len srlist={len(srlist)}')
+    if outfile is not None:
+        SeqIO.write(srlist, outfile, 'fasta')
+    else:
+        logging.error('outfile is None, not implemented.')
+    return outfile
 
 
 
