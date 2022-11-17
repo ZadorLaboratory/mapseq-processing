@@ -1,4 +1,4 @@
-function [B,Bseq,Bnorm]=normBCmat(barcodematrix,refbarcodes,spikes,sourcethresh,projthresh,sourcesite,projsite)
+function [B,Bseq,Bnorm] = normBCmat(barcodematrix,refbarcodes,spikes,sourcethresh,projthresh,sourcesite,projsite)
 %Filter barcodes so that all remaining barcodes have counts >sourccethresh
 %at sourcesite, and max(counts) at other sites > projthresh. then normalize
 %barcodes by spikes. sourcethresh must be equal or larger than projthresh.
