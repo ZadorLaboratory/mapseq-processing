@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import traceback
 
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
@@ -11,35 +12,38 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-from cshlwork.utils import dataframe_to_seqlist
+from cshlwork.utils import dataframe_to_seqlist, run_command_shell, NonZeroReturnException, setup_logging
 
-def run_bowtie(config, infile, outfile):
+def process_bcfasta(config, infile, outdir=None):
     '''
-    bowtie-build -q BC1_seq.fasta indexes/BC1_bt 
-    bowtie -v 3 -p 10 -f --best -a indexes/BC1_bt BC1_seq.fasta BC1_bowtie.txt
-    
-    
+    by default, outdir will be same dir as infile
     '''
-    logging.info(f'running bowtie on {infile} -> {outfile}')
-    r = "bowtiefile"
-    return r
-
-def process_bcfasta(config, infile):
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
     (base, ext) = os.path.splitext(filename)   
     logging.debug(f'handling {filepath}')
-    
+    logging.info('calc counts...')
     df = make_counts_df(config, infile)
+    logging.info('threshold...')
     df = do_threshold(config, df)
+    logging.info('remove spikeins...')
     df = remove_spikeins(config,df)
-    of = os.path.join(dirname , f'{base}_seq.fasta')
+    of = os.path.join(dirname , f'{base}.seq.fasta')
     logging.debug(f'fasta for bowtie = {of}') 
+    logging.info('make fasta seqfile for bowtie...')
     seqfasta = write_fasta_for_bowtie(config, df, outfile=of)
-    of = os.path.join(dirname , f'{base}_seq.bowtie')
-    a = run_bowtie(config, seqfasta, of )
+    of = os.path.join(dirname , f'{base}.seq.bowtie')
+    logging.info('run bowtie...')
+    afile = run_bowtie(config, seqfasta, of )
+    logging.info(f'handle bowtie align file: {afile}')
+    df = handle_alignment(afile)
     return df
+
+
+
+
+
 
 def make_counts_df(config, infile):
     stt = int(config.get('bcfasta', 'start'))
@@ -99,6 +103,81 @@ def write_fasta_for_bowtie(config, df, outfile=None):
     return outfile
 
 
+def run_bowtie(config, infile, outfile):
+    '''
+    bowtie-build -q BC1.seq.fasta indexes/BC1.bt 
+    bowtie -v 3 -p 10 -f --best -a indexes/BC1.bt BC1_seq.fasta BC1.bt.algn
+    
+    
+    '''
+    logging.info(f'running allxall bowtie on {infile} -> {outfile}')
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    logging.debug(f'handling {filepath}')
+    
+    idxdir = os.path.abspath(f'{dirname}/indexes')
+    os.makedirs(idxdir, exist_ok = True )
+    idxpfx = f'{idxdir}/{base}'
+    cmd = ['bowtie2-build',
+           #'-q',
+           infile,
+           idxpfx, 
+           ]
+    logging.debug(f'running bowtie-build...')
+    try:
+        run_command_shell(cmd)
+    except NonZeroReturnException as nzre:
+        logging.error(f'problem with infile {infile}')
+        logging.error(traceback.format_exc(None))
+        raise     
+
+    logging.info(f'bowtie-build done.')
+    #  bowtie -v 3 -p 10 -f --best -a indexes/BC1.bt BC1_seq.fasta BC1.bt.algn
+    #
+    #  bowtie2 -v 3 -p 10 -f --best -a 
+    #     /Users/jhover/project/mapseq/M205testout/indexes/BC1.seq 
+    #     /Users/jhover/project/mapseq/M205testout/BC1.seq.fasta 
+    #     /Users/jhover/project/mapseq/M205testout/BC1.seq.bowtie
+    #
+    #
+       
+    cmd1 = ['bowtie',
+           '-v', '3',
+           '-p','10', # # threads
+           '-f',      # -f query input files are (multi-)FASTA .fa/.mfa
+           '--best',
+           '-a',      # -a/--all report all alignments; very slow, MAPQ not meaningful
+           idxpfx,
+           infile,
+           outfile
+           ]
+    
+    cmd2 = ['bowtie2',
+           #'-N', '3',
+           '-p','10',   # # threads
+           '-f',       # -f query input files are (multi-)FASTA .fa/.mfa
+           #'--best',
+           '--all',   # -a/--all report all alignments; very slow, MAPQ not meaningful
+           '-x', idxpfx,
+           infile,
+           outfile
+           ]
+    
+    
+    logging.debug(f'running bowtie...')
+    try:
+        run_command_shell(cmd2)
+    except NonZeroReturnException as nzre:
+        logging.error(f'problem with infile {infile}')
+        logging.error(traceback.format_exc(None))
+        raise         
+    logging.info(f'bowtie done.')
+    return outfile
+
+def handle_alignment(infile):
+    pass
 
 
 

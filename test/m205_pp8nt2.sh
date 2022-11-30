@@ -40,21 +40,22 @@ done
 
 mkdir indexes
 
-for i in {1..84}
+for i in {1..26}
 do
-echo $i
-in=ZL231_Mseq125_VM${i}quickout.txt
-#split off real barcodes from spike-ins
+	echo $i
+	in=ZL231_Mseq125_VM${i}quickout.txt
+	#split off real barcodes from spike-ins
 
-grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ZL231_Mseq125_VMBC${i}_quickprocessed.txt
-awk '{print $1}' ZL231_Mseq125_VMBC${i}_quickprocessed.txt > ZL231_Mseq125_VM${i}_counts.txt
-awk '{print $2}' ZL231_Mseq125_VMBC${i}_quickprocessed.txt > ZL231_Mseq125_VM${i}_seq.txt
+	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ZL231_Mseq125_VMBC${i}_quickprocessed.txt
+	awk '{print $1}' ZL231_Mseq125_VMBC${i}_quickprocessed.txt > ZL231_Mseq125_VM${i}_counts.txt
+	awk '{print $2}' ZL231_Mseq125_VMBC${i}_quickprocessed.txt > ZL231_Mseq125_VM${i}_seq.txt
 
 
-nl ZL231_Mseq125_VM${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > ZL231_Mseq125_VM_BC${i}fasta2u.txt; 
-bowtie-build -q ZL231_Mseq125_VM_BC${i}fasta2u.txt indexes/BC${i}fasta2u; 
-bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u ZL231_Mseq125_VM_BC${i}fasta2u.txt bowtiealignment${i}_2u.txt
-awk '{print $1}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_1.txt;awk '{print $3}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_3.txt
+	nl ZL231_Mseq125_VM${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > ZL231_Mseq125_VM_BC${i}fasta2u.txt; 
+	bowtie-build -q ZL231_Mseq125_VM_BC${i}fasta2u.txt indexes/BC${i}fasta2u; 
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u ZL231_Mseq125_VM_BC${i}fasta2u.txt bowtiealignment${i}_2u.txt
+	awk '{print $1}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_1.txt;
+	awk '{print $3}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_3.txt
 done
 
 

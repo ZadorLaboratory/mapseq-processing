@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#
+#
+
 
 import argparse
 import gzip
@@ -19,13 +22,16 @@ from Bio.SeqRecord import SeqRecord
 
 from cshlwork.utils import JobRunner, JobStack, JobSet
 
-
 class BarCodeHandler(object):
     
-    def __init__(self, label, barcode):
+    def __init__(self, label, barcode, outdir):
         self.barcode = barcode
         self.label = label
-        self.of = open(f'{label}.fasta', 'w')
+        
+        if outdir is None:
+            outdir = "."
+        self.ofname = os.path.abspath(f'{outdir}/{label}.fasta')
+        self.of = open(self.ofname, 'w')
         logging.debug(f'open file for {self.label}')
         
     def do_match(self, id, seq):
@@ -42,7 +48,7 @@ class BarCodeHandler(object):
         self.of.close()
             
 
-def load_barcodes(config, bcfile, labels = None):
+def load_barcodes(config, bcfile, labels = None, outdir=None):
     '''
      labellist is a python list of ids. barcode labels will be checked against
      BC<id> from labellist. 
@@ -56,7 +62,7 @@ def load_barcodes(config, bcfile, labels = None):
                 break
             (label, bcseq) = ln.split()
             if labels is None or label in codelist:
-                bch = BarCodeHandler(label, bcseq)
+                bch = BarCodeHandler(label, bcseq, outdir)
                 bclist.append(bch)
     logging.debug(f'made list of {len(bclist)} barcode handlers.')
     return bclist
@@ -82,9 +88,13 @@ def load_sample_info(config, file_name):
     return sidf
 
 
-def process_fastq_pair(config, read1file, read2file, bclist):
+def process_fastq_pair(config, read1file, read2file, bclist, outdir):
 
-    umf = open('unmatched.fasta', 'w')
+    if outdir is None:
+        outdir = "."
+    outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
+    
+    umf = open(outfile, 'w')
 
     r1s = int(config.get('fastq','r1start'))
     r1e = int(config.get('fastq','r1end'))
@@ -188,6 +198,14 @@ if __name__ == '__main__':
                         type=str, 
                         help='XLS sampleinfo file. ')
 
+    parser.add_argument('-o','--outdir', 
+                    metavar='outdir',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='outdir. cwd if not given.') 
+
+
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
@@ -212,9 +230,9 @@ if __name__ == '__main__':
     logging.debug(sampdf)
     rtlist = list(sampdf.rtprimer.dropna())
         
-    bcolist = load_barcodes(cp, args.barcodes, labels=rtlist)
+    bcolist = load_barcodes(cp, args.barcodes, labels=rtlist, outdir=args.outdir)
     logging.debug(bcolist)
-    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist)
+    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir)
     make_summaries(cp, bcolist)
     
     

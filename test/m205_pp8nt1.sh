@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash -x
 # run job in the current working directory where qsub is executed from
 #$ -cwd
 # specify that the job requires 4GB of memory
@@ -7,7 +7,6 @@
 
 #unzip original datafiles                                                                                
 gunzip -k *.gz
-
 
 FQ1="M205_HZ_S1_R1_001"
 FQ2="M205_HZ_S1_R2_001"
@@ -21,9 +20,8 @@ awk "NR%4==2" ${FQ2}.fastq | cut -b 1-20 > ${FQ2}_stripped.txt #12nt tag+ 8nt in
 rm ${FQ2}.fastq
 
 
-
 #make a new file that contains only one sequence per sequenced cluster
-paste -d '' ${FQ1}_stripped.txt ${FQ2}_stripped.txt > ${SAMPLE}_PE.txt
+paste -d '\0' ${FQ1}_stripped.txt ${FQ2}_stripped.txt > ${SAMPLE}_PE.txt
 
 
 #split dataset according to inline indexes using fastx toolkit; this by default allows up to 1 missmatch. we could go higher if we want, though maybe not neccessary
@@ -34,13 +32,14 @@ nl ../${SAMPLE}_PE.txt |awk '{print ">" $1 "\n" $2}'| fastx_barcode_splitter.pl 
 
 #from here on, do everything for every sample individually
 
-BCidx=($(seq 0 1 81; seq 97 1 177; seq 193 1 233; seq 249 1 279)) #the first number should be n-1
-for i in {1..20}; do #this number should be exactly the same as the total RT primer number used in BCidx
-#filter out reads with Ns, cut off indexes and unique datafiles
-awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > ${SAMPLE}processedBC${BCidx[$i]}.txt
-#split output files into two files per index, one that is containing the read counts of each unique sequnce, the other the unique sequences themselves.
-awk '{print $1}' ${SAMPLE}processedBC${BCidx[$i]}.txt > ${SAMPLE}BC${BCidx[$i]}_counts.txt
-awk '{print $2}' ${SAMPLE}processedBC${BCidx[$i]}.txt > ${SAMPLE}_BC${BCidx[$i]}seq.txt
+#BCidx=($(seq 0 1 81; seq 97 1 177; seq 193 1 233; seq 249 1 279)) #the first number should be n-1
+BCidx=($(seq 0 1 26)) 
+for i in {1..26}; do #this number should be exactly the same as the total RT primer number used in BCidx
+	#filter out reads with Ns, cut off indexes and unique datafiles
+	awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > ${SAMPLE}processedBC${BCidx[$i]}.txt
+	#split output files into two files per index, one that is containing the read counts of each unique sequnce, the other the unique sequences themselves.
+	awk '{print $1}' ${SAMPLE}processedBC${BCidx[$i]}.txt > ${SAMPLE}BC${BCidx[$i]}_counts.txt
+	awk '{print $2}' ${SAMPLE}processedBC${BCidx[$i]}.txt > ${SAMPLE}_BC${BCidx[$i]}seq.txt
 done
 
 

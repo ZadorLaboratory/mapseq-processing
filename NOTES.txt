@@ -4,3 +4,28 @@ stage one: 8 hours for
 real    524m43.817s
 
 400M sequences, 35M unmatched. 
+
+
+FASTQ
+@ identifiers   
+<sequence>
++ ...
+<quality per base indicator>
+
+<instrument> : <runid> : <flowid>        :  <laneid> : <tile> : <x-coord> : <y-coord> 
+@M00970		 :  70     : 000000000-KKRV9 : 1         : 1101   :  15788    :  1331  
+
+<pair>  :  <filtered?> : <cntrlbits> : <indexseq>
+   1 	:		N 	   :	 0       :     1
+
+
+E.g. 
+@M00970:70:000000000-KKRV9:1:1101:15788:1331 1:N:0:1
+AAGCGCCTGTTTTTTGTGGGGCTAATTCGGTCGTAC
++
+ABAAAD3AAFFFGGGGGGGGGGEHFHHHGHGGEAGF
+
+
+
+Fastq quality values (better to right):
+!"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~

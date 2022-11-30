@@ -81,11 +81,11 @@ if __name__ == '__main__':
     logging.debug(f'infiles={args.infile}')
     
     outdf = process_bcfasta(cp, args.infile)
-    #if args.outfile is None:
-    #    outfile = sys.stdout
-    #else:
-    #    outfile = args.outfile        
-    #outdf.to_csv(outfile, sep='\t', index=False)    
+    if args.outfile is None:
+        outfile = sys.stdout
+    else:
+        outfile = args.outfile        
+    outdf.to_csv(outfile, sep='\t', index=False)    
     
     
     

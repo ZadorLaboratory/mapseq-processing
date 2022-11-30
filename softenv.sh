@@ -23,3 +23,4 @@ conda config --add channels bioconda
 conda install bowtie2
 conda install biopython=1.79 ipython=8.2.0 numpy=1.22.3 pandas=1.4.2 scipy=1.8.0 matplotlib seaborn openpyxl
 
+# conda install -c bioconda fastx_toolkit
