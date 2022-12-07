@@ -1,3 +1,11 @@
+
+
+Could use more Python native alignments:
+https://www.youtube.com/watch?v=_cTbADrGLCQ
+mafft?
+
+
+
 stage one: 8 hours for  
 
 2022-11-11 03:41:07,016 (UTC) [ INFO ] process_fastq.py:103 root.process_fastq_pair(): handled 391 564 348 read sequences. 34 109 287 unmatched
@@ -26,6 +34,33 @@ AAGCGCCTGTTTTTTGTGGGGCTAATTCGGTCGTAC
 ABAAAD3AAFFFGGGGGGGGGGEHFHHHGHGGEAGF
 
 
-
 Fastq quality values (better to right):
 !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+
+
+
+bowtie2 (SAM) output format.
+@SQ sequence name, length
+@PG program information 
+
+QNAME	  FLG     RNAME   POS     MAPQ    CIGAR   RNEXT   PNEXZT  TLEN    SEQ
+0       0       0       1       32      32M     *       0       0       CTACAGGTTCTTATGAGGACGGGACTTGTGTC        
+
+QUAL   
+IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII        AS:i:0  XS:i:-6 
+XN:i:0  XM:i:0  XO:i:0  XG:i:0  NM:i:0  MD:Z:32 YT:Z:UU
+
+
+For bowtie -v  <max-mismatches>
+
+For bowtie2   no max specified on command line. 
+Filter after alignemnt on   XM:i:<n_mismatches>
+See  https://www.biostars.org/p/75438/
+
+
+
+
+
+
+
+

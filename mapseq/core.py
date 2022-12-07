@@ -1,18 +1,31 @@
+import gzip
 import logging
 import os
 import sys
 import traceback
 
+from configparser import ConfigParser
+
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
 import pandas as pd
+import numpy as np
 
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 from cshlwork.utils import dataframe_to_seqlist, run_command_shell, NonZeroReturnException, setup_logging
+from alignment.bowtie import run_bowtie, make_bowtie_df
+
+
+def get_default_config():
+    dc = os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf')
+    cp = ConfigParser()
+    cp.read(dc)
+    return cp
+
 
 def process_bcfasta(config, infile, outdir=None):
     '''
@@ -25,24 +38,61 @@ def process_bcfasta(config, infile, outdir=None):
     logging.debug(f'handling {filepath}')
     logging.info('calc counts...')
     df = make_counts_df(config, infile)
+    logging.info('save initial counts df...')
+    of = os.path.join(dirname , f'{base}.counts.tsv')
+    df.to_csv(of, sep='\t') 
+    
     logging.info('threshold...')
     df = do_threshold(config, df)
+    bctool = config.get('bcfasta','tool')
+      
+    
+    # process regular barcodes
     logging.info('remove spikeins...')
-    df = remove_spikeins(config,df)
-    of = os.path.join(dirname , f'{base}.seq.fasta')
-    logging.debug(f'fasta for bowtie = {of}') 
-    logging.info('make fasta seqfile for bowtie...')
-    seqfasta = write_fasta_for_bowtie(config, df, outfile=of)
-    of = os.path.join(dirname , f'{base}.seq.bowtie')
-    logging.info('run bowtie...')
-    afile = run_bowtie(config, seqfasta, of )
+    bcdf = get_barcodes(config, df)
+    of = os.path.join(dirname , f'{base}.bc.seq.fasta')
+    logging.debug(f'fasta for {bctool} = {of}') 
+    logging.info(f'make fasta seqfile for {bctool}...')
+    seqfasta = write_fasta_for_bowtie(config, bcdf, outfile=of)
+    of = os.path.join(dirname , f'{base}.bc.seq.{bctool}')
+    logging.info(f'running {bctool}...')
+    afile = run_bowtie(config, seqfasta, of, tool=bctool )
     logging.info(f'handle bowtie align file: {afile}')
-    df = handle_alignment(afile)
-    return df
+    btdf = make_bowtie_df(afile)
+    
+    # make sparse matrix 
+    btmdf = matrix_df_from_btdf(btdf)
+
+    
+    
+    return btmdf
 
 
-
-
+    
+    # process spikeins
+    #logging.info('getting spike ins...')
+    #sidf = get_spikeins(config,df)
+    #of = os.path.join(dirname , f'{base}.si.seq.fasta')
+    #logging.debug(f'fasta for {bctool} = {of}') 
+    #logging.info(f'make fasta seqfile for {bctool}...')
+    #seqfasta = write_fasta_for_bowtie(config, sidf, outfile=of)
+    #of = os.path.join(dirname , f'{base}.si.seq.{bctool}')
+    #logging.info(f'running {bctool}...')
+    #afile = run_bowtie(config, seqfasta, of, tool=bctool  )
+    #logging.info(f'handle bowtie align file: {afile}')
+    
+    
+    # process L1 spikeins
+    #logging.info('getting L1 spike ins...')
+    #l1df = get_L1barcodes(config,df)
+    #of = os.path.join(dirname , f'{base}.l1.seq.fasta')
+    #logging.debug(f'fasta for {bctool} = {of}') 
+    #logging.info(f'make fasta seqfile for {bctool}...')
+    #seqfasta = write_fasta_for_bowtie(config, l1df, outfile=of)
+    #of = os.path.join(dirname , f'{base}.l1.seq.{bctool}')
+    #logging.info(f'running {bctool}...')
+    #afile = run_bowtie(config, seqfasta, of, tool=bctool  )
+    #logging.info(f'handle bowtie align file: {afile}')
 
 
 def make_counts_df(config, infile):
@@ -84,13 +134,41 @@ def do_threshold(config, df):
     return df
 
 
-def remove_spikeins(config, df):
+def get_barcodes(config, df):
+    # 
+    # contains    '[TC][TC]$'
     #  df[df["col"].str.contains("this string")==False]
     si = config.get('bcfasta', 'spikein')
     logging.debug(f'before filter {len(df)}')
-    df = df[df['sequence'].str.contains(si) == False ]
+    df = df[df['sequence'].str.contains(si, regex=False) == False ]
+    logging.debug(f'after first filter {len(df)}')    
+    pat = '[TC][TC]$'
+    df = df[df['sequence'].str.contains(pat) == True ]
+    logging.debug(f'after second filter {len(df)}')    
+    return df
+
+def get_L1barcodes(config, df):
+    #
+    # contains   '[AG][AG]$'
+    #  df[df["col"].str.contains("this string")==False]
+    si = config.get('bcfasta', 'spikein')
+    logging.debug(f'before filter {len(df)}')
+    df = df[df['sequence'].str.contains(si, regex=False) == False ]
+    logging.debug(f'after first filter {len(df)}')    
+    pat = '[AG][AG]$'
+    df = df[df['sequence'].str.contains(pat) == True ]
+    logging.debug(f'after second filter {len(df)}')      
+    return df
+
+
+def get_spikeins(config, df):
+    #  df[df["col"].str.contains("this string")==False]
+    si = config.get('bcfasta', 'spikein')
+    logging.debug(f'before filter {len(df)}')
+    df = df[df['sequence'].str.contains(si, regex=False) == True ]
     logging.debug(f'after filter {len(df)}')    
     return df
+
 
 def write_fasta_for_bowtie(config, df, outfile=None):
     logging.debug(f'creating bowtie input')
@@ -103,82 +181,152 @@ def write_fasta_for_bowtie(config, df, outfile=None):
     return outfile
 
 
-def run_bowtie(config, infile, outfile):
+def matrix_df_from_btdf(df):
     '''
-    bowtie-build -q BC1.seq.fasta indexes/BC1.bt 
-    bowtie -v 3 -p 10 -f --best -a indexes/BC1.bt BC1_seq.fasta BC1.bt.algn
-    
+    takes bowtie read df
+    emits boolean adjacency matrix of 'name_read','name_align'
     
     '''
-    logging.info(f'running allxall bowtie on {infile} -> {outfile}')
-    filepath = os.path.abspath(infile)    
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)   
-    logging.debug(f'handling {filepath}')
-    
-    idxdir = os.path.abspath(f'{dirname}/indexes')
-    os.makedirs(idxdir, exist_ok = True )
-    idxpfx = f'{idxdir}/{base}'
-    cmd = ['bowtie2-build',
-           #'-q',
-           infile,
-           idxpfx, 
-           ]
-    logging.debug(f'running bowtie-build...')
-    try:
-        run_command_shell(cmd)
-    except NonZeroReturnException as nzre:
-        logging.error(f'problem with infile {infile}')
-        logging.error(traceback.format_exc(None))
-        raise     
+    labels = np.unique(df[['name_read','name_align']])
+    sdf = df.filter(['name_read','name_align'], axis=1)
+    sdf['val'] = True
+    mdf = sdf.pivot(index = 'name_read', columns='name_align', values='val').reindex(columns=labels, index=labels, fill_value=False)
+    return mdf
 
-    logging.info(f'bowtie-build done.')
-    #  bowtie -v 3 -p 10 -f --best -a indexes/BC1.bt BC1_seq.fasta BC1.bt.algn
-    #
-    #  bowtie2 -v 3 -p 10 -f --best -a 
-    #     /Users/jhover/project/mapseq/M205testout/indexes/BC1.seq 
-    #     /Users/jhover/project/mapseq/M205testout/BC1.seq.fasta 
-    #     /Users/jhover/project/mapseq/M205testout/BC1.seq.bowtie
-    #
-    #
-       
-    cmd1 = ['bowtie',
-           '-v', '3',
-           '-p','10', # # threads
-           '-f',      # -f query input files are (multi-)FASTA .fa/.mfa
-           '--best',
-           '-a',      # -a/--all report all alignments; very slow, MAPQ not meaningful
-           idxpfx,
-           infile,
-           outfile
-           ]
+class BarCodeHandler(object):
     
-    cmd2 = ['bowtie2',
-           #'-N', '3',
-           '-p','10',   # # threads
-           '-f',       # -f query input files are (multi-)FASTA .fa/.mfa
-           #'--best',
-           '--all',   # -a/--all report all alignments; very slow, MAPQ not meaningful
-           '-x', idxpfx,
-           infile,
-           outfile
-           ]
-    
-    
-    logging.debug(f'running bowtie...')
-    try:
-        run_command_shell(cmd2)
-    except NonZeroReturnException as nzre:
-        logging.error(f'problem with infile {infile}')
-        logging.error(traceback.format_exc(None))
-        raise         
-    logging.info(f'bowtie done.')
-    return outfile
+    def __init__(self, label, barcode, outdir):
+        self.barcode = barcode
+        self.label = label
+        
+        if outdir is None:
+            outdir = "."
+        self.ofname = os.path.abspath(f'{outdir}/{label}.fasta')
+        self.of = open(self.ofname, 'w')
+        logging.debug(f'open file for {self.label}')
+        
+    def do_match(self, id, seq):
+        r = False
+        if self.barcode in seq:
+            id = str(id)
+            sr = SeqRecord( seq, id=id, name=id, description=id)
+            SeqIO.write([sr], self.of, 'fasta')
+            r = True
+        return r
 
-def handle_alignment(infile):
+    def finalize(self):
+        logging.debug(f'closing file for {self.label}')
+        self.of.close()
+            
+
+def load_barcodes(config, bcfile, labels = None, outdir=None):
+    '''
+     labellist is a python list of ids. barcode labels will be checked against
+     BC<id> from labellist. 
+    '''
+    codelist = [ f'BC{x}' for x in labels]
+    bclist = []
+    with open(bcfile) as fh:
+        while True:
+            ln = fh.readline()
+            if len(ln) < 2:
+                break
+            (label, bcseq) = ln.split()
+            if labels is None or label in codelist:
+                bch = BarCodeHandler(label, bcseq, outdir)
+                bclist.append(bch)
+    logging.debug(f'made list of {len(bclist)} barcode handlers.')
+    return bclist
+
+
+def load_sample_info(config, file_name):    
+    #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
+    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
+    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain','col_num'] 
+    
+    
+    dfs = pd.read_excel(file_name, sheet_name=None)        
+    sidf = dfs['Sample information']
+    # set columns names to first row
+    sidf.columns = sidf.iloc[0]
+    # drop old row of column names. 
+    sidf = sidf.iloc[pd.RangeIndex(len(sidf)).drop(0)]
+    # drop all columsn beyond 7
+    sidf = sidf.iloc[:,:7]
+    sidf.columns = sample_columns
+    logging.debug(f'created reduced sample info df: {sidf}')
+
+    return sidf
+
+
+def process_fastq_pair(config, read1file, read2file, bclist, outdir):
+
+    if outdir is None:
+        outdir = "."
+    outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
+    
+    umf = open(outfile, 'w')
+
+    r1s = int(config.get('fastq','r1start'))
+    r1e = int(config.get('fastq','r1end'))
+    r2s = int(config.get('fastq','r2start'))
+    r2e = int(config.get('fastq','r2end'))   
+
+    if read1file.endswith('.gz'):
+         read1f = gzip.open(read1file, "rt")
+    if read2file.endswith('.gz'):
+         read2f = gzip.open(read1file, "rt")         
+        
+    recs1 = SeqIO.parse(read1f, "fastq")
+    recs2 = SeqIO.parse(read2f, "fastq")
+
+    seqshandled = 0
+    unmatched = 0
+    didmatch = 0
+    
+    while True:
+        try:
+            r1 = next(recs1)
+            r2 = next(recs2)
+            sub1 = r1.seq[r1s:r1e]
+            sub2 = r2.seq[r2s:r2e]
+            fullread = sub1 + sub2
+            matched = False
+            for bch in bclist:
+                r = bch.do_match(seqshandled, fullread)
+                if r:
+                    didmatch += 1
+                    if didmatch % 10000 == 0:
+                        logging.debug(f'match {didmatch}: found bc {bch.label} in {fullread}!!')
+                    matched = True
+                    break
+            if not matched:
+                unmatched += 1
+                if unmatched % 10000 == 0:
+                    logging.debug(f'{unmatched} unmatched so far.')
+                id = str(seqshandled)
+                sr = SeqRecord( fullread, id=id, name=id, description=id)
+                SeqIO.write([sr], umf, 'fasta')
+            
+            seqshandled += 1
+            if seqshandled % 50000 == 0: 
+                logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
+        
+        except StopIteration as e:
+            logging.debug(f'iteration stopped')
+            break
+    
+    umf.close()
+    for bch in bclist:
+        bch.finalize()    
+    # close possible gzip filehandles??
+    
+    logging.info(f'handled {seqshandled} read sequences. {unmatched} unmatched')
+
+
+def make_summaries(config, bcolist):
+    # make jobset
     pass
-
 
 
 

@@ -54,6 +54,13 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
+
+    parser.add_argument('-a','--aligntool', 
+                    metavar='aligntool',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='aligner tool  [bowtie | bowtie2]')
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -80,12 +87,18 @@ if __name__ == '__main__':
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
     
+    if args.aligntool is not None:
+        logging.info(f'setting aligntool to {args.aligntool}')
+        cp.set('bcfasta', 'tool', args.aligntool )  
+    
     outdf = process_bcfasta(cp, args.infile)
+    
     if args.outfile is None:
-        outfile = sys.stdout
-    else:
-        outfile = args.outfile        
-    outdf.to_csv(outfile, sep='\t', index=False)    
+        print(outdf)
+        #outfile = sys.stdout
+    #else:
+    #    outfile = args.outfile        
+    #outdf.to_csv(outfile, sep='\t', index=False)    
     
     
     

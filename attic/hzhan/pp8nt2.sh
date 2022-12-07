@@ -87,6 +87,7 @@ do
 	nl ${SAMPLE}2${i}_seqL1.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}2_BC${i}fasta2uL1.txt;
 	bowtie-build -q ${SAMPLE}2_BC${i}fasta2uL1.txt indexes/BC${i}fasta2uL1;
 	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2uL1 ${SAMPLE}2_BC${i}fasta2uL1.txt bowtiealignment${i}_2uL1.txt
-	awk '{print $1}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_1L1.txt;awk '{print $3}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_3L1.txt
+	awk '{print $1}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_1L1.txt;
+	awk '{print $3}' bowtiealignment${i}_2uL1.txt > bowtie${i}_2u_3L1.txt
 done
 

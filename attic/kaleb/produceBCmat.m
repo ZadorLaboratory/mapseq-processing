@@ -7,33 +7,37 @@ cd thresholds;
 %bcn=212:229;
 bcn=1:length(bcn);
 
-%filter out SSI with no barcodes
+%filter out SSI with no barcodes  (i.e. 
+
 filesize=[];
 for i=1:length(bcn)
-    file=dir([prefix,int2str(bcn(i)),'_counts.txt']);
+    file=dir( [prefix, int2str(bcn(i)),'_counts.txt'] );
     filesize(i)=file.bytes;
 end
 
 bcnfilt=bcn(filesize>0);
+
 data=struct();
+
 for i=1:length(bcnfilt)
-data(i).counts=dlmread([prefix,int2str(bcnfilt(i)),'_counts.txt']);
-data(i).reads=int8(char(textread([prefix,int2str(bcnfilt(i)),'_seq.txt'],'%s')));
+	data(i).counts=dlmread( [prefix, int2str(bcnfilt(i)) , '_counts.txt']);
+	data(i).reads=int8(char(textread([prefix, int2str(bcnfilt(i)), '_seq.txt'],'%s')));
 end
  
- save('data.mat','data','-v7.3');
+save('data.mat','data','-v7.3');
  
- 
- 
- 
+
 %% Finish error correction by reading in bowtie alignments and finding connected graph components
  
 %load alignments
 positions1=[];
+	% make a sparse matrix using the bowtie columns 1 and 3 as x and y coordinates 
+	% for nonzero matrix entries
 for i=1:length(bcnfilt)
-positions1(i).x=dlmread(['bowtie',int2str(bcnfilt(i)),'_2u_1.txt']);
-positions1(i).y=dlmread(['bowtie',int2str(bcnfilt(i)),'_2u_3.txt']);
-clustermatrix1(i).C=sparse(positions1(i).x,positions1(i).y,1); %make a sparse matrix using the bowtie columns 1 and 3 as x and y coordinates for nonzero matrix entries
+	positions1(i).x=dlmread( ['bowtie',int2str(bcnfilt(i)),'_2u_1.txt']);
+	positions1(i).y=dlmread( ['bowtie',int2str(bcnfilt(i)),'_2u_3.txt']);
+	clustermatrix1(i).C=sparse(positions1(i).x,positions1(i).y,1); 
+
 end
  %save('clustermatrix1.mat','clustermatrix1','-v7.3');
 % 
@@ -42,22 +46,23 @@ end
 %find connected components
 graph=[];
 for i=1:length(bcnfilt)
-i
-    [graph(i).S,graph(i).G]=graphconncomp(clustermatrix1(i).C,'Directed','false'); %find the connected graph components
+    %find the connected graph components
+    [graph(i).S, graph(i).G]= graphconncomp( clustermatrix1(i).C, 'Directed', 'false'); 
 end
 % save('graph1.mat','graph');
-% 
-% load graph1
+
  
+% load graph1
+
 %collapse barcodes to most abundant member of the connected graph component
  
 for i=1:length(bcnfilt)
-x=1:graph(i).S;
-[tf,loc]=ismember(x,graph(i).G,'R2012a');
-collapsedreads=data(i).reads(loc,:);
-collapsedcounts=accumarray(graph(i).G',data(i).counts);%'
-[corrected(i).counts2u,ix]=sort(collapsedcounts,'descend');
-corrected(i).reads2u=collapsedreads(ix,:);
+	x=1:graph(i).S;
+	[tf,loc]=ismember(x,graph(i).G,'R2012a');
+	collapsedreads=data(i).reads(loc,:);
+	collapsedcounts=accumarray(graph(i).G',data(i).counts);%'
+	[corrected(i).counts2u,ix]=sort(collapsedcounts,'descend');
+	corrected(i).reads2u=collapsedreads(ix,:);
 end
  
  
