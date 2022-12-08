@@ -22,9 +22,9 @@ from configparser import ConfigParser
 
 import pandas as pd
 
-from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
+#from Bio import SeqIO
+#from Bio.Seq import Seq
+#from Bio.SeqRecord import SeqRecord
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)

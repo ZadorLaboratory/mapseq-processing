@@ -10,11 +10,13 @@ gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
 import pandas as pd
-import numpy as np
 
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 
 from cshlwork.utils import dataframe_to_seqlist, run_command_shell, NonZeroReturnException, setup_logging
 from alignment.bowtie import run_bowtie, make_bowtie_df
@@ -63,8 +65,7 @@ def process_bcfasta(config, infile, outdir=None):
     # make sparse matrix 
     btmdf = matrix_df_from_btdf(btdf)
 
-    
-    
+
     return btmdf
 
 
@@ -210,7 +211,11 @@ class BarCodeHandler(object):
         if self.barcode in seq:
             id = str(id)
             sr = SeqRecord( seq, id=id, name=id, description=id)
-            SeqIO.write([sr], self.of, 'fasta')
+            try:
+                SeqIO.write([sr], self.of, 'fasta')
+            except:
+                logging.warning(f'problem with {self.label}...')
+            
             r = True
         return r
 
@@ -309,7 +314,7 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
                 SeqIO.write([sr], umf, 'fasta')
             
             seqshandled += 1
-            if seqshandled % 50000 == 0: 
+            if seqshandled % 500000 == 0: 
                 logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
         
         except StopIteration as e:
@@ -320,7 +325,6 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
     for bch in bclist:
         bch.finalize()    
     # close possible gzip filehandles??
-    
     logging.info(f'handled {seqshandled} read sequences. {unmatched} unmatched')
 
 

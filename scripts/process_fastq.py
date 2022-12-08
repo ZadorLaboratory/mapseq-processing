@@ -13,10 +13,6 @@ from configparser import ConfigParser
 
 import pandas as pd
 
-from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-
 from cshlwork.utils import JobRunner, JobStack, JobSet
 from mapseq.core import load_sample_info, load_barcodes, process_fastq_pair, make_summaries  
 
