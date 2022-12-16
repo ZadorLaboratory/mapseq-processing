@@ -51,7 +51,7 @@ def process_bcfasta(config, infile, outdir=None):
     
     # process regular barcodes
     logging.info('remove spikeins...')
-    bcdf = get_barcodes(config, df)
+    bcdf = filter_barcodes(config, df)
     of = os.path.join(dirname , f'{base}.bc.seq.fasta')
     logging.debug(f'fasta for {bctool} = {of}') 
     logging.info(f'make fasta seqfile for {bctool}...')
@@ -114,7 +114,7 @@ def make_counts_df(config, infile):
             logging.debug(f'{s}')
             slist.append(str(s))
         handled += 1    
-    logging.debug(f"kept {len(slist)} non-'N' sequences out of {handled}")
+    logging.info(f"kept {len(slist)} non-'N' sequences out of {handled}")
     
     df = pd.DataFrame(slist, columns=['sequence'] )
     ser = df.sequence.value_counts()
@@ -135,7 +135,7 @@ def do_threshold(config, df):
     return df
 
 
-def get_barcodes(config, df):
+def filter_barcodes(config, df):
     # 
     # contains    '[TC][TC]$'
     #  df[df["col"].str.contains("this string")==False]
@@ -182,17 +182,6 @@ def write_fasta_for_bowtie(config, df, outfile=None):
     return outfile
 
 
-def matrix_df_from_btdf(df):
-    '''
-    takes bowtie read df
-    emits boolean adjacency matrix of 'name_read','name_align'
-    
-    '''
-    labels = np.unique(df[['name_read','name_align']])
-    sdf = df.filter(['name_read','name_align'], axis=1)
-    sdf['val'] = True
-    mdf = sdf.pivot(index = 'name_read', columns='name_align', values='val').reindex(columns=labels, index=labels, fill_value=False)
-    return mdf
 
 class BarCodeHandler(object):
     
@@ -275,7 +264,11 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
     r1s = int(config.get('fastq','r1start'))
     r1e = int(config.get('fastq','r1end'))
     r2s = int(config.get('fastq','r2start'))
-    r2e = int(config.get('fastq','r2end'))   
+    r2e = int(config.get('fastq','r2end'))
+    
+    seqhandled_interval =   int(config.get('fastq','seqhandled_interval')) 
+    matched_interval = int(config.get('fastq','matched_interval'))
+    unmatched_interval = int(config.get('fastq','unmatched_interval'))
 
     if read1file.endswith('.gz'):
          read1f = gzip.open(read1file, "rt")
@@ -301,20 +294,20 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
                 r = bch.do_match(seqshandled, fullread)
                 if r:
                     didmatch += 1
-                    if didmatch % 10000 == 0:
+                    if didmatch % matched_interval == 0:
                         logging.debug(f'match {didmatch}: found bc {bch.label} in {fullread}!!')
                     matched = True
                     break
             if not matched:
                 unmatched += 1
-                if unmatched % 10000 == 0:
+                if unmatched % unmatched_interval == 0:
                     logging.debug(f'{unmatched} unmatched so far.')
                 id = str(seqshandled)
                 sr = SeqRecord( fullread, id=id, name=id, description=id)
                 SeqIO.write([sr], umf, 'fasta')
             
             seqshandled += 1
-            if seqshandled % 500000 == 0: 
+            if seqshandled % seqhandled_interval == 0: 
                 logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
         
         except StopIteration as e:
@@ -333,6 +326,57 @@ def make_summaries(config, bcolist):
     pass
 
 
+def find_connected_components():
+    pass
+
+
+#%find connected components
+#graph=[];
+#for i=1:length(bcnfilt)
+#    %find the connected graph components
+#    [graph(i).S, graph(i).G]= graphconncomp( clustermatrix1(i).C, 'Directed', 'false'); 
+#end
+#% save('graph1.mat','graph'); 
+# https://stackoverflow.com/questions/53277121/dulmage-mendelsohn-matrix-decomposition-in-python
+
+#
+# /grid/zador/data_nlsas_norepl/MAPseq/processing/MATLAB common/MATLAB common/charlienash-nricp-5d1cb79/dependencies/geom3d-2017.12.01/geom3d/meshes3d
+#
+#function [S,C] = conncomp(G)
+#% CONNCOMP Drop in replacement for graphconncomp.m from the bioinformatics
+#% toobox. G is an n by n adjacency matrix, then this identifies the S
+#% connected components C. This is also an order of magnitude faster.
+#%
+#% [S,C] = conncomp(G)
+#%
+#% Inputs:
+#%   G  n by n adjacency matrix
+#% Outputs:
+#%   S  scalar number of connected components
+#%   C
+
+#% Transpose to match graphconncomp
+#G = G';
+
+#[p,~,r] = dmperm(G+speye(size(G)));
+#S = numel(r)-1;
+#C = cumsum(full(sparse(1,r(1:end-1),1,1,size(G,1))));
+#C(p) = C;
+#end
+
+def collapse():
+    pass
+
+#%collapse barcodes to most abundant member of the connected graph component
+#  
+#for i=1:length(bcnfilt)
+#    x=1:graph(i).S;
+#    [tf,loc]=ismember(x,graph(i).G,'R2012a');
+#    collapsedreads=data(i).reads(loc,:);
+#    collapsedcounts=accumarray(graph(i).G',data(i).counts);%'
+#    [corrected(i).counts2u,ix]=sort(collapsedcounts,'descend');
+#    corrected(i).reads2u=collapsedreads(ix,:);
+#end
 
 
 
