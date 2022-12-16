@@ -1,4 +1,17 @@
 #!/usr/bin/env python
+# 
+#  Parses current standard NGS CSHL notification email, and
+#  retrieves data on GPFS by running cp remotely over ssh. 
+#  
+#  Requires password-less login with SSH key active on Mac:
+#     https://apple.stackexchange.com/questions/48502/how-can-i-permanently-add-my-ssh-private-key-to-keychain-so-it-is-automatically
+#  Requires Python
+#  Requires pandas
+#  Recommend setting up  within a Conda environement.  
+#
+#
+#
+#
 import argparse
 import email
 import logging
