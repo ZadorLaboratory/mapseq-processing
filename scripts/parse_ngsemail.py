@@ -9,6 +9,11 @@
 #  Requires pandas
 #  Recommend setting up  within a Conda environement.  
 #
+#  Produces path table:
+# 
+# cat paths.20221207.tsv | while read line; do echo $line | xargs bash -c 'mkdir $0/$1' ; done
+# cat paths.20221207.tsv | while read line; do echo $line | xargs bash -c 'cp -vr $2/* $0/$1/' ; done
+#
 #
 #
 #
@@ -29,6 +34,7 @@ sys.path.append(gitpath)
 # If Yield (MBases) > 50000000 then nextseq, else miseq
 #
 NEXTSEQ_THRESHOLD = 50000000
+PATHTABLE_COLUMNS = ['seqtype','expid','srcdir']
 
 def emails_to_table(filelist):
     '''
@@ -48,7 +54,7 @@ def emails_to_table(filelist):
         else:
             logging.warning(f'file {file} not .eml file extension. ignoring.')
     logging.debug(f'made list of {len(lol)} row(s)...')
-    df = pd.DataFrame(data=lol, index=None)
+    df = pd.DataFrame(data=lol, index=None, columns=PATHTABLE_COLUMNS)
     return df
 
 def parse_ngs_emailtxt(emailtext):
@@ -170,6 +176,20 @@ def eml_to_text(infile):
             emailtext += add_lines(part)
     logging.debug(emailtext)
     return emailtext
+
+def servercopy(pathdf, user, server, outdir):
+    '''
+    performs remote server copy 
+    logs in as user @ server (assumes ssh agent/keys) 
+    Creates target directory. 
+    Copies over all files in 'basecalls' subdir to outdir. 
+    '''
+    for index, row in df.iterrows():
+        logging.debug(f"\nuser={user}\nserver={server}\nseq={row['seqtype']}\nexpid={row['expid']}\nsrcdir={row['srcdir']}")
+
+
+
+
                     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -187,6 +207,33 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
+
+    parser.add_argument('-c', '--copyfiles', 
+                        action="store_true", 
+                        dest='copyfiles', 
+                        default=False,
+                        help='perform remote copy?')
+
+    parser.add_argument('-o','--outdir', 
+                    metavar='outdir',
+                    required=False,
+                    default='/grid/zador/data_nlsas_norepl/MAPseq', 
+                    type=str, 
+                    help='outdir on server. ') 
+
+    parser.add_argument('-s','--server', 
+                    metavar='server',
+                    default='bamdev1.cshl.edu',
+                    required=False, 
+                    type=str, 
+                    help='server to copy on.') 
+
+    parser.add_argument('-u','--user', 
+                    metavar='user',
+                    default=os.getlogin(),
+                    required=False, 
+                    type=str, 
+                    help='username to copy as.') 
     
     parser.add_argument('infiles' ,
                         metavar='infiles', 
@@ -204,5 +251,9 @@ if __name__ == '__main__':
     
     logging.debug(f'handling {len(args.infiles)} email(s)...')
     df = emails_to_table(args.infiles)    
-    df.to_csv(sys.stdout, sep='\t', index=False, header=False)     
+    df.to_csv(sys.stdout, sep='\t', index=False, header=False)
+    
+    if args.copyfiles:
+        logging.info(f'performing copy on {args.user}@{args.server} to {args.outdir}')
+        servercopy(df, args.user, args.server, args.outdir) 
     
