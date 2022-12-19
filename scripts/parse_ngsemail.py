@@ -111,6 +111,35 @@ def parse_ngs_emailtxt(emailtext):
     logging.debug(f'final studyid={studyid}')
     return [studytype, studyid, path ]
 
+def add_lines(part):
+    previous = None
+    new = []
+    part = part.get_payload(decode=True)
+    if type(part) == bytes:
+        part = part.decode(errors='replace')
+
+
+    lines = str(part).split('\n')
+    for line in lines:
+        if len(line) > 2:
+            #print(f'{line}')                
+            if line.endswith('='):
+                line = line[:-1]
+                if previous is not None:
+                    previous = f'{previous}{line}'
+                else:
+                    previous = line
+                    
+            else:
+                if previous is not None:
+                    new.append(f'{previous}{line}')
+                    previous = None
+                else:
+                    new.append(line)
+    emailtext  = '\n'.join(new)
+    return emailtext
+
+
 
 def eml_to_text(infile):
     '''
@@ -129,28 +158,17 @@ def eml_to_text(infile):
     msg = email.message_from_file(open(infile))
     emailtext = ""
     for part in msg.walk():
-        if part.get_content_type() == 'text/plain':
-            previous = None
-            new = []
-            lines = str(part).split('\n')
-            for line in lines:
-                if len(line) > 2:
-                    #print(f'{line}')                
-                    if line.endswith('='):
-                        line = line[:-1]
-                        if previous is not None:
-                            previous = f'{previous}{line}'
-                        else:
-                            previous = line
-                            
-                    else:
-                        if previous is not None:
-                            new.append(f'{previous}{line}')
-                            previous = None
-                        else:
-                            new.append(line)
-                    
-            emailtext  = '\n'.join(new)
+        logging.debug(f'part content_type= {part.get_content_type()}')
+        if part.get_content_type() == 'multipart/related':
+            for subpart in part.walk():
+                logging.debug(f'subpart content_type= {subpart.get_content_type()}')
+                if subpart.get_content_type() == 'text/plain':
+                    emailtext += add_lines(subpart)
+                else:
+                    logging.debug(f'not handling {subpart.get_content_type()}')
+        elif part.get_content_type() == 'text/plain':
+            emailtext += add_lines(part)
+    logging.debug(emailtext)
     return emailtext
                     
 if __name__ == '__main__':
