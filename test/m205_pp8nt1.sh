@@ -11,7 +11,7 @@ gunzip -k *.gz
 FQ1="M205_HZ_S1_R1_001"
 FQ2="M205_HZ_S1_R2_001"
 SAMPLE="M205_HZ_S1"
-BCFILE=
+BCFILE="barcode_v2.txt"
   
 #strip fastq files and clip sequences
 
@@ -29,7 +29,7 @@ paste -d '\0' ${FQ1}_stripped.txt ${FQ2}_stripped.txt > ${SAMPLE}_PE.txt
 mkdir barcodesplitter
 cd barcodesplitter
 
-nl ../${SAMPLE}_PE.txt |awk '{print ">" $1 "\n" $2}'| fastx_barcode_splitter.pl --bcfile ../barcode_v2.txt --prefix ../barcodesplitter/ --eol --exact
+nl ../${SAMPLE}_PE.txt |awk '{print ">" $1 "\n" $2}'| fastx_barcode_splitter.pl --bcfile ../${BCFILE} --prefix ../barcodesplitter/ --eol --exact
 
 #from here on, do everything for every sample individually
 
