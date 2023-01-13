@@ -11,6 +11,7 @@ gunzip -k *.gz
 FQ1="M205_HZ_S1_R1_001"
 FQ2="M205_HZ_S1_R2_001"
 SAMPLE="M205_HZ_S1"
+BCFILE=
   
 #strip fastq files and clip sequences
 
