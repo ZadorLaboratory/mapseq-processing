@@ -10,33 +10,32 @@ FQ1="M205_HZ_S1_R1_001"
 FQ2="M205_HZ_S1_R2_001"
 SAMPLE="M205_HZ_S1"
 
-
-cd thresholds
+cd barcodesplitter/thresholds
  
 #pick thresholds from matlab plots, based on a steep drop of the 32+12 read counts. 
 # avoids too many PCR and sequnecning errors in the data themselves. note, bash seems 
 # to start counting at 0, so put a random number at the first position of this array, 
 # to get the order right.
 
-BCidx=($(seq 192 1 269; seq 281 1 287))
-threshold=(0 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10) #you can put more than the actual RT number
+BCidx=($(seq 0 1 28))
+threshold=(2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 ) #you can put more than the actual RT number
 
 #just do a quick and dirty collpase around the UMI tags
-for i in {1..84}; do
+for i in {1..28}; do
     j=${threshold[$i]} 
     echo $j
     if [ "$j" != "1" ];then
-	awk '$1< '$j' {print NR}' ../ZL231_Mseq125_VMBC${BCidx[$i]}_counts.txt | head -n 1 >t
+	awk '$1< '$j' {print NR}' ../${SAMPLE}BC${BCidx[$i]}_counts.txt | head -n 1 >t
 	thresh=$(cat t)
 	echo $thresh
-	head ../ZL231_Mseq125_VM_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ZL231_Mseq125_VM${i}quickout.txt
+	head ../ZL231_Mseq125_VM_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}${i}quickout.txt
 
    else
-	grep -nr ^${threshold[$i]}$  ../ZL231_Mseq125_VMBC${BCidx[$i]}_counts.txt -m 1 | cut -f1 -d":" > t
+	grep -nr ^${threshold[$i]}$  ../${SAMPLE}BC${BCidx[$i]}_counts.txt -m 1 | cut -f1 -d":" > t
 	thresh=$(cat t)
 	echo $thresh
 
-	head ../ZL231_Mseq125_VM_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ZL231_Mseq125_VM${i}quickout.txt
+	head ../${SAMPLE}_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}${i}quickout.txt
    fi
 done
 
@@ -46,7 +45,7 @@ done
 
 mkdir indexes
 
-for i in {1..26}
+for i in {1..28}
 do
 	echo $i
 	in=ZL231_Mseq125_VM${i}quickout.txt
