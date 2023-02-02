@@ -12,7 +12,7 @@ cd barcodesplitter/thresholds
 # to start counting at 0, so put a random number at the first position of this array, 
 # to get the order right.
 
-BCidx=($(seq 0 1 28))
+BCidx=($(seq 0 1 26))
 threshold=(2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 ) #you can put more than the actual RT number
 
 #just do a quick and dirty collapse around the UMI tags
@@ -40,7 +40,7 @@ done
 
 mkdir indexes
 
-for i in {1..28}
+for i in {1..26}
 do
 	echo $i
 	in=${SAMPLE}.${i}.quickout.txt
@@ -60,7 +60,7 @@ done
 
 
 # now deal with spike ins
-for i in {1..28}; do 
+for i in {1..26}; do 
 	echo $i
 	in=${SAMPLE}.${i}.quickout.txt 
 	echo "handling spikeins ${in} ...}"	
@@ -76,7 +76,7 @@ for i in {1..28}; do
 done
 
 # L1 barcodes
-for i in {1..28}; do
+for i in {1..26}; do
 	echo $i
 	in=${SAMPLE}.${i}.quickout.txt
 	echo "handling L1 ${in} ...}"	
