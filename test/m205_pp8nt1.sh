@@ -25,7 +25,7 @@ rm ${FQ2}.fastq
 paste -d '\0' ${FQ1}.stripped.txt ${FQ2}.stripped.txt > ${SAMPLE}.paired.txt
 
 
-#split dataset according to inline indexes using fastx toolkit; this by default allows up to 1 missmatch. we could go higher if we want, though maybe not neccessary
+#split dataset according to inline indexes using fastx toolkit; this by default allows up to 1 mismatch. we could go higher if we want, though maybe not neccessary
 mkdir barcodesplitter
 cd barcodesplitter
 

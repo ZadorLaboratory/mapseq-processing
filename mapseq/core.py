@@ -68,8 +68,6 @@ def process_bcfasta(config, infile, outdir=None):
 
     return btmdf
 
-
-    
     # process spikeins
     #logging.info('getting spike ins...')
     #sidf = get_spikeins(config,df)
@@ -258,8 +256,10 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
     if outdir is None:
         outdir = "."
     outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
+    pairedfile = os.path.abspath(f'{outdir}/paired.txt')
     
     umf = open(outfile, 'w')
+    pf = open(pairedfile, 'w')
 
     r1s = int(config.get('fastq','r1start'))
     r1e = int(config.get('fastq','r1end'))
@@ -289,6 +289,8 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
             sub1 = r1.seq[r1s:r1e]
             sub2 = r2.seq[r2s:r2e]
             fullread = sub1 + sub2
+            pf.write(f'{fullread}\n')
+            
             matched = False
             for bch in bclist:
                 r = bch.do_match(seqshandled, fullread)
@@ -315,6 +317,7 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir):
             break
     
     umf.close()
+    pf.close()
     for bch in bclist:
         bch.finalize()    
     # close possible gzip filehandles??

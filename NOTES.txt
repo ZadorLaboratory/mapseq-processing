@@ -1,9 +1,6 @@
-
-
 Could use more Python native alignments:
 https://www.youtube.com/watch?v=_cTbADrGLCQ
 mafft?
-
 
 
 stage one: 8 hours for  
@@ -36,7 +33,6 @@ ABAAAD3AAFFFGGGGGGGGGGEHFHHHGHGGEAGF
 
 Fastq quality values (better to right):
 !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
-
 
 
 bowtie2 (SAM) output format.
