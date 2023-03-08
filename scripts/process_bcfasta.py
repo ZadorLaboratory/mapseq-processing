@@ -14,6 +14,7 @@ import argparse
 import logging
 import os
 import sys
+import traceback
 
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
@@ -68,11 +69,19 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='out file. stdout if not given.')  
-    
 
-    parser.add_argument('infile' ,
+    parser.add_argument('-O','--outdir', 
+                    metavar='outdir',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='outdir. input file base dir if not given.')     
+
+    parser.add_argument('infiles',
+                        metavar='infiles',
+                        nargs ="+",
                         type=str,
-                        help='barcode fasta file')
+                        help='SSI fasta file(s)')
        
     args= parser.parse_args()
     
@@ -85,17 +94,32 @@ if __name__ == '__main__':
     cp.read(args.config)
     cdict = {section: dict(cp[section]) for section in cp.sections()}
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infile}')
+    logging.debug(f'infiles={args.infiles}')
     
     if args.aligntool is not None:
         logging.info(f'setting aligntool to {args.aligntool}')
         cp.set('bcfasta', 'tool', args.aligntool )  
     
-    outdf = process_bcfasta(cp, args.infile)
+    if args.outdir is not None:
+        odir = os.path.abspath(args.outdir)
+        logging.debug(f'making missing outdir: {odir} ')
+        os.makedirs(odir, exist_ok=True)
     
-    if args.outfile is None:
-        print(outdf)
-        #outfile = sys.stdout
+    for infile in args.infiles:
+        try:
+            realdf, spikedf = process_bcfasta(cp, infile, outdir=args.outdir)
+            if args.outfile is None:
+                print(realdf)
+                print(spikedf)
+    
+        except Exception as ex:
+            logging.warning(f'problem with {infile}')
+            logging.warning(traceback.format_exc(None))         
+            
+
+    
+    
+    #outfile = sys.stdout
     #else:
     #    outfile = args.outfile        
     #outdf.to_csv(outfile, sep='\t', index=False)    

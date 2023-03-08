@@ -47,9 +47,9 @@ do
 	echo "handling real ${in} ...}"
 	#split off real barcodes from spike-ins
 
-	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ${SAMPLE}.BC${i}.quickprocessed.txt
-	awk '{print $1}' ${SAMPLE}.BC${i}.quickprocessed.txt > ${SAMPLE}.${i}.counts.txt
-	awk '{print $2}' ${SAMPLE}.BC${i}.quickprocessed.txt > ${SAMPLE}.${i}.seq.txt
+	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ${SAMPLE}.BC${i}.real.txt
+	awk '{print $1}' ${SAMPLE}.BC${i}.real.txt > ${SAMPLE}.${i}.counts.txt
+	awk '{print $2}' ${SAMPLE}.BC${i}.real.txt > ${SAMPLE}.${i}.seq.txt
 
 	nl ${SAMPLE}.${i}.seq.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}.BC${i}.fasta2u.txt 
 	bowtie-build -q ${SAMPLE}.BC${i}.fasta2u.txt indexes/BC${i}fasta2u 
@@ -65,9 +65,9 @@ for i in {1..26}; do
 	in=${SAMPLE}.${i}.quickout.txt 
 	echo "handling spikeins ${in} ...}"	
 	
-	grep 'CGTCAGTC$' $in > ${SAMPLE}.spikes.${i}.quickprocessed.txt 
-	awk '{print $1}' ${SAMPLE}.spikes.${i}.quickprocessed.txt > ${SAMPLE}.spikes.${i}.counts.txt 
-	awk '{print $2}' ${SAMPLE}.spikes.${i}.quickprocessed.txt > ${SAMPLE}.spikes.${i}.seq.txt  
+	grep 'CGTCAGTC$' $in > ${SAMPLE}.spikes.${i}.real.txt 
+	awk '{print $1}' ${SAMPLE}.spikes.${i}.real.txt > ${SAMPLE}.spikes.${i}.counts.txt 
+	awk '{print $2}' ${SAMPLE}.spikes.${i}.real.txt > ${SAMPLE}.spikes.${i}.seq.txt  
 	nl ${SAMPLE}.spikes.${i}.seq.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}.spikes.${i}.fasta2u.txt 
 	bowtie-build -q ${SAMPLE}.spikes.${i}.fasta2u.txt indexes/spikes${i}fasta2u 
 	bowtie -v 3 -p 10 -f --best -a indexes/spikes${i}fasta2u ${SAMPLE}.spikes.${i}.fasta2u.txt bowtiealignspikes.${i}.2u.txt 
@@ -81,10 +81,9 @@ for i in {1..26}; do
 	in=${SAMPLE}.${i}.quickout.txt
 	echo "handling L1 ${in} ...}"	
 	
-	#split off real barcodes from spike-ins
-	grep -v 'CGTCAGTC$' $in | grep '[AG][AG]$' > ${SAMPLE}.BC${i}.quickprocessed.L1.txt
-	awk '{print $1}' ${SAMPLE}.BC${i}.quickprocessed.L1.txt > ${SAMPLE}.${i}.counts.L1.txt
-	awk '{print $2}' ${SAMPLE}.BC${i}.quickprocessed.L1.txt > ${SAMPLE}.${i}.seq.L1.txt
+	grep -v 'CGTCAGTC$' $in | grep '[AG][AG]$' > ${SAMPLE}.BC${i}.real.L1.txt
+	awk '{print $1}' ${SAMPLE}.BC${i}.real.L1.txt > ${SAMPLE}.${i}.counts.L1.txt
+	awk '{print $2}' ${SAMPLE}.BC${i}.real.L1.txt > ${SAMPLE}.${i}.seq.L1.txt
 	
 	nl ${SAMPLE}.${i}.seq.L1.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}.BC${i}.fasta2u.L1.txt
 	bowtie-build -q ${SAMPLE}.BC${i}.fasta2u.L1.txt indexes/BC${i}fasta2uL1

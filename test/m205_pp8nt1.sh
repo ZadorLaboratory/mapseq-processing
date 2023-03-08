@@ -21,11 +21,13 @@ awk "NR%4==2" ${FQ2}.fastq | cut -b 1-20 > ${FQ2}.stripped.txt #12nt tag + 8nt i
 rm ${FQ2}.fastq
 
 
-#make a new file that contains only one sequence per sequenced cluster
+#make a new file that contains only one sequence per sequenced cluster length 52
 paste -d '\0' ${FQ1}.stripped.txt ${FQ2}.stripped.txt > ${SAMPLE}.paired.txt
 
 
-#split dataset according to inline indexes using fastx toolkit; this by default allows up to 1 mismatch. we could go higher if we want, though maybe not neccessary
+#split dataset according to inline indexes using fastx toolkit; 
+# this by default allows up to 1 mismatch. we could go higher if we want, though maybe not 
+# neccessary
 mkdir barcodesplitter
 cd barcodesplitter
 
@@ -35,7 +37,8 @@ nl ../${SAMPLE}.paired.txt |awk '{print ">" $1 "\n" $2}'| fastx_barcode_splitter
 
 #BCidx=($(seq 0 1 81; seq 97 1 177; seq 193 1 233; seq 249 1 279)) #the first number should be n-1
 BCidx=($(seq 0 1 26)) 
-for i in {1..26}; do #this number should be exactly the same as the total RT primer number used in BCidx
+for i in {1..26}; do 
+    #this number should be exactly the same as the total RT primer number used in BCidx
 	#filter out reads with Ns, cut off indexes and unique datafiles
 	awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > ${SAMPLE}.processed.BC${BCidx[$i]}.txt
 	#split output files into two files per index, one that is containing the read counts of each unique sequence, the other the unique sequences themselves.

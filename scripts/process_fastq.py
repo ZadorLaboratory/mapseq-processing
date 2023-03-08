@@ -55,6 +55,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='XLS sampleinfo file. ')
 
+    parser.add_argument('-m','--max_mismatch', 
+                        metavar='max_mismatch',
+                        required=False,
+                        default=0,
+                        type=int, 
+                        help='Max mismatch for barcode/SSI matching.')
+
     parser.add_argument('-o','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -62,6 +69,10 @@ if __name__ == '__main__':
                     type=str, 
                     help='outdir. cwd if not given.') 
 
+    parser.add_argument('-f','--force', 
+                    action="store_true", 
+                    default=False, 
+                    help='Recalculate even if output exists.') 
 
     parser.add_argument('infiles' ,
                         metavar='infiles', 
@@ -87,9 +98,14 @@ if __name__ == '__main__':
     logging.debug(sampdf)
     rtlist = list(sampdf.rtprimer.dropna())
         
-    bcolist = load_barcodes(cp, args.barcodes, labels=rtlist, outdir=args.outdir)
+    bcolist = load_barcodes(cp, 
+                            args.barcodes, 
+                            labels=rtlist, 
+                            outdir=args.outdir, 
+                            eol=True, 
+                            max_mismatch=args.max_mismatch)
     logging.debug(bcolist)
-    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir)
+    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir, force=args.force)
     make_summaries(cp, bcolist)
     
     

@@ -91,7 +91,7 @@ def parse_ngs_emailtxt(emailtext):
             logging.debug(f'found exp id {expid}')
                       
         elif 'Zador_Lab' in line:
-            logging.debug('Found "Zador_Lab" line...')
+            logging.debug(f'Found "Zador_Lab" line: {line}')
             path = line.strip()
             fields = path.split('/')
             for i,val in enumerate(fields):
@@ -102,9 +102,11 @@ def parse_ngs_emailtxt(emailtext):
                     logging.debug(f'found libid={libid}')
         
         elif 'MBases' in line:
+            logging.debug(f'Found nbases line: {line}')
             nbases = lines[idx + 1]
-            #print(f'nbases = {nbases}')
-            nbases = int(nbases.replace(',',''))
+            logging.debug(f'nbases line = {nbases}')
+            fields = nbases.split()
+            nbases = int(fields[-1].replace(',',''))
             #print(f'nbases = {nbases}')            
             if nbases > NEXTSEQ_THRESHOLD:
                 studytype = 'nextseq'
