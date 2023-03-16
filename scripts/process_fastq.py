@@ -4,16 +4,22 @@ import logging
 import os
 import sys
 
-gitpath=os.path.expanduser("~/git/cshlwork")
-sys.path.append(gitpath)
-gitpath=os.path.expanduser("~/git/mapseq-processing")
-sys.path.append(gitpath)
-
 from configparser import ConfigParser
 
 import pandas as pd
 
+gitpath=os.path.expanduser("~/git/cshlwork")
+sys.path.append(gitpath)
+
+gitpath=os.path.expanduser("~/git/cshlwork")
+sys.path.append(gitpath)
+
+from cshlwork.utils import write_config
 from cshlwork.utils import JobRunner, JobStack, JobSet
+
+gitpath=os.path.expanduser("~/git/mapseq-processing")
+sys.path.append(gitpath)
+
 from mapseq.core import load_sample_info, load_barcodes, process_fastq_pair, make_summaries  
 
 
@@ -67,7 +73,7 @@ if __name__ == '__main__':
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. cwd if not given.') 
+                    help='outdir. input file base dir if not given.')   
 
     parser.add_argument('-f','--force', 
                     action="store_true", 
@@ -93,10 +99,21 @@ if __name__ == '__main__':
     cdict = {section: dict(cp[section]) for section in cp.sections()}
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
-    
+
+    # set outdir
+    afile = args.infiles[0]
+    filepath = os.path.abspath(afile)    
+    outdir = os.path.dirname(filepath)
+    if args.outdir is not None:
+        outdir = args.outdir    
+
+    cfilename = f'{outdir}/process_fastq.config.txt'
+    write_config(cp, cfilename, timestamp=True)
+
     sampdf = load_sample_info(cp,args.sampleinfo)
     logging.debug(sampdf)
-    rtlist = list(sampdf.rtprimer.dropna())
+    rtlist = list(sampdf['rtprimer'].dropna())
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
         
     bcolist = load_barcodes(cp, 
                             args.barcodes, 
@@ -106,7 +123,7 @@ if __name__ == '__main__':
                             max_mismatch=args.max_mismatch)
     logging.debug(bcolist)
     process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir, force=args.force)
-    make_summaries(cp, bcolist)
+    #make_summaries(cp, bcolist)
     
     
     

@@ -1,19 +1,9 @@
 #!/usr/bin/env python
 #
-#   processes per-barcode fasta files. 
+#   merges and analyzes per-barcode dataframe files. 
+#   outputs normalized barcode matrix. 
 #
-#    awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > Mseq204_YC_inj2processedBC${BCidx[$i]}.txt
-#    #split output files into two files per index, one that is containing the read counts of each unique sequnce, the other the unique sequences themselves.
-#    awk '{print $1}' Mseq204_YC_inj2processedBC${BCidx[$i]}.txt > Mseq204_YC_inj2BC${BCidx[$i]}_counts.txt
-#    awk '{print $2}' Mseq204_YC_inj2processedBC${BCidx[$i]}.txt > Mseq204_YC_inj2_BC${BCidx[$i]}seq.txt
 #
-#   BC1.fasta  ->   BC1_processed.tsv
-#
-#    import resource, sys
-#    resource.setrlimit(resource.RLIMIT_STACK, (2**29,-1))
-#    sys.setrecursionlimit(10**6)
-#
-
 
 import argparse
 import logging
@@ -25,19 +15,15 @@ from configparser import ConfigParser
 
 import pandas as pd
 
-#from Bio import SeqIO
-#from Bio.Seq import Seq
-#from Bio.SeqRecord import SeqRecord
-
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
-from cshlwork.utils import write_config
+from cshlwork.utils import write_config, merge_tsvs
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import process_bcfasta
+from mapseq.core import *
 
     
 if __name__ == '__main__':
@@ -63,27 +49,6 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
-
-    parser.add_argument('-a','--aligner', 
-                    metavar='aligner',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='aligner tool  [bowtie | bowtie2]')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max mismatch for aligner read collapse.')
-
-    parser.add_argument('-r','--recursion', 
-                        metavar='recursion',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max recursion. Handle larger input to collapse() Default is ~3000.')
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -118,14 +83,7 @@ if __name__ == '__main__':
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
-    
-    logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
-    if args.recursion is not None:
-        rlimit = int(args.recursion)
-        logging.info(f'set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)
-    
-    
+        
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
@@ -137,17 +95,6 @@ if __name__ == '__main__':
         dirname = os.path.dirname(filepath)
         outdir = dirname
 
-    if args.aligner is not None:
-        logging.info(f'setting aligner to {args.aligner}')
-        cp.set('bcfasta', 'tool', args.aligner )  
-
-    if args.max_mismatch is not None:
-        tool = cp.get('bcfasta','tool')
-        mm= str(args.max_mismatch)
-        logging.info(f'setting max_mismatch to {mm} tool={tool}')
-        cp.set(tool, 'max_mismatch', mm )
-        #logging.debug(f"after set. max_mismatch={cp.get('bowtie', 'max_mismatch')} ")   
-
     if args.outdir is not None:
         cfilename = f'{args.outdir}/process_bcfasta.config.txt'
     else:
@@ -157,17 +104,11 @@ if __name__ == '__main__':
         cfilename = f'{dirname}/process_bcfasta.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
+    outdf = process_merge_targets(cp, args.infiles, outdir)
+    if args.outfile is None:
+        print(outdf)
+    else:
+        outdf.to_csv(args.outfile, sep='\t')    
     
-    for infile in args.infiles:
-        try:
-            outdf = process_bcfasta(cp, infile, outdir=outdir)
-            if args.outfile is None:
-                print(outdf)
-            else:
-                outdf.to_csv(args.outfile, sep='\t')
-    
-        except Exception as ex:
-            logging.warning(f'problem with {infile}')
-            logging.warning(traceback.format_exc(None))         
           
     

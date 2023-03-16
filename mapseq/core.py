@@ -12,6 +12,7 @@ sys.path.append(gitpath)
 
 import pandas as pd
 import numpy as np
+from natsort import natsorted
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -20,7 +21,7 @@ from Bio.SeqRecord import SeqRecord
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df, run_command_shell, NonZeroReturnException, setup_logging
+from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df, run_command_shell, NonZeroReturnException, merge_dfs, merge_tsvs, setup_logging
 from alignment.bowtie import run_bowtie, make_bowtie_df
 
 
@@ -49,124 +50,157 @@ def process_bcfasta(config, infile, outdir=None):
     logging.debug(f'handling {filepath}')
     
     logging.info('calc counts...')
-    df = make_counts_df(config, infile)
-    logging.info('save initial counts df...')
+    seqdf = make_fasta_df(config, infile)
+    cdf = make_counts_df(config, seqdf)  
+    logging.info(f'initial counts df {len(cdf)} all reads.')
     of = os.path.join(dirname , f'{base}.counts.tsv')
-    df.to_csv(of, sep='\t') 
+    cdf.to_csv(of, sep='\t') 
         
-    threshold = calculate_threshold(config, df)
-    logging.info(f'threshold={threshold}')
-    df = threshold_counts(config, df)
-    df['sequence'] = df['sequence'].str[:32]
-    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, df)
+    threshold = calculate_threshold(config, cdf)
+    tdf = threshold_counts(config, cdf)
+    logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
+    
+    # now that we've only kept bc + umi, the counts is distinct molecules.  
+    tdf['counts'] = 1          
+    # trim to just viral barcodes.  ?
+    tdf['sequence'] = tdf['sequence'].str[:32]
+    
+    # now have actual viral barcode df with unique molecule counts.
+    bcdf = make_counts_df(config, tdf)
+    
+    # split out spike, real, lone    
+    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, bcdf)
 
     realdf.to_csv(os.path.join(dirname , f'{base}.real.raw.tsv'), sep='\t')
     lonedf.to_csv(os.path.join(dirname , f'{base}.lone.raw.tsv'), sep='\t')
     spikedf.to_csv(os.path.join(dirname , f'{base}.spike.raw.tsv'), sep='\t')
+    
+    realcdf = make_counts_df(config, realdf)
+    spikecdf = make_counts_df(config, spikedf)
+    lonecdf = make_counts_df(config, lonedf)    
 
+    realcdf.to_csv(os.path.join(dirname , f'{base}.real.counts.tsv'), sep='\t')
+    lonecdf.to_csv(os.path.join(dirname , f'{base}.lone.counts.tsv'), sep='\t')
+    spikecdf.to_csv(os.path.join(dirname , f'{base}.spike.counts.tsv'), sep='\t')    
+            
+    acrealdf = align_and_collapse(config, realdf, dirname, base, 'real')
+    acspikedf = align_and_collapse(config, spikedf, dirname, base, 'spike')
+    aclonedf = align_and_collapse(config, lonedf, dirname, base, 'lone')
     
-    logging.info('handling reals...')
-    logging.info(f'real {len(realdf)} sequences, representing {realdf.counts.sum()} reads.')      
-    of = os.path.join(dirname , f'{base}.real.seq.fasta')
-    logging.debug(f'make fasta for {aligner} = {of}') 
-    seqfasta = write_fasta_from_df(config, realdf, outfile=of)
-    of = os.path.join(dirname , f'{base}.real.{aligner}')
-    logging.info(f'running {aligner}...')
-    afile = run_bowtie(config, seqfasta, of, tool=aligner )  
-    logging.info(f'handle bowtie align file: {afile}')
-    btdf = make_bowtie_df(afile)
-    of = os.path.join(dirname , f'{base}.real.btdf.tsv')
-    btdf.to_csv(of, sep='\t') 
-    edgelist = edges_from_btdf(btdf)
-    components = get_components(edgelist)
-    crealdf = collapse_counts_df(realdf, components)
-    logging.info(f'oldlen={len(realdf)}, collapsed={len(crealdf)}')
-    
-    
-    # process spikeins
-    logging.info(f'spike {len(spikedf)} sequences, representing {spikedf.counts.sum()} reads.')      
-    of = os.path.join(dirname , f'{base}.spike.seq.fasta')
-    logging.debug(f'make fasta for {aligner} = {of}') 
-    seqfasta = write_fasta_from_df(config, spikedf, outfile=of)
-    of = os.path.join(dirname , f'{base}.spike.{aligner}')
-    logging.info(f'running {aligner}...')
-    afile = run_bowtie(config, seqfasta, of, tool=aligner )  
-    logging.info(f'handle bowtie align file: {afile}')
-    btdf = make_bowtie_df(afile)
-    of = os.path.join(dirname , f'{base}.spike.btdf.tsv')
-    btdf.to_csv(of, sep='\t') 
-    edgelist = edges_from_btdf(btdf)
-    components = get_components(edgelist)
-    cspikedf = collapse_counts_df(spikedf, components)
-    logging.info(f'oldlen={len(spikedf)}, collapsed={len(cspikedf)}')    
-    
+    acrealdf.to_csv(os.path.join(dirname , f'{base}.real.tsv'), sep='\t')
+    acspikedf.to_csv(os.path.join(dirname , f'{base}.spike.tsv'), sep='\t')
+    aclonedf.to_csv(os.path.join(dirname , f'{base}.lone.tsv'), sep='\t')
 
-    # process L1 controls
-    logging.info(f'lone {len(lonedf)} sequences, representing {lonedf.counts.sum()} reads.')      
-    of = os.path.join(dirname , f'{base}.lone.seq.fasta')
+    acrealdf['type'] = 'real'
+    acspikedf['type'] = 'spike'
+    aclonedf['type'] = 'lone'
+    outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
+    outdf['bc_label'] = base
+    outdf.sort_values(by = ['type', 'counts'], ascending = [True, False], inplace=True)
+    outdf.reset_index(drop=True, inplace=True)
+    return outdf
+
+
+def align_and_collapse(config, countsdf, outdir, base, label):
+    '''
+    countsdf  'sequence' and 'counts' columns
+    outdir    working dir or temp dir. 
+    base      leading file name, e.g. barcode label 'BC4'
+    label     type of sequence, e.g. real, spike, L1 (lone)
+    
+    '''
+    newdf = None
+    logging.info(f'handling {base} {label}s...')
+    aligner = config.get('bcfasta','tool')
+    pcthreshold = config.get('bcfasta','post_threshold')
+    logging.info(f'{label} {len(countsdf)} sequences, representing {countsdf.counts.sum()} reads.')      
+    of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
-    seqfasta = write_fasta_from_df(config, lonedf, outfile=of)
-    of = os.path.join(dirname , f'{base}.lone.{aligner}')
+    seqfasta = write_fasta_from_df(config, countsdf, outfile=of)
+    of = os.path.join(outdir , f'{base}.{label}.{aligner}')
     logging.info(f'running {aligner}...')
-    clonedf = None
     try:
         afile = run_bowtie(config, seqfasta, of, tool=aligner )  
-        logging.info(f'handle bowtie align file: {afile}')
+        logging.info(f'handle {aligner} align file: {afile}')
         btdf = make_bowtie_df(afile)
-        of = os.path.join(dirname , f'{base}.lone.btdf.tsv')
-        btdf.to_csv(of, sep='\t')     
+        of = os.path.join(outdir , f'{base}.{label}.btdf.tsv')
+        btdf.to_csv(of, sep='\t') 
         edgelist = edges_from_btdf(btdf)
         components = get_components(edgelist)
-        clonedf = collapse_counts_df(lonedf, components)
-        logging.info(f'oldlen={len(lonedf)}, collapsed={len(clonedf)}')
-    
+        newdf = collapse_counts_df(countsdf, components)
+        newdf = threshold_counts(config, newdf, threshold=pcthreshold)
+        logging.info(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
     except NonZeroReturnException:
-        logging.warning(f'NonZeroReturn Exception. Probably no L1s found. ')
-      
+        logging.warning(f'NonZeroReturn Exception. Probably no {label}s found. ')
+        newdf = pd.DataFrame(columns = ['sequence','counts'])
+    return newdf
+
+
+def max_hamming(sequence, sequencelist):
+    '''
+    calculates maximum mismatch between sequence and all sequences in sequencelist. 
+    assumes all sequences are same length
+    no indels, just substitutions. 
+    '''
+    #logging.debug(f'seq={sequence}')
+    #logging.debug(f'sequencelist={sequencelist}')
+    max_dist = 0
+    for s in sequencelist:
+        dist = 0
+        for i in range(0,len(s)):
+            if sequence[i] != s[i]:
+                dist += 1
+        if dist > max_dist:
+            max_dist = dist
+    return max_dist
+
+
+def unique_df(seqdf):
+    '''
+    filters for only unique sequences, sets counts to 1
+    '''
     
-    #logging.info('handling reals...')
-    #logging.info(f'lone {len(lonedf)} sequences, representing {lonedf.counts.sum()} reads.')      
-    #of = os.path.join(dirname , f'{base}.lone.seq.fasta')
-    #logging.debug(f'make fasta for {aligner} = {of}') 
-    #seqfasta = write_fasta_from_df(config, lonedf, outfile=of)
-    #of = os.path.join(dirname , f'{base}.lone.{aligner}')
-    #logging.info(f'running {aligner}...')
-    #try:
-    #    afile = run_bowtie(config, seqfasta, of, tool=aligner )  
-    #    logging.info(f'handle bowtie align file: {afile}')
-    #    btdf = make_bowtie_df(afile)
-    #    of = os.path.join(dirname , f'{base}.lone.btdf.tsv')
-    #    btdf.to_csv(of, sep='\t')
-    #except NonZeroReturnException:
-    #    logging.warning(f'NonZeroReturn Exception. Probably no L1s found. ')
 
-    crealdf.to_csv(os.path.join(dirname , f'{base}.real.tsv'), sep='\t')
-    cspikedf.to_csv(os.path.join(dirname , f'{base}.spike.tsv'), sep='\t')
-    if clonedf is not None:
-        clonedf.to_csv(os.path.join(dirname , f'{base}.lone.tsv'), sep='\t')
-
-    return (crealdf, cspikedf)
 
 
 def collapse_counts_df(countsdf, components):
     '''
     takes components consisting of indices
     determines sequence with largest count columns: 'sequence', 'counts'
-    collapses all other member components to largest. 
+    collapses all other member components to the sequence of the largest.
+    adds their counts to that of that sequence.
+     
     '''
     # list of lists to collect values..
     logging.info(f'collapsing countsdf len={len(countsdf)} w/ {len(components)} components.')
     lol = []
     for component in components:
-        #logging.debug(f'component={component}')
+        logging.debug(f'component={component}')
+        # make new df of only component sequence rows
         cdf = countsdf.iloc[component].reset_index(drop=True)
+        logging.debug(f'cdf=\n{cdf}')
+        # which sequence has highest count?
         maxid = cdf.counts.idxmax()
+        # extract sequence and count as python list
         row = list(cdf.iloc[maxid])
+        # set counts as sum of all collapse sequences. 
         row[1] = cdf.counts.sum()
         lol.append(row)
     
+        if logging.getLogger().level <= logging.DEBUG:
+            slist = list(cdf['sequence'])
+            logging.debug(f'slist={slist}')
+            if len(slist) > 1:
+                s = row[0]
+                maxdiff = max_hamming(s, slist)
+                logging.debug(f'max_hamming = {maxdiff} n_seqs={len(slist)}')
+            else:
+                 logging.debug(f'skip distance calc, one sequence in component.')
+        
     newdf = pd.DataFrame(data=lol, columns=['sequence','counts'])
-    logging.info(f'collapsed df len={len(newdf)}')
+    logging.info(f'original len={len(countsdf)} collapsed len={len(newdf)}')
+    newdf.sort_values('counts',ascending=False, inplace=True)
+    newdf.reset_index(drop=True, inplace=True)
     return newdf
 
 
@@ -179,9 +213,13 @@ def edges_from_btdf(btdf):
 def get_components(edgelist):
     complist = []
     logging.info(f'getting connected components from edgelist len={len(edgelist)}')
+    if len(edgelist) < 100:
+        logging.debug(f'{edgelist}')
     for g in trajan(from_edges(edgelist)):
         complist.append(g)
     logging.info(f'{len(complist)} components.')
+    if len(edgelist) < 100:
+        logging.debug(f'{complist}')
     return complist
 
 #
@@ -207,7 +245,16 @@ def from_edges(edges):
 
     return nodes.values()
     
+    
 def trajan(V):
+    '''
+    May bet recursion limit errors if input is large. 
+    https://stackoverflow.com/questions/5061582/setting-stacksize-in-a-python-script/16248113#16248113
+    
+    import resource, sys
+    resource.setrlimit(resource.RLIMIT_STACK, (2**29,-1))
+    sys.setrecursionlimit(10**6)
+    '''
     def strongconnect(v, S):
         v.root = pos = len(S)
         S.append(v)
@@ -229,42 +276,38 @@ def trajan(V):
         if v.root is None:
             yield from strongconnect(v, [])
 
+def make_counts_df(config, seqdf, bc_label=None):
+    '''
+    input dataframe with 'sequence' column
+    make counts column for identical sequences.  
+    '''     
+    ser = seqdf.sequence.value_counts()
+    df = pd.DataFrame(columns=['sequence','counts'])
+    df['sequence'] = ser.index
+    df['counts'] = ser.values
+    logging.debug(f'counts df = \n{df}')
+    if bc_label is not None:
+        df['bc_label'] = bc_label
+    return df
 
-def make_adjacency_df(bowtiedf):
-    labels = np.unique(btdf[['name_read','name_align']])
-    sdf = btdf.filter( ['name_read','name_align'], axis=1 )
-    sdf['val'] = 1
-    mdf = sdf.pivot(index = 'name_read', 
-                    columns='name_align', 
-                    values='val').reindex(columns=labels, index=labels, fill_value=0)
-    mdf.fillna(0, inplace=True)
-    return mdf
 
-
-def make_counts_df(config, infile, bclabel=None):
+def make_fasta_df(config, infile, ignore_n=True):
     '''
     input fasta 
-    ignore 'N' sequences. 
+    ignore 'N' sequences.
     '''   
     slist = []
     rcs = SeqIO.parse(infile, "fasta")
     handled = 0
     for sr in rcs:
         s = sr.seq
-        if 'N' in sr:
+        if ('N' in sr) and ignore_n :
             pass
         else:
             slist.append(str(s))
         handled += 1    
-    logging.info(f"kept {len(slist)} non-'N' sequences out of {handled}")    
+    logging.info(f"kept {len(slist)} sequences out of {handled}")    
     df = pd.DataFrame(slist, columns=['sequence'] )
-    ser = df.sequence.value_counts()
-    df = pd.DataFrame()
-    df['sequence'] = ser.index
-    df['counts'] = ser.values
-    if bclabel is not None:
-        df['bc_label'] = bclabel
-    logging.debug(f'counts df = \n{df}')
     return df
 
 
@@ -301,6 +344,7 @@ def calculate_threshold(config, df, minimum=2):
     return minimum
 
 
+
 def threshold_counts(config, df, threshold=None):
     '''
     
@@ -310,8 +354,11 @@ def threshold_counts(config, df, threshold=None):
     else:
         count_threshold = int(threshold)
     logging.info(f'thresh = {count_threshold}')    
-    df = df[df.counts > count_threshold]
+    df = df[df.counts > count_threshold].copy()
     return df
+
+def filter_low_complexity(config, seqdf):
+    pass
 
 
 def split_spike_real_lone_barcodes(config, df):
@@ -615,60 +662,23 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
     else:
         logging.info('all output exists and force=False. Not recalculating.')
 
+def process_merge_targets(config, filelist, outdir=None ):
+    '''
+     merges BC-specific real, spike, lone DFs with counts. 
+     outputs BC x target matrix DF, with counts normalized to spikeins by target.  
+     
+    '''
+    logging.info(f'{filelist}')
+    df = merge_tsvs(filelist)
+    bcm = df.pivot(index='sequence', columns='bc_label', values='counts')
+    bcm.reset_index(inplace=True)
+    bcm.drop(labels=['sequence'], axis=1, inplace=True)
+    scol = natsorted(list(bcm.columns))
+    bcm = bcm[scol]
+    bcm.fillna(value=0, inplace=True)
+    return bcm
+    
 
-def make_summaries(config, bcolist):
-    # make jobset
-    pass
-
-
-def find_connected_components():
-    pass
-
-
-#%find connected components
-#graph=[];
-#for i=1:length(bcnfilt)
-#    %find the connected graph components
-#    [graph(i).S, graph(i).G]= graphconncomp( clustermatrix1(i).C, 'Directed', 'false'); 
-#end
-#% save('graph1.mat','graph'); 
-# https://stackoverflow.com/questions/53277121/dulmage-mendelsohn-matrix-decomposition-in-python
-
-#
-# /grid/zador/data_nlsas_norepl/MAPseq/processing/MATLAB common/MATLAB common/charlienash-nricp-5d1cb79/dependencies/geom3d-2017.12.01/geom3d/meshes3d
-#
-#function [S,C] = conncomp(G)
-#% CONNCOMP Drop in replacement for graphconncomp.m from the bioinformatics
-#% toobox. G is an n by n adjacency matrix, then this identifies the S
-#% connected components C. This is also an order of magnitude faster.
-#%
-#% [S,C] = conncomp(G)
-#%
-#% Inputs:
-#%   G  n by n adjacency matrix
-#% Outputs:
-#%   S  scalar number of connected components
-#%   C
-
-#% Transpose to match graphconncomp
-#G = G';
-
-#[p,~,r] = dmperm(G+speye(size(G)));
-#S = numel(r)-1;
-#C = cumsum(full(sparse(1,r(1:end-1),1,1,size(G,1))));
-#C(p) = C;
-#end
-
-#%collapse barcodes to most abundant member of the connected graph component
-#  
-#for i=1:length(bcnfilt)
-#    x=1:graph(i).S;
-#    [tf,loc]=ismember(x,graph(i).G,'R2012a');
-#    collapsedreads=data(i).reads(loc,:);
-#    collapsedcounts=accumarray(graph(i).G',data(i).counts);%'
-#    [corrected(i).counts2u,ix]=sort(collapsedcounts,'descend');
-#    corrected(i).reads2u=collapsedreads(ix,:);
-#end
 
 
 
