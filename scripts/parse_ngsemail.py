@@ -22,7 +22,9 @@ import email
 import logging
 import os
 import sys
+import traceback
 
+import paramiko
 import pandas as pd
 
 gitpath=os.path.expanduser("~/git/cshlwork")
@@ -35,6 +37,8 @@ sys.path.append(gitpath)
 #
 NEXTSEQ_THRESHOLD = 50000000
 PATHTABLE_COLUMNS = ['seqtype','expid','srcdir']
+OUTROOT = '/grid/mbseq/data_norepl/mapseq/library_data'
+
 
 def emails_to_table(filelist):
     '''
@@ -179,7 +183,7 @@ def eml_to_text(infile):
     logging.debug(emailtext)
     return emailtext
 
-def servercopy(pathdf, user, server, outdir):
+def servercopy(pathdf, user, server, outdir, dryrun=True):
     '''
     performs remote server copy 
     logs in as user @ server (assumes ssh agent/keys) 
@@ -187,9 +191,34 @@ def servercopy(pathdf, user, server, outdir):
     Copies over all files in 'basecalls' subdir to outdir. 
     '''
     for index, row in df.iterrows():
-        logging.debug(f"\nuser={user}\nserver={server}\nseq={row['seqtype']}\nexpid={row['expid']}\nsrcdir={row['srcdir']}")
-
-
+        expid = row['expid']
+        seqtype = row['seqtype']
+        srcdir = row['srcdir']
+        srcdir = os.path.normpath(srcdir)
+        logging.debug(f"\nuser={user}\nserver={server}\nseq={seqtype}\nexpid={expid}\nsrcdir={srcdir}")
+        cmd1 = f"mkdir -vp {OUTROOT}/{expid}"
+        cmd2 = f"cp -vr {srcdir}/* {OUTROOT}/{expid}/"
+        logging.info(f"ssh {user}@{server} '{cmd1}'")
+        logging.info(f"ssh {user}@{server} '{cmd2}'")
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(server, port=22, username=user, timeout=3)
+        if dryrun:
+            cmd = '/usr/bin/pwd'
+            (stdin, stdout, stderr) = client.exec_command(cmd)
+            cmd_output = stdout.read()
+            logging.info(f'cmd output= {cmd_output}')
+        else:
+            try:
+                (stdin, stdout, stderr) = client.exec_command(cmd1)
+                cmd_output = stdout.read()
+                logging.info(f'cmd output= {cmd_output}')            
+                (stdin, stdout, stderr) = client.exec_command(cmd2)
+                cmd_output = stdout.read()
+                logging.info(f'cmd output= {cmd_output}')
+            except Exception as ex:
+                logging.warning('problem with ssh connection.')
+                logging.warning(traceback.format_exc(None))    
 
 
                     
@@ -253,9 +282,9 @@ if __name__ == '__main__':
     
     logging.debug(f'handling {len(args.infiles)} email(s)...')
     df = emails_to_table(args.infiles)    
-    df.to_csv(sys.stdout, sep='\t', index=False, header=False)
+    df.to_csv(sys.stdout, sep='\t', index=False, header=True)
     
     if args.copyfiles:
         logging.info(f'performing copy on {args.user}@{args.server} to {args.outdir}')
-        servercopy(df, args.user, args.server, args.outdir) 
+        servercopy(df, args.user, args.server, args.outdir, dryrun=False) 
     
