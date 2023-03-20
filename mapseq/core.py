@@ -49,11 +49,17 @@ def process_bcfasta(config, infile, outdir=None):
     (base, ext) = os.path.splitext(filename)   
     logging.debug(f'handling {filepath}')
     
+    # make raw fasta TSV of barcode-splitter output for one barcode. 
+    # trim to 44 unique w/ counts. 
     logging.info('calc counts...')
     seqdf = make_fasta_df(config, infile)
+    of = os.path.join(dirname , f'{base}.seq.raw.tsv')
+    seqdf.to_csv(of, sep='\t')
+    
+    # to calculate threshold we need counts calculated. 
     cdf = make_counts_df(config, seqdf)  
     logging.info(f'initial counts df {len(cdf)} all reads.')
-    of = os.path.join(dirname , f'{base}.counts.tsv')
+    of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
         
     threshold = calculate_threshold(config, cdf)
@@ -65,8 +71,13 @@ def process_bcfasta(config, infile, outdir=None):
     # trim to just viral barcodes.  ?
     tdf['sequence'] = tdf['sequence'].str[:32]
     
+    of = os.path.join(dirname , f'{base}.32.raw.tsv')
+    tdf.to_csv(of, sep='\t') 
+    
     # now have actual viral barcode df with unique molecule counts.
     bcdf = make_counts_df(config, tdf)
+    of = os.path.join(dirname , f'{base}.32.counts.tsv')
+    bcdf.to_csv(of, sep='\t')     
     
     # split out spike, real, lone    
     spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, bcdf)
@@ -354,11 +365,12 @@ def threshold_counts(config, df, threshold=None):
     else:
         count_threshold = int(threshold)
     logging.info(f'thresh = {count_threshold}')    
-    df = df[df.counts > count_threshold].copy()
+    df = df[df.counts >= count_threshold].copy()
     return df
 
+
 def filter_low_complexity(config, seqdf):
-    pass
+    return seqdf
 
 
 def split_spike_real_lone_barcodes(config, df):
@@ -375,8 +387,10 @@ def split_spike_real_lone_barcodes(config, df):
     logging.debug(f'before filtering: {len(df)}')
     
     # get spikeins
+    siseq = 'CGTCAGTC'
     logging.debug(f"spike-in regex = '{sire}' ")
-    simap = df['sequence'].str.contains(sire, regex=True) == True
+    #simap = df['sequence'].str.contains(sire, regex=True) == True
+    simap = df['sequence'].str.endswith(siseq) == True
     spikedf = df[simap]
     spikedf.reset_index(inplace=True, drop=True)
     remaindf = df[~simap]
@@ -662,6 +676,8 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
     else:
         logging.info('all output exists and force=False. Not recalculating.')
 
+
+
 def process_merge_targets(config, filelist, outdir=None ):
     '''
      merges BC-specific real, spike, lone DFs with counts. 
@@ -669,17 +685,30 @@ def process_merge_targets(config, filelist, outdir=None ):
      
     '''
     logging.info(f'{filelist}')
-    df = merge_tsvs(filelist)
-    bcm = df.pivot(index='sequence', columns='bc_label', values='counts')
+    alldf = merge_tsvs(filelist)
+    
+    logging.info(f'alldf len={len(alldf)}')
+      
+    rdf = alldf[alldf.type == 'real']      
+    bcm = rdf.pivot(index='sequence', columns='bc_label', values='counts')
     bcm.reset_index(inplace=True)
     bcm.drop(labels=['sequence'], axis=1, inplace=True)
     scol = natsorted(list(bcm.columns))
     bcm = bcm[scol]
     bcm.fillna(value=0, inplace=True)
-    return bcm
+    logging.info(f'real barcode matrix len={len(bcm)}')
     
-
-
+    
+    sdf = alldf[alldf.type == 'spike']
+    sbcm = sdf.pivot(index='sequence', columns='bc_label', values='counts')
+    sbcm.reset_index(inplace=True)
+    sbcm.drop(labels=['sequence'], axis=1, inplace=True)
+    spcol = natsorted(list(sbcm.columns))
+    sbcm = sbcm[spcol]
+    sbcm.fillna(value=0, inplace=True)    
+    logging.info(f'spike barcode matrix len={len(sbcm)}')
+        
+    return (bcm, sbcm)
 
 
 

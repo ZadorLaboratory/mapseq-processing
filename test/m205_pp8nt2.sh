@@ -5,7 +5,24 @@ FQ1="M205_HZ_S1_R1_001"
 FQ2="M205_HZ_S1_R2_001"
 SAMPLE="M205_HZ_S1"
 
-cd barcodesplitter/thresholds
+cd barcodesplitter
+
+BCidx=($(seq 0 1 81; seq 97 1 177; seq 193 1 233; seq 249 1 279)) #the first number should be n-1
+BCidx=($(seq 0 1 26)) 
+for i in {1..26}; do 
+    #this number should be exactly the same as the total RT primer number used in BCidx
+	#filter out reads with Ns, cut off indexes and unique datafiles
+	awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > BC${BCidx[$i]}.44.txt
+	#split output files into two files per index, one that is containing the read counts of each unique sequence, the other the unique sequences themselves.
+	awk '{print $1}' BC${BCidx[$i]}.44.txt > BC${BCidx[$i]}.44.counts.txt
+	awk '{print $2}' BC${BCidx[$i]}.44.txt > BC${BCidx[$i]}.44.seq.txt
+done
+
+
+
+#cd barcodesplitter/thresholds
+
+cd thresholds
  
 # pick thresholds from matlab plots, based on a steep drop of the 32+12 read counts. 
 # avoids too many PCR and sequencing errors in the data themselves. Note, bash seems 
@@ -20,17 +37,17 @@ for i in {1..28}; do
     j=${threshold[$i]} 
     #echo " threshval = $j"
     if [ "$j" != "1" ]; then
-    	echo "awk -v j=$j '$1<j {print NR}' ../${SAMPLE}.BC${BCidx[$i]}.counts.txt | head -n 1 > t$i"
-		awk -v j=$j '$1<j {print NR}' ../${SAMPLE}.BC${BCidx[$i]}.counts.txt | head -n 1 > t$i
+    	echo "awk -v j=$j '$1<j {print NR}' ../BC${BCidx[$i]}.44.counts.txt | head -n 1 > t$i"
+		awk -v j=$j '$1<j {print NR}' ../BC${BCidx[$i]}.44.counts.txt | head -n 1 > t$i
 		thresh=$(cat t$i)
 		echo "thresh = ${thresh}"
-		echo "head  -n $thresh ../${SAMPLE}.BC${BCidx[$i]}.seq.txt | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}.${i}.quickout.txt"
-		head  -n $thresh ../${SAMPLE}.BC${BCidx[$i]}.seq.txt | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}.${i}.quickout.txt
+		echo "head  -n $thresh ../BC${BCidx[$i]}.seq.txt | cut -b 1-32 | sort | uniq -c | sort -nr > BC${i}.32.txt"
+		head  -n $thresh ../BC${BCidx[$i]}.44.seq.txt | cut -b 1-32 | sort | uniq -c | sort -nr > BC${i}.32.txt
     else
-		grep -nr ^${threshold[$i]}$  ../${SAMPLE}.BC${BCidx[$i]}.counts.txt -m 1 | cut -f1 -d":" > t$i
+		grep -nr ^${threshold[$i]}$  ../BC${BCidx[$i]}.44.counts.txt -m 1 | cut -f1 -d":" > t$i
 		thresh=$(cat t$i)
 		echo "thresh = ${thresh}"
-		head ../${SAMPLE}.BC${BCidx[$i]}.seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}.${i}.quickout.txt
+		head ../BC${BCidx[$i]}.44.seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > BC${i}.32.txt
     fi
 done
 
@@ -43,52 +60,54 @@ mkdir indexes
 for i in {1..26}
 do
 	echo $i
-	in=${SAMPLE}.${i}.quickout.txt
+	in=BC${i}.32.txt
 	echo "handling real ${in} ...}"
 	#split off real barcodes from spike-ins
 
-	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ${SAMPLE}.BC${i}.real.txt
-	awk '{print $1}' ${SAMPLE}.BC${i}.real.txt > ${SAMPLE}.${i}.counts.txt
-	awk '{print $2}' ${SAMPLE}.BC${i}.real.txt > ${SAMPLE}.${i}.seq.txt
+	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > BC${i}.real.txt
+	awk '{print $1}' BC${i}.real.txt > BC${i}.counts.txt
+	awk '{print $2}' BC${i}.real.txt > BC${i}.seq.txt
 
-	nl ${SAMPLE}.${i}.seq.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}.BC${i}.fasta2u.txt 
-	bowtie-build -q ${SAMPLE}.BC${i}.fasta2u.txt indexes/BC${i}fasta2u 
-	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u ${SAMPLE}.BC${i}.fasta2u.txt bowtiealign${i}.2u.txt
-	awk '{print $1}' bowtiealign${i}.2u.txt > bowtie${i}.2u.1.txt
-	awk '{print $3}' bowtiealign${i}.2u.txt > bowtie${i}.2u.3.txt
+	nl BC${i}.seq.txt | awk '{print ">" $1 "\n" $2}' > BC${i}.real.fasta 
+	bowtie-build -q BC${i}.real.fasta indexes/BC${i}real 
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}real BC${i}.real.fasta BC${i}.real.bowtie
+	awk '{print $1}' BC${i}.real.bowtie > BC${i}.real.read.txt
+	awk '{print $3}' BC${i}.real.bowtie > BC${i}.real.align.txt
 done
 
 
 # now deal with spike ins
 for i in {1..26}; do 
 	echo $i
-	in=${SAMPLE}.${i}.quickout.txt 
+	in=BC${i}.32.txt 
 	echo "handling spikeins ${in} ...}"	
 	
-	grep 'CGTCAGTC$' $in > ${SAMPLE}.spikes.${i}.real.txt 
-	awk '{print $1}' ${SAMPLE}.spikes.${i}.real.txt > ${SAMPLE}.spikes.${i}.counts.txt 
-	awk '{print $2}' ${SAMPLE}.spikes.${i}.real.txt > ${SAMPLE}.spikes.${i}.seq.txt  
-	nl ${SAMPLE}.spikes.${i}.seq.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}.spikes.${i}.fasta2u.txt 
-	bowtie-build -q ${SAMPLE}.spikes.${i}.fasta2u.txt indexes/spikes${i}fasta2u 
-	bowtie -v 3 -p 10 -f --best -a indexes/spikes${i}fasta2u ${SAMPLE}.spikes.${i}.fasta2u.txt bowtiealignspikes.${i}.2u.txt 
-	awk '{print $1}' bowtiealign.spikes.${i}.2u.txt > bowtiespikes.${i}.2u.1.txt
-	awk '{print $3}' bowtiealign.spikes.${i}.2u.txt > bowtiespikes.${i}.2u.3.txt 
+	# CGTCAGTC
+	grep 'CGTCAGTC$' $in > BC${i}.spike.txt 
+	awk '{print $1}' BC${i}.spike.txt > BC${i}.spike.counts.txt 
+	awk '{print $2}' BC${i}.spike.txt > BC${i}.spike.seq.txt  
+
+	nl BC${i}.spike.seq.txt | awk '{print ">" $1 "\n" $2}' > BC${i}.spike.fasta 
+	bowtie-build -q BC${i}.spike.fasta indexes/BC${i}spike 
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}spike BC${i}.spike.fasta BC${i}.spike.bowtie 
+	awk '{print $1}' BC${i}.spike.bowtie > BC${i}.spike.read.txt
+	awk '{print $3}' BC${i}.spike.bowtie > BC${i}.spike.align.txt 
 done
 
 # L1 barcodes
 for i in {1..26}; do
 	echo $i
-	in=${SAMPLE}.${i}.quickout.txt
+	in=BC${i}.32.txt 
 	echo "handling L1 ${in} ...}"	
 	
-	grep -v 'CGTCAGTC$' $in | grep '[AG][AG]$' > ${SAMPLE}.BC${i}.real.L1.txt
-	awk '{print $1}' ${SAMPLE}.BC${i}.real.L1.txt > ${SAMPLE}.${i}.counts.L1.txt
-	awk '{print $2}' ${SAMPLE}.BC${i}.real.L1.txt > ${SAMPLE}.${i}.seq.L1.txt
+	grep -v 'CGTCAGTC$' $in | grep '[AG][AG]$' > BC${i}.real.L1.txt 
+	awk '{print $1}'  BC${i}.real.L1.txt > BC${i}.real.L1.counts.txt
+	awk '{print $2}'  BC${i}.real.L1.txt > BC${i}.real.L1.seq.txt
 	
-	nl ${SAMPLE}.${i}.seq.L1.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}.BC${i}.fasta2u.L1.txt
-	bowtie-build -q ${SAMPLE}.BC${i}.fasta2u.L1.txt indexes/BC${i}fasta2uL1
-	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2uL1 ${SAMPLE}.BC${i}.fasta2u.L1.txt bowtiealign.${i}.2u.L1.txt
-	awk '{print $1}' bowtiealign.${i}.2u.L1.txt > bowtie${i}_2u_1L1.txt;awk '{print $3}' bowtiealign.${i}.2u.L1.txt > bowtie.${i}.2u.3.L1.txt
+	nl BC${i}.real.L1.seq.txt | awk '{print ">" $1 "\n" $2}' > BC${i}.real.L1.fasta
+	bowtie-build -q BC${i}.real.L1.fasta indexes/BC${i}L1
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}L1 BC${i}.real.L1.fasta BC${i}.real.L1.bowtie
+	awk '{print $1}' BC${i}.real.L1.bowtie > BC${i}.real.L1.read.txt
+	awk '{print $3}' BC${i}.real.L1.bowtie > BC${i}.real.L1.align.txt
 done
-
 

@@ -36,16 +36,15 @@ nl ../${SAMPLE}.paired.txt |awk '{print ">" $1 "\n" $2}'| fastx_barcode_splitter
 #from here on, do everything for every sample individually
 
 #BCidx=($(seq 0 1 81; seq 97 1 177; seq 193 1 233; seq 249 1 279)) #the first number should be n-1
-BCidx=($(seq 0 1 26)) 
-for i in {1..26}; do 
+#BCidx=($(seq 0 1 26)) 
+#for i in {1..26}; do 
     #this number should be exactly the same as the total RT primer number used in BCidx
 	#filter out reads with Ns, cut off indexes and unique datafiles
-	awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > ${SAMPLE}.processed.BC${BCidx[$i]}.txt
+#	awk "NR%2==0" BC${BCidx[$i]} | grep -v N | cut -b 1-44 | sort | uniq -c | sort -nr > BC${BCidx[$i]}.44.txt
 	#split output files into two files per index, one that is containing the read counts of each unique sequence, the other the unique sequences themselves.
-	awk '{print $1}' ${SAMPLE}.processed.BC${BCidx[$i]}.txt > ${SAMPLE}.BC${BCidx[$i]}.counts.txt
-	awk '{print $2}' ${SAMPLE}.processed.BC${BCidx[$i]}.txt > ${SAMPLE}.BC${BCidx[$i]}.seq.txt
-done
-
+#	awk '{print $1}' BC${BCidx[$i]}.44.txt > BC${BCidx[$i]}.44.counts.txt
+#	awk '{print $2}' BC${BCidx[$i]}.44.txt > BC${BCidx[$i]}.44.seq.txt
+# done
 
 mkdir thresholds
 cd thresholds
