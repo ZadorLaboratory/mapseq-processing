@@ -188,7 +188,9 @@ def servercopy(pathdf, user, server, outdir, dryrun=True):
     performs remote server copy 
     logs in as user @ server (assumes ssh agent/keys) 
     Creates target directory. 
-    Copies over all files in 'basecalls' subdir to outdir. 
+    Copies over all files in 'basecalls' subdir to outdir.
+    
+    https://www.geeksforgeeks.org/how-to-execute-shell-commands-in-a-remote-machine-using-python-paramiko/  
     '''
     for index, row in df.iterrows():
         expid = row['expid']

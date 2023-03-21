@@ -57,7 +57,7 @@ def process_bcfasta(config, infile, outdir=None):
     seqdf.to_csv(of, sep='\t')
     
     # to calculate threshold we need counts calculated. 
-    cdf = make_counts_df(config, seqdf)  
+    cdf = make_counts_df(config, seqdf, bc_label={base})  
     logging.info(f'initial counts df {len(cdf)} all reads.')
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
@@ -494,7 +494,13 @@ class BarCodeHandler(object):
         logging.debug(f'closing file for {self.label}')
         self.of.close()
 
+    def __str__(self):
+        s = f"BarCodeHandler: label={self.label} barcode={self.barcode} df=\n{self.dataframe}"
+        return s
 
+    def __repr__(self):
+        s = f"BarCodeHandler: label={self.label} barcode={self.barcode} df=\n{self.dataframe}"
+        return s    
 
     @classmethod
     def make_all_bch_counts(cls, config, bcolist, outdir=None):
