@@ -638,8 +638,8 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
         if read2file.endswith('.gz'):
              read2f = gzip.open(read2file, "rt")         
             
-        recs1 = SeqIO.parse(read1f, "fastq")
-        recs2 = SeqIO.parse(read2f, "fastq")
+        recs1 = SeqIO.parse(read1file, "fastq")
+        recs2 = SeqIO.parse(read2file, "fastq")
     
         seqshandled = 0
         unmatched = 0
