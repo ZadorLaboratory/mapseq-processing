@@ -57,7 +57,7 @@ def process_bcfasta(config, infile, outdir=None):
     seqdf.to_csv(of, sep='\t')
     
     # to calculate threshold we need counts calculated. 
-    cdf = make_counts_df(config, seqdf, bc_label={base})  
+    cdf = make_counts_df(config, seqdf, bc_label=base)  
     logging.info(f'initial counts df {len(cdf)} all reads.')
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
@@ -138,6 +138,7 @@ def align_and_collapse(config, countsdf, outdir, base, label):
         btdf.to_csv(of, sep='\t') 
         edgelist = edges_from_btdf(btdf)
         components = get_components(edgelist)
+        logging.info(f'countdf columns are {countsdf.columns}')
         newdf = collapse_counts_df(countsdf, components)
         newdf = threshold_counts(config, newdf, threshold=pcthreshold)
         logging.info(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
@@ -180,11 +181,14 @@ def collapse_counts_df(countsdf, components):
     determines sequence with largest count columns: 'sequence', 'counts'
     collapses all other member components to the sequence of the largest.
     adds their counts to that of that sequence.
+
+    retain columns and values for highest counts row. 
      
     '''
     # list of lists to collect values..
     logging.info(f'collapsing countsdf len={len(countsdf)} w/ {len(components)} components.')
     lol = []
+    colnames = list(countsdf.columns)
     for component in components:
         logging.debug(f'component={component}')
         # make new df of only component sequence rows
@@ -208,7 +212,7 @@ def collapse_counts_df(countsdf, components):
             else:
                  logging.debug(f'skip distance calc, one sequence in component.')
         
-    newdf = pd.DataFrame(data=lol, columns=['sequence','counts'])
+    newdf = pd.DataFrame(data=lol, columns=colnames)
     logging.info(f'original len={len(countsdf)} collapsed len={len(newdf)}')
     newdf.sort_values('counts',ascending=False, inplace=True)
     newdf.reset_index(drop=True, inplace=True)
@@ -291,8 +295,11 @@ def make_counts_df(config, seqdf, bc_label=None):
     '''
     input dataframe with 'sequence' column
     make counts column for identical sequences.  
-    '''     
-    ser = seqdf.sequence.value_counts()
+    
+    
+    '''
+    logging.info(seqdf)
+    ser = seqdf['sequence'].value_counts()
     df = pd.DataFrame(columns=['sequence','counts'])
     df['sequence'] = ser.index
     df['counts'] = ser.values
@@ -680,7 +687,7 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
         max_mismatch = bclist[0].max_mismatch
         logging.info(f'handled {seqshandled} sequences. {didmatch} matched. {unmatched} unmatched')
     else:
-        logging.info('all output exists and force=False. Not recalculating.')
+        logging.warn('all output exists and force=False. Not recalculating.')
 
 
 

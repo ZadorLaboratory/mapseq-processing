@@ -37,10 +37,10 @@ sys.path.append(gitpath)
 #
 NEXTSEQ_THRESHOLD = 50000000
 PATHTABLE_COLUMNS = ['seqtype','expid','srcdir']
-OUTROOT = '/grid/mbseq/data_norepl/mapseq/library_data'
+# OUTROOT = '/grid/mbseq/data_norepl/mapseq/library_data'
 
 
-def emails_to_table(filelist):
+def email_to_table(file):
     '''
     take list of .eml files ->  .tsv file   (no index, no headers)
     <studyid>  <path>  <studytype>
@@ -49,14 +49,13 @@ def emails_to_table(filelist):
     
     '''
     lol = []
-    for file in filelist:
-        if file.endswith('.eml'):
-            emailtext = eml_to_text(file)
-            items = parse_ngs_emailtxt(emailtext)
-            if items is not None:
-                lol.append(items)
-        else:
-            logging.warning(f'file {file} not .eml file extension. ignoring.')
+    if file.endswith('.eml'):
+        emailtext = eml_to_text(file)
+        items = parse_ngs_emailtxt(emailtext)
+        if items is not None:
+            lol.append(items)
+    else:
+        logging.warning(f'file {file} not .eml file extension. ignoring.')
     logging.debug(f'made list of {len(lol)} row(s)...')
     df = pd.DataFrame(data=lol, index=None, columns=PATHTABLE_COLUMNS)
     return df
@@ -183,45 +182,53 @@ def eml_to_text(infile):
     logging.debug(emailtext)
     return emailtext
 
-def servercopy(pathdf, user, server, outdir, dryrun=True):
+
+def handle_df(df, user, server, outdir, dryrun=True):
     '''
-    performs remote server copy 
-    logs in as user @ server (assumes ssh agent/keys) 
-    Creates target directory. 
-    Copies over all files in 'basecalls' subdir to outdir.
+    perform server copy with values from df. 
     
-    https://www.geeksforgeeks.org/how-to-execute-shell-commands-in-a-remote-machine-using-python-paramiko/  
     '''
+    do_dryrun = dryrun
     for index, row in df.iterrows():
         expid = row['expid']
         seqtype = row['seqtype']
         srcdir = row['srcdir']
         srcdir = os.path.normpath(srcdir)
         logging.debug(f"\nuser={user}\nserver={server}\nseq={seqtype}\nexpid={expid}\nsrcdir={srcdir}")
-        cmd1 = f"mkdir -vp {OUTROOT}/{expid}"
-        cmd2 = f"cp -vr {srcdir}/* {OUTROOT}/{expid}/"
-        logging.info(f"ssh {user}@{server} '{cmd1}'")
-        logging.info(f"ssh {user}@{server} '{cmd2}'")
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(server, port=22, username=user, timeout=3)
-        if dryrun:
-            cmd = '/usr/bin/pwd'
-            (stdin, stdout, stderr) = client.exec_command(cmd)
-            cmd_output = stdout.read()
-            logging.info(f'cmd output= {cmd_output}')
-        else:
-            try:
-                (stdin, stdout, stderr) = client.exec_command(cmd1)
-                cmd_output = stdout.read()
-                logging.info(f'cmd output= {cmd_output}')            
-                (stdin, stdout, stderr) = client.exec_command(cmd2)
-                cmd_output = stdout.read()
-                logging.info(f'cmd output= {cmd_output}')
-            except Exception as ex:
-                logging.warning('problem with ssh connection.')
-                logging.warning(traceback.format_exc(None))    
+        servercopy(srcdir, expid, seqtype, user, server, outdir, dryrun)
 
+
+def servercopy(srcdir, expid, seqtype, user, server, outdir, dryrun=True):
+    '''
+    performs remote server copy 
+    logs in as user @ server (assumes ssh agent/keys) 
+    Creates target directory. 
+    Copies over all files in 'basecalls' subdir to outdir.   
+    https://www.geeksforgeeks.org/how-to-execute-shell-commands-in-a-remote-machine-using-python-paramiko/  
+    '''
+    cmd1 = f"mkdir -vp {outdir}/{expid}"
+    cmd2 = f"cp -vr {srcdir}/* {outdir}/{expid}/"
+    logging.info(f"ssh {user}@{server} '{cmd1}'")
+    logging.info(f"ssh {user}@{server} '{cmd2}'")
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(server, port=22, username=user, timeout=3)
+    if dryrun:
+        cmd = '/usr/bin/pwd'
+        (stdin, stdout, stderr) = client.exec_command(cmd)
+        cmd_output = stdout.read().strip()
+        logging.info(f'cmd output= {cmd_output}')
+    else:
+        try:
+            (stdin, stdout, stderr) = client.exec_command(cmd1)
+            cmd_output = stdout.read().strip()
+            logging.info(f'cmd output= {cmd_output}')            
+            (stdin, stdout, stderr) = client.exec_command(cmd2)
+            cmd_output = stdout.read().strip()
+            logging.info(f'cmd output= {cmd_output}')
+        except Exception as ex:
+            logging.warning('problem with ssh connection.')
+            logging.warning(traceback.format_exc(None))    
 
                     
 if __name__ == '__main__':
@@ -250,7 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('-o','--outdir', 
                     metavar='outdir',
                     required=False,
-                    default='/grid/zador/data_nlsas_norepl/MAPseq', 
+                    default='/grid/mbseq/data_norepl/mapseq/library_data', 
                     type=str, 
                     help='outdir on server. ') 
 
@@ -261,6 +268,13 @@ if __name__ == '__main__':
                     type=str, 
                     help='server to copy on.') 
 
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
+                    required=False,
+                    default=None,
+                    type=str, 
+                    help='explicitly provided experiment id')
+
     parser.add_argument('-u','--user', 
                     metavar='user',
                     default=os.getlogin(),
@@ -268,10 +282,10 @@ if __name__ == '__main__':
                     type=str, 
                     help='username to copy as.') 
     
-    parser.add_argument('infiles' ,
-                        metavar='infiles', 
+    parser.add_argument('infile' ,
+                        metavar='infile', 
                         type=str,
-                        nargs='*',
+                        nargs='?',
                         default=None, 
                         help='.eml files from CSHL NGS')
        
@@ -282,11 +296,15 @@ if __name__ == '__main__':
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
     
-    logging.debug(f'handling {len(args.infiles)} email(s)...')
-    df = emails_to_table(args.infiles)    
+    logging.debug(f'handling {args.infile} ...')
+    df = email_to_table(args.infile)
+    if args.expid is not None:
+        df['expid'] = args.expid    
     df.to_csv(sys.stdout, sep='\t', index=False, header=True)
     
-    if args.copyfiles:
+    if args.copyfiles: 
         logging.info(f'performing copy on {args.user}@{args.server} to {args.outdir}')
-        servercopy(df, args.user, args.server, args.outdir, dryrun=False) 
+        handle_df(df, args.user, args.server, args.outdir, dryrun=False) 
+        
+    
     
