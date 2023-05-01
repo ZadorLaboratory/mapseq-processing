@@ -569,26 +569,41 @@ def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mism
     return bclist
 
 
+def fix_columns_int(df, columns):
+    for col in columns:
+        try:
+            logging.debug(f'trying to fix col {col}')
+            fixed = np.array(df[col], np.int16)
+            df[col] = fixed
+        except ValueError:
+            logging.debug(f'invalid literal in {col}')
+    # np cast sets nans to 0, change them back:
+    df.replace(0, np.nan, inplace=True)
+    return df
+
+
 def load_sample_info(config, file_name):
     print('running new')    
     #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
     #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
-    sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain' , 'Column #']
-    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain','col_num'] 
+    sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain' ]
+    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain'] 
+    int_sample_col = ['usertube', 'ourtube','rtprimer','brain']
     sheet_name = 'Sample information'
-    
-    edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)
-        
+    edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
     sdf = pd.DataFrame()
     
     for i,sc in enumerate(sheet_columns):
         try:
             cser = edf[sc]
+            logging.debug(f'column for {sc}:\n{cser}')
             sdf[sample_columns[i]] = cser
         except:
             sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
+    
+    sdf = fix_columns_int(sdf, columns=int_sample_col)
+        
     logging.debug(f'created reduced sample info df:\n{sdf}')
-
     return sdf
 
 
@@ -626,6 +641,7 @@ def check_output(bclist):
             logging.info(f"{bch.filename} doesn't exist. output_exists=False")
             missing.append(bch.label)
             output_exists = False
+    
     if output_exists == False:
         logging.debug(f'missing BC labels: {missing}')
     else:
@@ -639,7 +655,6 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
     if outdir is None:
         outdir = "."
     output_exists = check_output(bclist)
-    
     logging.info(f'output_exists={output_exists} force={force}')
     
     if ( not output_exists ) or force:
@@ -657,9 +672,9 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
         unmatched_interval = int(config.get('fastq','unmatched_interval'))
     
         if read1file.endswith('.gz'):
-             read1f = gzip.open(read1file, "rt")
+             read1file = gzip.open(read1file, "rt")
         if read2file.endswith('.gz'):
-             read2f = gzip.open(read2file, "rt")         
+             read2file = gzip.open(read2file, "rt")         
             
         recs1 = SeqIO.parse(read1file, "fastq")
         recs2 = SeqIO.parse(read2file, "fastq")

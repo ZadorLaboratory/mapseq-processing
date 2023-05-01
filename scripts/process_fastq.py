@@ -20,7 +20,7 @@ from cshlwork.utils import JobRunner, JobStack, JobSet
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import load_sample_info, load_barcodes, process_fastq_pair  
+from mapseq.core import load_sample_info, load_barcodes, process_fastq_pair, fix_columns_int  
 
 
 if __name__ == '__main__':
@@ -111,8 +111,9 @@ if __name__ == '__main__':
     write_config(cp, cfilename, timestamp=True)
 
     sampdf = load_sample_info(cp,args.sampleinfo)
-    logging.debug(sampdf)
+    logging.debug(f'\n{sampdf}')
     rtlist = list(sampdf['rtprimer'].dropna())
+    rtlist = [int(x) for x in rtlist]
     sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
         
     bcolist = load_barcodes(cp, 
@@ -122,6 +123,7 @@ if __name__ == '__main__':
                             eol=True, 
                             max_mismatch=args.max_mismatch)
     logging.debug(bcolist)
+    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir}')
     process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir, force=args.force)
     #make_summaries(cp, bcolist)
     
