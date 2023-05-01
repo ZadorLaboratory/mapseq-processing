@@ -569,7 +569,30 @@ def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mism
     return bclist
 
 
-def load_sample_info(config, file_name):    
+def load_sample_info(config, file_name):
+    print('running new')    
+    #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
+    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
+    sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain' , 'Column #']
+    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain','col_num'] 
+    sheet_name = 'Sample information'
+    
+    edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)
+        
+    sdf = pd.DataFrame()
+    
+    for i,sc in enumerate(sheet_columns):
+        try:
+            cser = edf[sc]
+            sdf[sample_columns[i]] = cser
+        except:
+            sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
+    logging.debug(f'created reduced sample info df:\n{sdf}')
+
+    return sdf
+
+
+def load_sample_info_old(config, file_name):    
     #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
     #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
     sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain','col_num'] 
