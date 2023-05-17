@@ -37,7 +37,7 @@ from cshlwork.utils import write_config
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import process_bcfasta
+from mapseq.core import process_ssifasta
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -138,28 +138,28 @@ if __name__ == '__main__':
 
     if args.aligner is not None:
         logging.info(f'setting aligner to {args.aligner}')
-        cp.set('bcfasta', 'tool', args.aligner )  
+        cp.set('ssifasta', 'tool', args.aligner )  
 
     if args.max_mismatch is not None:
-        tool = cp.get('bcfasta','tool')
+        tool = cp.get('ssifasta','tool')
         mm= str(args.max_mismatch)
         logging.info(f'setting max_mismatch to {mm} tool={tool}')
         cp.set(tool, 'max_mismatch', mm )
         #logging.debug(f"after set. max_mismatch={cp.get('bowtie', 'max_mismatch')} ")   
 
     if args.outdir is not None:
-        cfilename = f'{args.outdir}/process_bcfasta.config.txt'
+        cfilename = f'{args.outdir}/process_ssifasta.config.txt'
     else:
         afile = args.infiles[0]
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
-        cfilename = f'{dirname}/process_bcfasta.config.txt'
+        cfilename = f'{dirname}/process_ssifasta.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
     
     for infile in args.infiles:
         try:
-            outdf = process_bcfasta(cp, infile, outdir=outdir)
+            outdf = process_ssifasta(cp, infile, outdir=outdir)
             if args.outfile is None:
                 print(outdf)
             else:

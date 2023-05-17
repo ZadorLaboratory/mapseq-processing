@@ -104,7 +104,7 @@ if __name__ == '__main__':
         cfilename = f'{dirname}/process_bcfasta.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
-    outdf = process_merge_targets(cp, args.infiles, outdir)
+    outdf = process_merge_areas(cp, args.infiles, outdir)
     if args.outfile is None:
         print(outdf)
     else:

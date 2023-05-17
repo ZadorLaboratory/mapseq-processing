@@ -21,7 +21,9 @@ from Bio.SeqRecord import SeqRecord
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df, run_command_shell, NonZeroReturnException, merge_dfs, merge_tsvs, setup_logging
+from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df
+from cshlwork.utils import run_command_shell, NonZeroReturnException, merge_dfs 
+from cshlwork.utils import merge_tsvs, setup_logging, fix_columns_int
 from alignment.bowtie import run_bowtie, make_bowtie_df
 
 
@@ -32,13 +34,12 @@ def get_default_config():
     cp.read(dc)
     return cp
 
-
-def process_bcfasta(config, infile, outdir=None):
+def process_ssifasta(config, infile, outdir=None):
     '''
     by default, outdir will be same dir as infile
     assumes infile fast has already been trimmed to remove SSI
     '''
-    aligner = config.get('bcfasta','tool')
+    aligner = config.get('ssifasta','tool')
     
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
@@ -57,7 +58,7 @@ def process_bcfasta(config, infile, outdir=None):
     seqdf.to_csv(of, sep='\t')
     
     # to calculate threshold we need counts calculated. 
-    cdf = make_counts_df(config, seqdf, bc_label=base)  
+    cdf = make_counts_df(config, seqdf, label=base)  
     logging.info(f'initial counts df {len(cdf)} all reads.')
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
@@ -106,7 +107,7 @@ def process_bcfasta(config, infile, outdir=None):
     acspikedf['type'] = 'spike'
     aclonedf['type'] = 'lone'
     outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
-    outdf['bc_label'] = base
+    outdf['label'] = base
     outdf.sort_values(by = ['type', 'counts'], ascending = [True, False], inplace=True)
     outdf.reset_index(drop=True, inplace=True)
     return outdf
@@ -116,14 +117,14 @@ def align_and_collapse(config, countsdf, outdir, base, label):
     '''
     countsdf  'sequence' and 'counts' columns
     outdir    working dir or temp dir. 
-    base      leading file name, e.g. barcode label 'BC4'
+    base      leading file name, e.g. barcode label, e.g. 'SSI4'
     label     type of sequence, e.g. real, spike, L1 (lone)
     
     '''
     newdf = None
     logging.info(f'handling {base} {label}s...')
-    aligner = config.get('bcfasta','tool')
-    pcthreshold = config.get('bcfasta','post_threshold')
+    aligner = config.get('ssifasta','tool')
+    pcthreshold = config.get('ssifasta','post_threshold')
     logging.info(f'{label} {len(countsdf)} sequences, representing {countsdf.counts.sum()} reads.')      
     of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
@@ -291,11 +292,11 @@ def trajan(V):
         if v.root is None:
             yield from strongconnect(v, [])
 
-def make_counts_df(config, seqdf, bc_label=None):
+def make_counts_df(config, seqdf, label=None):
     '''
     input dataframe with 'sequence' column
     make counts column for identical sequences.  
-    
+    optionally assign a label to set in new column
     
     '''
     logging.info(seqdf)
@@ -304,8 +305,8 @@ def make_counts_df(config, seqdf, bc_label=None):
     df['sequence'] = ser.index
     df['counts'] = ser.values
     logging.debug(f'counts df = \n{df}')
-    if bc_label is not None:
-        df['bc_label'] = bc_label
+    if label is not None:
+        df['label'] = label
     return df
 
 
@@ -361,6 +362,16 @@ def calculate_threshold(config, df, minimum=2):
     '''
     return minimum
 
+def calc_freq_threshold(df, fraction, column):
+    '''
+    sorts column of input column
+    calculates index of point at which <fraction> of data points are less 
+    returns column value at that point. 
+    '''
+    ser = df[column].copy()
+    ser.sort_values(ascending = False, inplace=True)
+    return 122
+
 
 
 def threshold_counts(config, df, threshold=None):
@@ -368,7 +379,7 @@ def threshold_counts(config, df, threshold=None):
     
     '''
     if threshold is None:
-        count_threshold = int(config.get('bcfasta', 'countthreshold'))
+        count_threshold = int(config.get('ssifasta', 'countthreshold'))
     else:
         count_threshold = int(threshold)
     logging.info(f'thresh = {count_threshold}')    
@@ -387,9 +398,9 @@ def split_spike_real_lone_barcodes(config, df):
           
     '''
     #  df[df["col"].str.contains("this string")==False]
-    sire = config.get('bcfasta', 'spikeinregex')
-    realre = config.get('bcfasta','realregex')
-    lonere = config.get('bcfasta', 'loneregex')
+    sire = config.get('ssifasta', 'spikeinregex')
+    realre = config.get('ssifasta','realregex')
+    lonere = config.get('ssifasta', 'loneregex')
     
     logging.debug(f'before filtering: {len(df)}')
     
@@ -438,148 +449,6 @@ def match_strings(a, b, max_mismatch=0):
     return is_match
       
 
-class BarCodeHandler(object):
-    '''
-    Basically implements fastx_barcode_handler.pl. 
-    Matches against given barcode sequence, and
-    writes out target fasta (minus barcode) to barcode-specific file.
-    
-    check end of line of sequence, length of barcode only.   
-    
-        
-    '''
-    def __init__(self, label, barcode, outdir, eol=True, max_mismatch=0):
-        self.barcode = barcode
-        self.label = label
-        self.filename = os.path.abspath(f'{outdir}/{label}.fasta')
-        self.eol = True
-        self.max_mismatch = max_mismatch
-        self.of = None
-        self.dataframe = None
-        if outdir is None:
-            outdir = "."
-
-    def do_match(self, id, seq ):
-        '''
-        test sequence exactly against this barcode.
-        just test end of sequence the same length as barcode. 
-        only write part of sequence up to barcode/SSI.
-        EOL testing only now, add BOL...
-         
-        '''
-        if self.of is None:
-            logging.debug(f'open file for {self.label}')
-            self.of = open(self.filename, 'w')
-            self.of.write(f';sequences for  barcode {self.label}\n')
-        
-        r = False
-        if self.max_mismatch == 0:
-            if self.barcode == seq[-len(self.barcode):]:
-            #if match_strings(self.barcode , seq[-len(self.barcode):], max_mismatch=self.max_mismatch):        
-                id = str(id)
-                sr = SeqRecord( seq[:-len(self.barcode)], id=id, name=id, description=id)
-                try:
-                    SeqIO.write([sr], self.of, 'fasta')
-                except Exception as ex:
-                    logging.warning(f'problem with {self.label}')
-                    logging.warning(traceback.format_exc(None))            
-                r = True
-        else:
-            #if self.barcode == seq[-len(self.barcode):]:
-            if match_strings(self.barcode , seq[-len(self.barcode):], max_mismatch=self.max_mismatch):        
-                id = str(id)
-                sr = SeqRecord( seq[:-len(self.barcode)], id=id, name=id, description=id)
-                try:
-                    SeqIO.write([sr], self.of, 'fasta')
-                except Exception as ex:
-                    logging.warning(f'problem with {self.label}')
-                    logging.warning(traceback.format_exc(None))            
-                r = True
-        return r
-        
-    def finalize(self):
-        logging.debug(f'closing file for {self.label}')
-        self.of.close()
-
-    def __str__(self):
-        s = f"BarCodeHandler: label={self.label} barcode={self.barcode} df=\n{self.dataframe}"
-        return s
-
-    def __repr__(self):
-        s = f"BarCodeHandler: label={self.label} barcode={self.barcode} df=\n{self.dataframe}"
-        return s    
-
-    @classmethod
-    def make_all_bch_counts(cls, config, bcolist, outdir=None):
-        '''
-        Makes counts dataframes for all barcode handler objects. 
-        Saves 
-        '''
-        alldf = pd.DataFrame({'bc_label': pd.Series(dtype='str'),
-                   'sequence': pd.Series(dtype='str'),
-                   'counts': pd.Series(dtype='int')})
-        for bch in bcolist:
-            bcfile = bch.ofname
-            filepath = os.path.abspath(bcfile)    
-            dirname = os.path.dirname(filepath)
-            if outdir is not None:
-                dirname = os.path.abspath(outdir)
-            filename = os.path.basename(filepath)
-            (base, ext) = os.path.splitext(filename)
-            cdf = make_counts_df(config, bcfile)
-            cdf['logcounts'] = np.log(cdf.counts)
-            cdf['bc_label'] = bch.label       
-            bch.dataframe = cdf
-            of = os.path.join(dirname , f'{base}.counts.tsv')
-            cdf.to_csv(of, sep='\t')
-            alldf = pd.concat([alldf, cdf], ignore_index = True, copy=False)
-        return alldf
-
-    @classmethod
-    def merge_counts(cls, config, dflist, outfile=None):
-        '''
-        Makes counts dataframe  objects. 
-        Saves 
-        '''
-        alldf = pd.DataFrame({'bc_label': pd.Series(dtype='str'),
-                   'sequence': pd.Series(dtype='str'),
-                   'counts': pd.Series(dtype='int')})
-        for df in dflist:
-            alldf = pd.concat([alldf, df], ignore_index = True, copy=False)
-        return alldf
-
-
-def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mismatch=0):
-    '''
-     labellist is a python list of ids. barcode labels will be checked against
-     BC<id> from labellist. 
-    '''
-    codelist = [ f'BC{x}' for x in labels]
-    bclist = []
-    with open(bcfile) as fh:
-        while True:
-            ln = fh.readline()
-            if len(ln) < 2:
-                break
-            (label, bcseq) = ln.split()
-            if labels is None or label in codelist:
-                bch = BarCodeHandler(label, bcseq, outdir, eol, max_mismatch)
-                bclist.append(bch)
-    logging.debug(f'made list of {len(bclist)} barcode handlers.')
-    return bclist
-
-
-def fix_columns_int(df, columns):
-    for col in columns:
-        try:
-            logging.debug(f'trying to fix col {col}')
-            fixed = np.array(df[col], np.int16)
-            df[col] = fixed
-        except ValueError:
-            logging.debug(f'invalid literal in {col}')
-    # np cast sets nans to 0, change them back:
-    df.replace(0, np.nan, inplace=True)
-    return df
 
 
 def load_sample_info(config, file_name):
@@ -605,26 +474,6 @@ def load_sample_info(config, file_name):
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
-
-
-def load_sample_info_old(config, file_name):    
-    #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
-    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
-    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain','col_num'] 
-    
-    
-    dfs = pd.read_excel(file_name, sheet_name=None)        
-    sidf = dfs['Sample information']
-    # set columns names to first row
-    sidf.columns = sidf.iloc[0]
-    # drop old row of column names. 
-    sidf = sidf.iloc[pd.RangeIndex(len(sidf)).drop(0)]
-    # drop all columsn beyond 7
-    sidf = sidf.iloc[:,:7]
-    sidf.columns = sample_columns
-    logging.debug(f'created reduced sample info df: {sidf}')
-
-    return sidf
 
 
 def check_output(bclist):
@@ -729,10 +578,10 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
 
 
 
-def process_merge_targets(config, filelist, outdir=None ):
+def process_merge_areas(config, filelist, outdir=None ):
     '''
-     merges BC-specific real, spike, lone DFs with counts. 
-     outputs BC x target matrix DF, with counts normalized to spikeins by target.  
+     merges SSI-specific real, spike, lone DFs with counts. 
+     outputs SSI x target matrix DF, with counts normalized to spikeins by target.  
      
     '''
     logging.info(f'{filelist}')
@@ -740,8 +589,8 @@ def process_merge_targets(config, filelist, outdir=None ):
     
     logging.info(f'alldf len={len(alldf)}')
       
-    rdf = alldf[alldf.type == 'real']      
-    bcm = rdf.pivot(index='sequence', columns='bc_label', values='counts')
+    rdf = alldf[alld['type'] == 'real']      
+    bcm = rdf.pivot(index='sequence', columns='label', values='counts')
     bcm.reset_index(inplace=True)
     bcm.drop(labels=['sequence'], axis=1, inplace=True)
     scol = natsorted(list(bcm.columns))
@@ -751,7 +600,7 @@ def process_merge_targets(config, filelist, outdir=None ):
     
     
     sdf = alldf[alldf.type == 'spike']
-    sbcm = sdf.pivot(index='sequence', columns='bc_label', values='counts')
+    sbcm = sdf.pivot(index='sequence', columns='label', values='counts')
     sbcm.reset_index(inplace=True)
     sbcm.drop(labels=['sequence'], axis=1, inplace=True)
     spcol = natsorted(list(sbcm.columns))
@@ -760,6 +609,4 @@ def process_merge_targets(config, filelist, outdir=None ):
     logging.info(f'spike barcode matrix len={len(sbcm)}')
         
     return (bcm, sbcm)
-
-
 
