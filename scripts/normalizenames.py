@@ -2,6 +2,7 @@
 #  quick and dirty script to remove spaces, caps, and special characters
 #  from filenames 
 
+
 import sys 
 import os 
 import getopt
