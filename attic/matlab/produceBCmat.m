@@ -140,7 +140,7 @@ save(['spikes',prefix,'.mat'],'spikes')
 %load data
 load data.mat
 
-%collect all suqeunces detected in the target sites
+%collect all sequences detected in the target sites
 refbarcodes_tmp=[];
 for i=1:length(data)
 refbarcodes_tmp=[refbarcodes_tmp;data(i).BCseqff];  
@@ -149,7 +149,7 @@ refbarcodes=unique(refbarcodes_tmp,'rows'); %unique barocodes to get reference s
 
 %% construct barcodematrix by matching barcodes in target sites to reference barcodes
 
-barcodematrix=zeros(size(refbarcodes,1),length(data));%initiate the barcode matrix
+barcodematrix=zeros(size(refbarcodes,1),length(data)); %initialize the barcode matrix
 
 for i=1:length(data)
     %pull out reads and counts into new variables for ease of use
@@ -167,5 +167,4 @@ end
 %refbarcodesthresholded=refbarcodes(sum(barcodematrix>threshold,2)~=0,:);
 
 save(['barcodematrix',prefix,'.mat'],'barcodematrix','refbarcodes','-v7.3')
-
-						   
+					   

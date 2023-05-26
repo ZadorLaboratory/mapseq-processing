@@ -1,4 +1,4 @@
-  
+
 function [B,Bseq,Bnorm] = normBCmat(barcodematrix,refbarcodes,spikes,sourcethresh,projthresh,sourcesite,projsite)
 
 %Filter barcodes so that all remaining barcodes have counts >sourccethresh
@@ -25,7 +25,7 @@ end
 
 
 %filter barcodes
-if ~isempty(sourcesite)    
+if ~isempty(sourcesite)
     B=barcodematrix(max(barcodematrix(:,projsite),[],2)>projthresh & max(barcodematrix(:,sourcesite),[],2)>sourcethresh,:);
     Bseq=refbarcodes(max(barcodematrix(:,projsite),[],2)>projthresh & max(barcodematrix(:,sourcesite),[],2)>sourcethresh,:);
 else

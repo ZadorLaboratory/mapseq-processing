@@ -50,12 +50,12 @@ if __name__ == '__main__':
                         type=str, 
                         help='config file.')    
     
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
+    parser.add_argument('-o','--outprefix', 
+                    metavar='outprefix',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='out file. stdout if not given.')  
+                    help='outfile prefix. stdout if not given.')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -96,19 +96,21 @@ if __name__ == '__main__':
         outdir = dirname
 
     if args.outdir is not None:
-        cfilename = f'{args.outdir}/process_bcfasta.config.txt'
+        cfilename = f'{args.outdir}/merge_areas.config.txt'
     else:
         afile = args.infiles[0]
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
-        cfilename = f'{dirname}/process_bcfasta.config.txt'
+        cfilename = f'{dirname}/merge_areas.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
-    outdf = process_merge_areas(cp, args.infiles, outdir)
-    if args.outfile is None:
-        print(outdf)
+    (bcmdf, sbcmdf) = process_merge_areas(cp, args.infiles, outdir)
+    if args.outprefix is None:
+        print(bcmdf)
+        print(sbcmdf)
     else:
-        outdf.to_csv(args.outfile, sep='\t')    
+        bcmdf.to_csv(f'{args.outprefix}.bcm.tsv', sep='\t')
+        sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
     
           
     

@@ -110,7 +110,7 @@ if __name__ == '__main__':
     cfilename = f'{outdir}/process_fastq.config.txt'
     write_config(cp, cfilename, timestamp=True)
 
-    sampdf = load_sample_info(cp,args.sampleinfo)
+    sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
     rtlist = list(sampdf['rtprimer'].dropna())
     rtlist = [int(x) for x in rtlist]

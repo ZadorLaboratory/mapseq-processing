@@ -373,7 +373,6 @@ def calc_freq_threshold(df, fraction, column):
     return 122
 
 
-
 def threshold_counts(config, df, threshold=None):
     '''
     
@@ -589,7 +588,7 @@ def process_merge_areas(config, filelist, outdir=None ):
     
     logging.info(f'alldf len={len(alldf)}')
       
-    rdf = alldf[alld['type'] == 'real']      
+    rdf = alldf[alldf['type'] == 'real']      
     bcm = rdf.pivot(index='sequence', columns='label', values='counts')
     bcm.reset_index(inplace=True)
     bcm.drop(labels=['sequence'], axis=1, inplace=True)
