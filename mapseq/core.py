@@ -502,6 +502,7 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         unmatched_interval = int(config.get('fastq','unmatched_interval'))
 
         seqshandled = 0
+        pairshandled = 0
         unmatched = 0
         didmatch = 0
     
@@ -509,7 +510,8 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         # handle pairs of readfiles from readfilelist
         #
         for (read1file, read2file) in readfilelist:
-        
+            pairshandled += 1
+            logging.info(f'handling file pair {pairshandled}')
             if read1file.endswith('.gz'):
                  read1file = gzip.open(read1file, "rt")
             if read2file.endswith('.gz'):
@@ -546,19 +548,20 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
                     
                     seqshandled += 1
                     if seqshandled % seqhandled_interval == 0: 
-                        logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
+                        logging.info(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
                 
                 except StopIteration as e:
                     logging.debug(f'iteration stopped')
                     break
+                
         
         umf.close()
         pf.close()
         for bch in bclist:
             bch.finalize()    
         # close possible gzip filehandles??
-        max_mismatch = bclist[0].max_mismatch
-        logging.info(f'handled {seqshandled} sequences. {didmatch} matched. {unmatched} unmatched')
+        #max_mismatch = bclist[0].max_mismatch
+        logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {unmatched} unmatched')
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
 
