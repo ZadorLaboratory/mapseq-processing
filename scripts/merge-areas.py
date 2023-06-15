@@ -64,6 +64,13 @@ if __name__ == '__main__':
                     type=str, 
                     help='outdir. input file base dir if not given.')     
 
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
+
     parser.add_argument('infiles',
                         metavar='infiles',
                         nargs ="+",
@@ -104,13 +111,23 @@ if __name__ == '__main__':
         cfilename = f'{dirname}/merge_areas.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
-    (bcmdf, sbcmdf) = process_merge_areas(cp, args.infiles, outdir)
-    if args.outprefix is None:
-        print(bcmdf)
-        print(sbcmdf)
-    else:
-        bcmdf.to_csv(f'{args.outprefix}.bcm.tsv', sep='\t')
-        sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
     
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    rtlist = list(sampdf['rtprimer'].dropna())
+    rtlist = [int(x) for x in rtlist]
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+        
+    # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
+    (rbcmdf, sbcmdf) = process_merge_areas(cp, args.infiles, outdir)
+    nbcmdf = normalizebyspikeins(rcmdf, sbcmdf)
+    if args.outprefix is None:
+        print(rcmdf)
+        print(sbcmdf)
+        print(nbcmdf)
+    else:
+        rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
+        sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
+        nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
           
     

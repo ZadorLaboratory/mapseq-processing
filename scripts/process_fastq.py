@@ -11,7 +11,7 @@ import pandas as pd
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
-gitpath=os.path.expanduser("~/git/cshlwork")
+gitpath=os.path.expanduser("~/git/mapseq")
 sys.path.append(gitpath)
 
 from cshlwork.utils import write_config
@@ -20,7 +20,8 @@ from cshlwork.utils import JobRunner, JobStack, JobSet
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import load_sample_info, load_barcodes, process_fastq_pair, fix_columns_int  
+from mapseq.core import load_sample_info, process_fastq_pairs, fix_columns_int
+from mapseq.barcode import load_barcodes  
 
 
 if __name__ == '__main__':
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
-                        nargs=2,
+                        nargs='*',
                         default=None, 
                         help='Read1 and Read2 fastq files')
        
@@ -124,10 +125,25 @@ if __name__ == '__main__':
                             max_mismatch=args.max_mismatch)
     logging.debug(bcolist)
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir}')
-    process_fastq_pair(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir, force=args.force)
+    #process_fastq_pairs(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir, force=args.force)
+    
+    # pack up input files into tuple list. 
+    infilelist = []
+    a = None
+    b = None
+    for i,v in enumerate(args.infiles):
+
+        if i % 2 == 0:
+            a = v
+        else:
+            b = v
+            t = (a,b)
+            logging.info(f'input pair of readfiles: r1={a} r2={b}')
+            infilelist.append(t)
+    
+    logging.debug(f'infilelist = {infilelist}')
+    process_fastq_pairs(cp, infilelist, bcolist, outdir=args.outdir, force=args.force)
     #make_summaries(cp, bcolist)
-    
-    
     
     
     

@@ -10,6 +10,9 @@ import traceback
 
 import pandas as pd
 
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 
 class BarcodeHandler(object):
     '''
@@ -136,7 +139,28 @@ def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mism
                 break
             (label, bcseq) = ln.split()
             if labels is None or label in codelist:
-                bch = BarCodeHandler(label, bcseq, outdir, eol, max_mismatch)
+                bch = BarcodeHandler(label, bcseq, outdir, eol, max_mismatch)
                 bclist.append(bch)
     logging.debug(f'made list of {len(bclist)} barcode handlers.')
     return bclist
+
+def check_output(bclist):
+    '''
+    check to see if valid output exists for all input barcode handlers, in 
+    order to facility short-circuiting. 
+    '''
+    output_exists = True
+    missing = []
+    for bch in bclist:
+        if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
+            logging.debug(f'Non-empty BC{bch.label}.fasta exists.')
+        else:
+            logging.info(f"{bch.filename} doesn't exist. output_exists=False")
+            missing.append(bch.label)
+            output_exists = False
+    
+    if output_exists == False:
+        logging.debug(f'missing BC labels: {missing}')
+    else:
+        logging.info('all output exists.')
+    return output_exists

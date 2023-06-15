@@ -26,6 +26,7 @@ from cshlwork.utils import run_command_shell, NonZeroReturnException, merge_dfs
 from cshlwork.utils import merge_tsvs, setup_logging, fix_columns_int
 from alignment.bowtie import run_bowtie, make_bowtie_df
 
+from mapseq.barcode import check_output
 
 
 def get_default_config():
@@ -264,7 +265,7 @@ def from_edges(edges):
     
 def trajan(V):
     '''
-    May bet recursion limit errors if input is large. 
+    May get recursion limit errors if input is large. 
     https://stackoverflow.com/questions/5061582/setting-stacksize-in-a-python-script/16248113#16248113
     
     import resource, sys
@@ -475,29 +476,10 @@ def load_sample_info(config, file_name):
     return sdf
 
 
-def check_output(bclist):
-    '''
-    check to see if valid output exists for all input barcode handlers, in 
-    order to facility short-circuiting. 
-    '''
-    output_exists = True
-    missing = []
-    for bch in bclist:
-        if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
-            logging.debug(f'Non-empty BC{bch.label}.fasta exists.')
-        else:
-            logging.info(f"{bch.filename} doesn't exist. output_exists=False")
-            missing.append(bch.label)
-            output_exists = False
-    
-    if output_exists == False:
-        logging.debug(f'missing BC labels: {missing}')
-    else:
-        logging.info('all output exists.')
-    return output_exists
+
    
 
-def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False):
+def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
 
     # if all the output files for bclist exist, don't recalc unless force=True. 
     if outdir is None:
@@ -518,52 +500,57 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
         seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
         matched_interval = int(config.get('fastq','matched_interval'))
         unmatched_interval = int(config.get('fastq','unmatched_interval'))
-    
-        if read1file.endswith('.gz'):
-             read1file = gzip.open(read1file, "rt")
-        if read2file.endswith('.gz'):
-             read2file = gzip.open(read2file, "rt")         
-            
-        recs1 = SeqIO.parse(read1file, "fastq")
-        recs2 = SeqIO.parse(read2file, "fastq")
-    
+
         seqshandled = 0
         unmatched = 0
         didmatch = 0
+    
+        #
+        # handle pairs of readfiles from readfilelist
+        #
+        for (read1file, read2file) in readfilelist:
         
-        while True:
-            try:
-                r1 = next(recs1)
-                r2 = next(recs2)
-                sub1 = r1.seq[r1s:r1e]
-                sub2 = r2.seq[r2s:r2e]
-                fullread = sub1 + sub2
-                pf.write(f'{fullread}\n')
+            if read1file.endswith('.gz'):
+                 read1file = gzip.open(read1file, "rt")
+            if read2file.endswith('.gz'):
+                 read2file = gzip.open(read2file, "rt")         
                 
-                matched = False
-                for bch in bclist:
-                    r = bch.do_match(seqshandled, fullread)
-                    if r:
-                        didmatch += 1
-                        if didmatch % matched_interval == 0:
-                            logging.debug(f'match {didmatch}: found SSI {bch.label} in {fullread}!')
-                        matched = True
-                        break
-                if not matched:
-                    unmatched += 1
-                    if unmatched % unmatched_interval == 0:
-                        logging.debug(f'{unmatched} unmatched so far.')
-                    id = str(seqshandled)
-                    sr = SeqRecord( fullread, id=id, name=id, description=id)
-                    SeqIO.write([sr], umf, 'fasta')
+            recs1 = SeqIO.parse(read1file, "fastq")
+            recs2 = SeqIO.parse(read2file, "fastq")
+        
+            while True:
+                try:
+                    r1 = next(recs1)
+                    r2 = next(recs2)
+                    sub1 = r1.seq[r1s:r1e]
+                    sub2 = r2.seq[r2s:r2e]
+                    fullread = sub1 + sub2
+                    pf.write(f'{fullread}\n')
+                    
+                    matched = False
+                    for bch in bclist:
+                        r = bch.do_match(seqshandled, fullread)
+                        if r:
+                            didmatch += 1
+                            if didmatch % matched_interval == 0:
+                                logging.debug(f'match {didmatch}: found SSI {bch.label} in {fullread}!')
+                            matched = True
+                            break
+                    if not matched:
+                        unmatched += 1
+                        if unmatched % unmatched_interval == 0:
+                            logging.debug(f'{unmatched} unmatched so far.')
+                        id = str(seqshandled)
+                        sr = SeqRecord( fullread, id=id, name=id, description=id)
+                        SeqIO.write([sr], umf, 'fasta')
+                    
+                    seqshandled += 1
+                    if seqshandled % seqhandled_interval == 0: 
+                        logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
                 
-                seqshandled += 1
-                if seqshandled % seqhandled_interval == 0: 
-                    logging.info(f'handled {seqshandled} reads. matched={didmatch} unmatched={unmatched}')
-            
-            except StopIteration as e:
-                logging.debug(f'iteration stopped')
-                break
+                except StopIteration as e:
+                    logging.debug(f'iteration stopped')
+                    break
         
         umf.close()
         pf.close()
@@ -574,6 +561,26 @@ def process_fastq_pair(config, read1file, read2file, bclist, outdir, force=False
         logging.info(f'handled {seqshandled} sequences. {didmatch} matched. {unmatched} unmatched')
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
+
+
+def normalize_by_spikeins(realdf, spikedf):
+    '''
+    Weight values in realdf by spikedf
+    
+    '''
+    logging.debug(f'normalizing arg1 by arg2')
+    normdf = realdf
+    return normdf
+
+def normalize_target_sum(normdf, columns = None):
+    '''
+    Normalize so values across rows sum to one across columns 
+    given, or all columns if none. 
+    
+    '''
+    logging.debug(f'making rows sum to one...')
+    return normdf
+
 
 
 
