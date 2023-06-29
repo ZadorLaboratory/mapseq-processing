@@ -131,13 +131,17 @@ def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mism
      <id> from labellist. 
     '''
     codelist = [ f'{x}' for x in labels]
+    logging.debug(f'codelist={codelist}')
     bclist = []
     with open(bcfile) as fh:
+        logging.debug(f"opened barcode file {bcfile}")
         while True:
             ln = fh.readline()
             if len(ln) < 2:
                 break
             (label, bcseq) = ln.split()
+            logging.debug(f'handling label={label} and bcseq={bcseq}')
+            
             if labels is None or label in codelist:
                 bch = BarcodeHandler(label, bcseq, outdir, eol, max_mismatch)
                 bclist.append(bch)
@@ -152,6 +156,7 @@ def check_output(bclist):
     output_exists = True
     missing = []
     for bch in bclist:
+        logging.debug(f'checking path {bch.filename}...')
         if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
             logging.debug(f'Non-empty BC{bch.label}.fasta exists.')
         else:

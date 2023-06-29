@@ -115,8 +115,9 @@ if __name__ == '__main__':
     logging.debug(f'\n{sampdf}')
     rtlist = list(sampdf['rtprimer'].dropna())
     rtlist = [int(x) for x in rtlist]
+    rtlist = [f'BC{x}' for x in rtlist]
     sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-        
+    logging.debug(f'making barcodes with label list={rtlist}')
     bcolist = load_barcodes(cp, 
                             args.barcodes, 
                             labels=rtlist, 
