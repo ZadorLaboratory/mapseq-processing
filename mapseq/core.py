@@ -484,6 +484,10 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
     # if all the output files for bclist exist, don't recalc unless force=True. 
     if outdir is None:
         outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.info(f'made outdir={outdir}')
     output_exists = check_output(bclist)
     logging.info(f'output_exists={output_exists} force={force}')
     

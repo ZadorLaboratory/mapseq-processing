@@ -17,8 +17,8 @@ from Bio.SeqRecord import SeqRecord
 class BarcodeHandler(object):
     '''
     Basically implements fastx_barcode_handler.pl. 
-    Matches against given barcode sequence, and
-    writes out target fasta (minus barcode) to barcode-specific file.
+    Matches against given barcode/SSI sequence, and
+    writes out target fasta (minus SSI) to SSI-specific file.
     
     check end of line of sequence, length of barcode only.   
     
