@@ -32,12 +32,12 @@ import pandas as pd
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
-from cshlwork.utils import write_config
+from cshlwork.utils import write_config, merge_dfs
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import process_ssifasta
+from mapseq.core import load_sample_info, process_ssifasta, fix_columns_int, guess_site
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -83,6 +83,14 @@ if __name__ == '__main__':
                         default=None,
                         type=int, 
                         help='Max recursion. Handle larger input to collapse() Default is ~3000.')
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
+
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -125,6 +133,9 @@ if __name__ == '__main__':
         sys.setrecursionlimit(rlimit)
     
     
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
@@ -159,8 +170,12 @@ if __name__ == '__main__':
 
     outdflist = []    
     for infile in args.infiles:
+        # rtprimer will be guessed from filename. "BC<rtprimer>.fasta"
+        site = guess_site(infile, sampdf)
+        logging.info(f'guessed site as {site}')
         try:
-            outdf = process_ssifasta(cp, infile, outdir=outdir)
+            outdf = process_ssifasta(cp, infile, outdir=outdir, site=site)
+            logging.info(f'got outdf {outdf}')
             if args.outfile is None:
                 print(outdf)
             else:
@@ -168,8 +183,10 @@ if __name__ == '__main__':
     
         except Exception as ex:
             logging.warning(f'problem with {infile}')
-            logging.warning(traceback.format_exc(None))         
-    
-    outdf = merge_dfs(outdflist)
-    outdf.to_csv(args.outfile, sep='\t')          
+            logging.warning(traceback.format_exc(None))
+
+    if len(outdflist) > 0:                     
+        logging.debug(f'merging dfs in outdflist len={len(outdflist)}')
+        outdf = merge_dfs(outdflist)
+        outdf.to_csv(args.outfile, sep='\t')          
     

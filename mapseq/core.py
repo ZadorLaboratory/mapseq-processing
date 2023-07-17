@@ -35,10 +35,42 @@ def get_default_config():
     cp.read(dc)
     return cp
 
-def process_ssifasta(config, infile, outdir=None):
+
+def guess_site(infile, sampdf):
+    '''
+    will look at filename and try to guess rt primer number, then look for siteinfo in sampledf
+    assumes BC<rtprimer>.fasta
+    '''
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    rtprimer_num = ''.join(i for i in base if i.isdigit())
+    rtprimer_num = int(rtprimer_num)
+    logging.debug(f'base={base} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
+    df = sampdf[sampdf['rtprimer'] == rtprimer_num]
+    df.reset_index(inplace=True, drop=True)
+    site = None
+    if len(df)> 0:
+        try:
+            site = df['siteinfo'][0]
+            logging.info(f'got site {site} for rtprimer {rtprimer_num}') 
+        except:
+            logging.warning(f'unable to get siteinfo for {infile}') 
+    logging.info(f'got site {site} for rtprimer guessed from {infile}')
+    return site
+    
+    
+    
+def process_ssifasta(config, infile, outdir=None, site=None):
     '''
     by default, outdir will be same dir as infile
     assumes infile fasta has already been trimmed to remove SSI
+    
+
+    site = ['control','injection','target']   
+        Will use relevant threshold. If None, will use default threshold
+    
     '''
     aligner = config.get('ssifasta','tool')
     
@@ -49,7 +81,7 @@ def process_ssifasta(config, infile, outdir=None):
     
     filename = os.path.basename(filepath)
     (base, ext) = os.path.splitext(filename)   
-    logging.debug(f'handling {filepath}')
+    logging.debug(f'handling {filepath} base={base}')
     
     # make raw fasta TSV of barcode-splitter output for one barcode. 
     # trim to 44 unique w/ counts. 
@@ -64,13 +96,13 @@ def process_ssifasta(config, infile, outdir=None):
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
         
-    threshold = calculate_threshold(config, cdf)
-    tdf = threshold_counts(config, cdf)
+    threshold = calculate_threshold(config, cdf, site)
+    logging.info(f'got threshold={threshold} for site {site}')
+    tdf = threshold_counts(config, cdf, threshold=threshold)
     logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
     
-    # now that we've only kept bc + umi, the counts is distinct molecules.  
+    # now that we've only kept bc + umi, the counts is distinct molecules. trim to viral barcode only  
     tdf['counts'] = 1          
-    # trim to just viral barcodes.  ?
     tdf['sequence'] = tdf['sequence'].str[:32]
     
     of = os.path.join(dirname , f'{base}.32.raw.tsv')
@@ -145,8 +177,9 @@ def align_and_collapse(config, countsdf, outdir, base, label):
         components = get_components(edgelist)
         logging.info(f'countdf columns are {countsdf.columns}')
         newdf = collapse_counts_df(countsdf, components)
-        newdf = threshold_counts(config, newdf, threshold=pcthreshold)
+        #newdf = threshold_counts(config, newdf, threshold=pcthreshold)
         logging.info(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
+
     except NonZeroReturnException:
         logging.warning(f'NonZeroReturn Exception. Probably no {label}s found. ')
         newdf = pd.DataFrame(columns = ['sequence','counts'])
@@ -358,13 +391,22 @@ def trim_fasta(config, infile, outdir=None, length=44):
     return ofpath
 
 
-def calculate_threshold(config, df, minimum=2):
+def calculate_threshold(config, df, site=None):
     '''
     takes counts dataframe (with 'counts' column) 
     and calculates 'shoulder' threshold
+    site = ['control','injection','target']   
+        Will use relevant threshold. If None, will use default threshold
     
     '''
-    return minimum
+    count_threshold=2
+    if site is None:
+        count_threshold = int(config.get('ssifasta', 'default_threshold'))
+    else:
+        count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
+    logging.info(f'thresh = {count_threshold}')
+    return count_threshold
+
 
 def calc_freq_threshold(df, fraction, column):
     '''
@@ -381,12 +423,9 @@ def threshold_counts(config, df, threshold=None):
     '''
     
     '''
-    if threshold is None:
-        count_threshold = int(config.get('ssifasta', 'countthreshold'))
-    else:
-        count_threshold = int(threshold)
-    logging.info(f'thresh = {count_threshold}')    
-    df = df[df.counts >= count_threshold].copy()
+    logging.debug(f'threshold counts threshold={threshold}')
+    threshold= int(threshold)   
+    df = df[df['counts'] >= threshold].copy()
     return df
 
 
@@ -477,9 +516,6 @@ def load_sample_info(config, file_name):
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
-
-
-
    
 
 def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
