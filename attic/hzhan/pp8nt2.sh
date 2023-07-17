@@ -23,17 +23,17 @@ for i in {1..30}; do
     j=${threshold[$i]} 
     echo $j
     if [ "$j" != "1" ];then
-		awk '$1< '$j' {print NR}' ../${SAMPLE}2BC${BCidx[$i]}_counts.txt | head -n 1 >t
+		awk '$1< '$j' {print NR}' ../${SAMPLE}BC${BCidx[$i]}_counts.txt | head -n 1 >t
 		thresh=$(cat t)
 		echo $thresh
-		head ../${SAMPLE}2_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}2${i}quickout.txt
+		head ../${SAMPLE}_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}${i}quickout.txt
 
    	else
-		grep -nr ^${threshold[$i]}$  ../${SAMPLE}2BC${BCidx[$i]}_counts.txt -m 1 | cut -f1 -d":" > t
+		grep -nr ^${threshold[$i]}$  ../${SAMPLE}BC${BCidx[$i]}_counts.txt -m 1 | cut -f1 -d":" > t
 		thresh=$(cat t)
 		echo $thresh
 
-		head ../${SAMPLE}2_BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}2${i}quickout.txt
+		head ../${SAMPLE}BC${BCidx[$i]}seq.txt -n $thresh | cut -b 1-32 | sort | uniq -c | sort -nr > ${SAMPLE}${i}quickout.txt
    fi
 done
 
@@ -48,14 +48,14 @@ do
 	in=${SAMPLE}2${i}quickout.txt
 	#split off real barcodes from spike-ins
 
-	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ${SAMPLE}2BC${i}_quickprocessed.txt
-	awk '{print $1}' ${SAMPLE}2BC${i}_quickprocessed.txt > ${SAMPLE}2${i}_counts.txt
-	awk '{print $2}' ${SAMPLE}2BC${i}_quickprocessed.txt > ${SAMPLE}2${i}_seq.txt
+	grep -v 'CGTCAGTC$' $in | grep '[TC][TC]$' > ${SAMPLE}BC${i}_quickprocessed.txt
+	awk '{print $1}' ${SAMPLE}BC${i}_quickprocessed.txt > ${SAMPLE}${i}_counts.txt
+	awk '{print $2}' ${SAMPLE}BC${i}_quickprocessed.txt > ${SAMPLE}${i}_seq.txt
 
 
-	nl ${SAMPLE}2${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}2_BC${i}fasta2u.txt; 
-	bowtie-build -q ${SAMPLE}2_BC${i}fasta2u.txt indexes/BC${i}fasta2u; 
-	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u ${SAMPLE}2_BC${i}fasta2u.txt bowtiealignment${i}_2u.txt
+	nl ${SAMPLE}2${i}_seq.txt | awk '{print ">" $1 "\n" $2}' > ${SAMPLE}_BC${i}fasta2u.txt; 
+	bowtie-build -q ${SAMPLE}_BC${i}fasta2u.txt indexes/BC${i}fasta2u; 
+	bowtie -v 3 -p 10 -f --best -a indexes/BC${i}fasta2u ${SAMPLE}_BC${i}fasta2u.txt bowtiealignment${i}_2u.txt
 	awk '{print $1}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_1.txt;awk '{print $3}' bowtiealignment${i}_2u.txt > bowtie${i}_2u_3.txt
 done
 

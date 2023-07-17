@@ -38,7 +38,7 @@ def get_default_config():
 def process_ssifasta(config, infile, outdir=None):
     '''
     by default, outdir will be same dir as infile
-    assumes infile fast has already been trimmed to remove SSI
+    assumes infile fasta has already been trimmed to remove SSI
     '''
     aligner = config.get('ssifasta','tool')
     
@@ -76,29 +76,32 @@ def process_ssifasta(config, infile, outdir=None):
     of = os.path.join(dirname , f'{base}.32.raw.tsv')
     tdf.to_csv(of, sep='\t') 
     
-    # now have actual viral barcode df with unique molecule counts.
+    # now have actual viral barcode df with *unique molecule counts.*
     bcdf = make_counts_df(config, tdf)
     of = os.path.join(dirname , f'{base}.32.counts.tsv')
     bcdf.to_csv(of, sep='\t')     
     
-    # split out spike, real, lone    
+    # split out spike, real, lone, otherwise same as 32.counts.tsv    
     spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, bcdf)
-
+    
+    # write out this step...
     realdf.to_csv(os.path.join(dirname , f'{base}.real.raw.tsv'), sep='\t')
     lonedf.to_csv(os.path.join(dirname , f'{base}.lone.raw.tsv'), sep='\t')
     spikedf.to_csv(os.path.join(dirname , f'{base}.spike.raw.tsv'), sep='\t')
-    
+
+   
     realcdf = make_counts_df(config, realdf)
     spikecdf = make_counts_df(config, spikedf)
     lonecdf = make_counts_df(config, lonedf)    
 
+    # these are counts of copies of the same UMI, so same original molecule
     realcdf.to_csv(os.path.join(dirname , f'{base}.real.counts.tsv'), sep='\t')
     lonecdf.to_csv(os.path.join(dirname , f'{base}.lone.counts.tsv'), sep='\t')
     spikecdf.to_csv(os.path.join(dirname , f'{base}.spike.counts.tsv'), sep='\t')    
             
-    acrealdf = align_and_collapse(config, realdf, dirname, base, 'real')
-    acspikedf = align_and_collapse(config, spikedf, dirname, base, 'spike')
-    aclonedf = align_and_collapse(config, lonedf, dirname, base, 'lone')
+    acrealdf = align_and_collapse(config, realcdf, dirname, base, 'real')
+    acspikedf = align_and_collapse(config, spikecdf, dirname, base, 'spike')
+    aclonedf = align_and_collapse(config, lonecdf, dirname, base, 'lone')
     
     acrealdf.to_csv(os.path.join(dirname , f'{base}.real.tsv'), sep='\t')
     acspikedf.to_csv(os.path.join(dirname , f'{base}.spike.tsv'), sep='\t')

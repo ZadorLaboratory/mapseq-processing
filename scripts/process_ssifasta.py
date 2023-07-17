@@ -156,17 +156,20 @@ if __name__ == '__main__':
         cfilename = f'{dirname}/process_ssifasta.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
-    
+
+    outdflist = []    
     for infile in args.infiles:
         try:
             outdf = process_ssifasta(cp, infile, outdir=outdir)
             if args.outfile is None:
                 print(outdf)
             else:
-                outdf.to_csv(args.outfile, sep='\t')
+                outdflist.append(outdf)
     
         except Exception as ex:
             logging.warning(f'problem with {infile}')
             logging.warning(traceback.format_exc(None))         
-          
+    
+    outdf = merge_dfs(outdflist)
+    outdf.to_csv(args.outfile, sep='\t')          
     
