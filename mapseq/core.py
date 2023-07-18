@@ -160,7 +160,7 @@ def align_and_collapse(config, countsdf, outdir, base, label):
     newdf = None
     logging.info(f'handling {base} {label}s...')
     aligner = config.get('ssifasta','tool')
-    pcthreshold = config.get('ssifasta','post_threshold')
+    #pcthreshold = config.get('ssifasta','post_threshold')
     logging.info(f'{label} {len(countsdf)} sequences, representing {countsdf.counts.sum()} reads.')      
     of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
