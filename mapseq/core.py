@@ -1,5 +1,6 @@
 import gzip
 import logging
+import math
 import os
 import sys
 import traceback
@@ -13,6 +14,7 @@ sys.path.append(gitpath)
 import pandas as pd
 import numpy as np
 from natsort import natsorted
+import matplotlib.pyplot as plt
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -608,6 +610,61 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
 
+def make_countsplots(config, filelist ): 
+    '''
+    makes individual read counts plots from 44.counts.tsv files. 
+    
+    '''   
+    for bcfile in filelist:
+        logging.debug(f'handling {bcfile}')
+        filepath = os.path.abspath(bcfile)    
+        dirname = os.path.dirname(filepath)   
+        filename = os.path.basename(filepath)
+        (base, ext) = os.path.splitext(filename)
+        base = base.split('.')[0] 
+        
+        bcdata = pd.read_csv(bcfile, sep='\t')
+        plt.figure()
+        plt.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['counts']))
+        plt.title(base)
+        plt.xlabel("log10(BC index)")
+        plt.ylabel("log10(BC counts)")
+        plt.savefig(bcfile.replace('tsv', 'pdf'))
+
+def counts_axis_plot(ax, bcdata):
+    ax.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['counts']))
+    ax.set_title(bcdata['label'][0],fontsize=11)
+    ax.set_xlabel("log10(BC index)", fontsize=9)
+    ax.set_ylabel("log10(BC counts)",fontsize=9)
+
+
+
+def make_countsplot_combined(config, filelist, outfile=None ):    
+    '''
+     makes combined figure with all plots. 
+     assumes column 'label' for title. 
+    '''
+    if outfile is None:
+        outfile = 'countsplots.pdf'
+        
+    # always make square figure..
+    figsize = math.ceil( math.sqrt(len(filelist)) )
+    fig, axs = plt.subplots(nrows=figsize, ncols=figsize, layout='constrained')
+    
+    # numpy.flatirator doesn't handle indexing
+    axlist = []
+    for ax in axs.flat:
+        axlist.append(ax)
+        
+    for i, bcfile in enumerate(filelist):
+        logging.debug(f'handling {bcfile}')
+        bcdata = pd.read_csv(bcfile, sep='\t')
+        ax = axlist[i]
+        counts_axis_plot(ax, bcdata)
+    logging.info(f'saving plot PDF to {outfile}')
+    plt.savefig(outfile)
+
+        
 
 def normalize_by_spikeins(realdf, spikedf):
     '''

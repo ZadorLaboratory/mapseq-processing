@@ -20,7 +20,7 @@ from cshlwork.utils import JobRunner, JobStack, JobSet
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import load_sample_info, process_fastq_pairs, fix_columns_int
+from mapseq.core import load_sample_info, process_fastq_pairs, fix_columns_int, make_countsplots
 from mapseq.barcode import load_barcodes  
 
 
@@ -144,7 +144,6 @@ if __name__ == '__main__':
     
     logging.debug(f'infilelist = {infilelist}')
     process_fastq_pairs(cp, infilelist, bcolist, outdir=args.outdir, force=args.force)
-    #make_summaries(cp, bcolist)
-    
+   
     
     
