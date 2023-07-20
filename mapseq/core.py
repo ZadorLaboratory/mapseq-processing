@@ -123,7 +123,10 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     lonedf.to_csv(os.path.join(dirname , f'{base}.lone.raw.tsv'), sep='\t')
     spikedf.to_csv(os.path.join(dirname , f'{base}.spike.raw.tsv'), sep='\t')
 
+    # remove homopolymers in real sequences. 
+    realdf = remove_base_repeats(realdf)
    
+    # make counts df
     realcdf = make_counts_df(config, realdf)
     spikecdf = make_counts_df(config, spikedf)
     lonecdf = make_counts_df(config, lonedf)    

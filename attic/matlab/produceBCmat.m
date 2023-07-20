@@ -1,10 +1,10 @@
 function produceBCmat(bcn, prefix)
-%process MAPseq data to produce barcode matrix
+% process MAPseq data to produce barcode matrix
 
 load rawdata
 
 cd thresholds;
-%bcn=212:229;
+% bcn=212:229;
 bcn=1:length(bcn);
 
 %filter out SSI with no barcodes  (i.e. 
@@ -143,9 +143,9 @@ load data.mat
 %collect all sequences detected in the target sites
 refbarcodes_tmp=[];
 for i=1:length(data)
-refbarcodes_tmp=[refbarcodes_tmp;data(i).BCseqff];  
+	refbarcodes_tmp=[refbarcodes_tmp;data(i).BCseqff];  
 end
-refbarcodes=unique(refbarcodes_tmp,'rows'); %unique barocodes to get reference set
+refbarcodes=unique(refbarcodes_tmp,'rows'); %unique barcodes to get reference set
 
 %% construct barcodematrix by matching barcodes in target sites to reference barcodes
 
