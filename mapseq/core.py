@@ -162,7 +162,6 @@ def align_and_collapse(config, countsdf, outdir, base, label):
     newdf = None
     logging.info(f'handling {base} {label}s...')
     aligner = config.get('ssifasta','tool')
-    #pcthreshold = config.get('ssifasta','post_threshold')
     logging.info(f'{label} {len(countsdf)} sequences, representing {countsdf.counts.sum()} reads.')      
     of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
@@ -179,7 +178,6 @@ def align_and_collapse(config, countsdf, outdir, base, label):
         components = get_components(edgelist)
         logging.info(f'countdf columns are {countsdf.columns}')
         newdf = collapse_counts_df(countsdf, components)
-        #newdf = threshold_counts(config, newdf, threshold=pcthreshold)
         logging.info(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
 
     except NonZeroReturnException:
@@ -211,7 +209,7 @@ def unique_df(seqdf):
     '''
     filters for only unique sequences, sets counts to 1
     '''
-    
+    pass
 
 
 
@@ -270,7 +268,7 @@ def get_components(edgelist):
     logging.info(f'getting connected components from edgelist len={len(edgelist)}')
     if len(edgelist) < 100:
         logging.debug(f'{edgelist}')
-    for g in trajan(from_edges(edgelist)):
+    for g in tarjan(from_edges(edgelist)):
         complist.append(g)
     logging.info(f'{len(complist)} components.')
     if len(edgelist) < 100:
@@ -301,7 +299,7 @@ def from_edges(edges):
     return nodes.values()
     
     
-def trajan(V):
+def tarjan(V):
     '''
     May get recursion limit errors if input is large. 
     https://stackoverflow.com/questions/5061582/setting-stacksize-in-a-python-script/16248113#16248113
@@ -400,13 +398,18 @@ def calculate_threshold(config, df, site=None):
     site = ['control','injection','target']   
         Will use relevant threshold. If None, will use default threshold
     
+    target_threshold=100
+    target_ctrl_threshold=1000
+    inj_threshold=2
+    inj_ctrl_threshold=2
+    
     '''
     count_threshold=2
     if site is None:
         count_threshold = int(config.get('ssifasta', 'default_threshold'))
     else:
         count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
-    logging.info(f'thresh = {count_threshold}')
+    logging.info(f'count threshold for {site} = {count_threshold}')
     return count_threshold
 
 
