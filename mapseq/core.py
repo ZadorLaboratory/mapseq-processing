@@ -23,7 +23,7 @@ from Bio.SeqRecord import SeqRecord
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df
+from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df, remove_base_repeats
 from cshlwork.utils import run_command_shell, NonZeroReturnException, merge_dfs 
 from cshlwork.utils import merge_tsvs, setup_logging, fix_columns_int
 from alignment.bowtie import run_bowtie, make_bowtie_df
