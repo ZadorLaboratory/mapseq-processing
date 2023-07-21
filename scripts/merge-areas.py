@@ -75,7 +75,7 @@ if __name__ == '__main__':
                         metavar='infiles',
                         nargs ="+",
                         type=str,
-                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label')
+                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label)')
        
     args= parser.parse_args()
     

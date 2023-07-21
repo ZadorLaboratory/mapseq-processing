@@ -74,6 +74,7 @@ def main():
     tech_controls = data['RT primers for MAPseq'][data['Region name'].str.contains('H2O control')]
     tech_controls = tech_controls.values.tolist()
     allnormmatrix = pd.DataFrame()
+
     for brainId in data['Brain'].dropna().unique():
         # find barcodes
         sampledata = data[data['Brain'] == brainId]
@@ -102,12 +103,63 @@ def main():
 
     graph_heatmap(workingdir, allnormmatrix, sampleID='Merged.norm')
 
+
+
+
 if __name__ == "__main__":
     # working dir
-    workingdir = '/Users/liangdan/Desktop/Bexorg/Mapseq/20230615/'
-    os.chdir(workingdir)
-    # graph plots for bc counts
-    graph_cbcount_index(workingdir)
+    FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
+    logging.basicConfig(format=FORMAT)
+    logging.getLogger().setLevel(logging.WARN)
+    
+    parser = argparse.ArgumentParser()
+      
+    parser.add_argument('-d', '--debug', 
+                        action="store_true", 
+                        dest='debug', 
+                        help='debug logging')
+
+    parser.add_argument('-v', '--verbose', 
+                        action="store_true", 
+                        dest='verbose', 
+                        help='verbose logging')
+    
+    parser.add_argument('-c','--config', 
+                        metavar='config',
+                        required=False,
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
+                        type=str, 
+                        help='config file.')    
+    
+    parser.add_argument('-o','--outprefix', 
+                    metavar='outprefix',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='outfile prefix, e.g. M229, stdout if not given.')  
+
+    parser.add_argument('-O','--outdir', 
+                    metavar='outdir',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='outdir. input file base dir if not given.')     
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
+
+    parser.add_argument('infiles',
+                        metavar='infiles',
+                        nargs ="+",
+                        type=str,
+                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label')
+       
+    args= parser.parse_args()
+
     
 
 

@@ -706,10 +706,10 @@ def process_merge_areas(config, filelist, outdir=None ):
       
     rdf = alldf[alldf['type'] == 'real']      
     bcm = rdf.pivot(index='sequence', columns='label', values='counts')
-    bcm.reset_index(inplace=True)
-    bcm.drop(labels=['sequence'], axis=1, inplace=True)
-    scol = natsorted(list(bcm.columns))
-    bcm = bcm[scol]
+    #bcm.reset_index(inplace=True)
+    #bcm.drop(labels=['sequence'], axis=1, inplace=True)
+    #scol = natsorted(list(bcm.columns))
+    #bcm = bcm[scol]
     bcm.fillna(value=0, inplace=True)
     logging.info(f'real barcode matrix len={len(bcm)}')
     
