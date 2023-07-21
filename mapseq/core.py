@@ -499,12 +499,14 @@ def match_strings(a, b, max_mismatch=0):
     return is_match
       
 
-
-
 def load_sample_info(config, file_name):
-    print('running new')    
-    #['Tube # by user', 'Our Tube #', 'Sample names provided by user',
+    #
+    # Parses Excel spreadsheet to get orderly sample metadata.     
+    # Assumes various properties of spreadsheet that need to stay static. 
+    #
+    #   ['Tube # by user', 'Our Tube #', 'Sample names provided by user',
     #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
+    #
     sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain' ]
     sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain'] 
     int_sample_col = ['usertube', 'ourtube','rtprimer','brain']
@@ -716,10 +718,10 @@ def process_merge_areas(config, filelist, outdir=None ):
     
     sdf = alldf[alldf.type == 'spike']
     sbcm = sdf.pivot(index='sequence', columns='label', values='counts')
-    sbcm.reset_index(inplace=True)
-    sbcm.drop(labels=['sequence'], axis=1, inplace=True)
-    spcol = natsorted(list(sbcm.columns))
-    sbcm = sbcm[spcol]
+    #sbcm.reset_index(inplace=True)
+    #sbcm.drop(labels=['sequence'], axis=1, inplace=True)
+    #spcol = natsorted(list(sbcm.columns))
+    #sbcm = sbcm[spcol]
     sbcm.fillna(value=0, inplace=True)    
     logging.info(f'spike barcode matrix len={len(sbcm)}')
         
