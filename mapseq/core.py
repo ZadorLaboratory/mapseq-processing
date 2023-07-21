@@ -89,7 +89,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     # trim to 44 unique w/ counts. 
     logging.info('calc counts...')
     seqdf = make_fasta_df(config, infile)
-    of = os.path.join(dirname , f'{base}.seq.raw.tsv')
+    of = os.path.join(dirname , f'{base}.44.seq.tsv')
     seqdf.to_csv(of, sep='\t')
     
     # to calculate threshold we need counts calculated. 
@@ -107,7 +107,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     tdf['counts'] = 1          
     tdf['sequence'] = tdf['sequence'].str[:32]
     
-    of = os.path.join(dirname , f'{base}.32.raw.tsv')
+    of = os.path.join(dirname , f'{base}.32.seq.tsv')
     tdf.to_csv(of, sep='\t') 
     
     # now have actual viral barcode df with *unique molecule counts.*
@@ -119,9 +119,9 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, bcdf)
     
     # write out this step...
-    realdf.to_csv(os.path.join(dirname , f'{base}.real.raw.tsv'), sep='\t')
-    lonedf.to_csv(os.path.join(dirname , f'{base}.lone.raw.tsv'), sep='\t')
-    spikedf.to_csv(os.path.join(dirname , f'{base}.spike.raw.tsv'), sep='\t')
+    realdf.to_csv(os.path.join(dirname , f'{base}.real.seq.tsv'), sep='\t')
+    lonedf.to_csv(os.path.join(dirname , f'{base}.lone.seq.tsv'), sep='\t')
+    spikedf.to_csv(os.path.join(dirname , f'{base}.spike.seq.tsv'), sep='\t')
 
     # remove homopolymers in real sequences. 
     realdf = remove_base_repeats(realdf)
@@ -617,6 +617,36 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {unmatched} unmatched')
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
+    
+    #
+    #  Read in SSI fasta files and generate counts TSVs to allow manual threshold determination. 
+    #  Should later be unnecessary when thresholds can be calculated programmatically. 
+    
+    for bc in bclist:
+        filepath = bc.filename
+        logging.info(f'calculating counts for  file {filepath} ...')    
+        dirname = os.path.dirname(filepath)
+        
+        if outdir is not None:
+            dirname = outdir
+        
+        filename = os.path.basename(filepath)
+        (base, ext) = os.path.splitext(filename)   
+        logging.debug(f'handling {filepath} base={base}')
+        
+        # make raw fasta TSV of barcode-splitter output for one barcode. 
+        # trim to 44 unique w/ counts. 
+        seqdf = make_fasta_df(config, infile)
+        of = os.path.join(dirname , f'{base}.44.seq.tsv')
+        seqdf.to_csv(of, sep='\t')
+        
+        # to calculate threshold we need counts calculated. 
+        cdf = make_counts_df(config, seqdf, label=base)  
+        logging.info(f'initial counts df {len(cdf)} all reads.')
+        of = os.path.join(dirname , f'{base}.44.counts.tsv')
+        cdf.to_csv(of, sep='\t') 
+
+    
 
 def make_countsplots(config, filelist ): 
     '''

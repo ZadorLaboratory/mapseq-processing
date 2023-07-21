@@ -49,21 +49,6 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
-
-    parser.add_argument('-a','--aligner', 
-                    metavar='aligner',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='aligner tool  [bowtie | bowtie2]')
-
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=True,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
-
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -99,10 +84,7 @@ if __name__ == '__main__':
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
       
-    
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    
+   
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)

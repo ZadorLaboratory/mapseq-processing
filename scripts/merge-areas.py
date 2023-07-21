@@ -129,5 +129,5 @@ if __name__ == '__main__':
         rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
         sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
         #nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
-          
+              
     
