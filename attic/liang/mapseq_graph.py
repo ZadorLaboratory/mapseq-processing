@@ -99,7 +99,7 @@ if __name__ == "__main__":
         # merge
         allnormmatrix = pd.concat([allnormmatrix, brain_data_proj/norm_factor_proj ], ignore_index=True, axis=0)
         # graph
-        graph_heatmap(workingdir, brain_data_proj, sampleID='Brain'+str(brainId))
+        graph_heatmap(workingdir, brain_data_proj, sampleID='Brain'+  str(brainId))
         graph_heatmap(workingdir, brain_data_norm, sampleID='Brain' + str(brainId) + '.norm')
 
     graph_heatmap(workingdir, allnormmatrix, sampleID='Merged.norm')

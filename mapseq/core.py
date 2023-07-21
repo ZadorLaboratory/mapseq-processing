@@ -15,6 +15,8 @@ import pandas as pd
 import numpy as np
 from natsort import natsorted
 import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -123,8 +125,9 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     lonedf.to_csv(os.path.join(dirname , f'{base}.lone.seq.tsv'), sep='\t')
     spikedf.to_csv(os.path.join(dirname , f'{base}.spike.seq.tsv'), sep='\t')
 
-    # remove homopolymers in real sequences. 
-    realdf = remove_base_repeats(realdf)
+    # remove homopolymers in real sequences.
+    max_homopolymer_run=int(config.get('ssifasta',max_homopolymer_run)) 
+    realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
    
     # make counts df
     realcdf = make_counts_df(config, realdf)
@@ -646,6 +649,15 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         of = os.path.join(dirname , f'{base}.44.counts.tsv')
         cdf.to_csv(of, sep='\t') 
 
+
+def make_clustered_heatmap(normdf, outprefix ):
+    camp = 'Reds'
+    g = sns.clustermap(normdf, cmap=camp, yticklabels=False, col_cluster=False, standard_scale=0)
+    g.fig.subplots_adjust(right=0.7)
+    g.ax_cbar.set_position((0.8, .2, .03, .4))
+    plt.title(f'{prefix}\nCounts')
+    plt.savefig(f'{outprefix}.norm.heatmap.pdf')
+    logging.info(f'done making {outprefix}.norm.heatmap.pdf ')
     
 
 def make_countsplots(config, filelist ): 
@@ -707,11 +719,46 @@ def make_countsplot_combined(config, filelist, outfile=None ):
 def normalize_by_spikeins(realdf, spikedf):
     '''
     Weight values in realdf by spikedf
+    Assumes index is sequence.  
     
     '''
     logging.debug(f'normalizing arg1 by arg2')
-    normdf = realdf
+    #which SSI has highest spikein?
+    sumlist = []
+    for col in spikedf.columns:
+        sum = spikedf[col].sum()
+        sumlist.append(sum)
+    sum_array = np.array(sumlist)
+    maxidx = np.argmax(sum_array)
+    maxval = sum_array[maxidx]  
+    maxcol = spikedf.columns[maxidx]
+    logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
+    factor_array =  maxval / sum_array
+    logging.debug(f'factor array= {list(factor_array)}')
+
+    max_list = []
+    sum_list = []
+    for col in realdf.columns:
+        max_list.append(realdf[col].max())
+        sum_list.append(realdf[col].sum())
+    logging.debug(f'real max_list={max_list}')
+    logging.debug(f'real sum_list={sum_list}')
+    
+    normdf = realdf.copy()
+    for i, col in enumerate(normdf.columns):
+        logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
+        normdf[col] = (normdf[col] * factor_array[i] ) 
+
+    max_list = []
+    sum_list = []
+    for col in realdf.columns:
+        max_list.append(normdf[col].max())
+        sum_list.append(normdf[col].sum())
+    logging.debug(f'norm max_list={max_list}')
+    logging.debug(f'norm sum_list={sum_list}')
+
     return normdf
+
 
 def normalize_target_sum(normdf, columns = None):
     '''

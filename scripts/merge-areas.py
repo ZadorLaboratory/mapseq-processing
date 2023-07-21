@@ -114,20 +114,26 @@ if __name__ == '__main__':
     
     sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
-    rtlist = list(sampdf['rtprimer'].dropna())
-    rtlist = [int(x) for x in rtlist]
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    #rtlist = list(sampdf['rtprimer'].dropna())
+    #rtlist = [int(x) for x in rtlist]
+    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
     (rbcmdf, sbcmdf) = process_merge_areas(cp, args.infiles, outdir)
-    #nbcmdf = normalizebyspikeins(rcmdf, sbcmdf)
+    nbcmdf = normalize_by_spikeins(rbcmdf, sbcmdf)
     if args.outprefix is None:
         print(rbcmdf)
         print(sbcmdf)
-        #print(nbcmdf)
+        print(nbcmdf)
     else:
         rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
         sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
-        #nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
+        nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
+    
+    logging.info('creating heatmap plot')
+    make_clustered_heatmap(nbcmdf, args.outprefix )
+    
+    
+    
               
     
