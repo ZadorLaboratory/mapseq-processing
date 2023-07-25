@@ -30,7 +30,7 @@ from cshlwork.utils import run_command_shell, NonZeroReturnException, merge_dfs
 from cshlwork.utils import merge_tsvs, setup_logging, fix_columns_int
 from alignment.bowtie import run_bowtie, make_bowtie_df
 
-from mapseq.barcode import check_output
+from mapseq.barcode import *
 
 
 def get_default_config():
@@ -126,7 +126,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     spikedf.to_csv(os.path.join(dirname , f'{base}.spike.seq.tsv'), sep='\t')
 
     # remove homopolymers in real sequences.
-    max_homopolymer_run=int(config.get('ssifasta',max_homopolymer_run)) 
+    max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
     realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
    
     # make counts df
@@ -480,28 +480,6 @@ def split_spike_real_lone_barcodes(config, df):
     return (spikedf, realdf, lonedf)
 
 
-def match_strings(a, b, max_mismatch=0):
-    '''
-    attempt at efficient comparison of two same-length strings. 
-    
-    '''
-    if len(a) != len(b):
-        logging.error(f'two strings must be same length')
-    if len(a) <= max_mismatch:
-        logging.error(f'length less than mismatch, all will match.')
-    mm = 0
-    is_match = True
-    for i,v in enumerate(a):
-        if b[i] == v:
-            pass
-        else:
-            mm += 1
-            if mm > max_mismatch:
-                is_match = False
-                break
-    return is_match
-      
-
 def load_sample_info(config, file_name):
     #
     # Parses Excel spreadsheet to get orderly sample metadata.     
@@ -621,12 +599,20 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
     
-    #
-    #  Read in SSI fasta files and generate counts TSVs to allow manual threshold determination. 
-    #  Should later be unnecessary when thresholds can be calculated programmatically. 
+    filelist = []
+    for bch in bclist:
+        filelist.append(bch.filename)
+    make_counts_dfs(config, filelist, outdir)
+
+
+
+def make_counts_dfs(config, filelist, outdir):
+    '''
     
-    for bc in bclist:
-        filepath = bc.filename
+        
+    '''
+    dflist = []
+    for filepath in filelist:
         logging.info(f'calculating counts for  file {filepath} ...')    
         dirname = os.path.dirname(filepath)
         
@@ -639,7 +625,7 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         
         # make raw fasta TSV of barcode-splitter output for one barcode. 
         # trim to 44 unique w/ counts. 
-        seqdf = make_fasta_df(config, infile)
+        seqdf = make_fasta_df(config, filepath)
         of = os.path.join(dirname , f'{base}.44.seq.tsv')
         seqdf.to_csv(of, sep='\t')
         
@@ -647,17 +633,24 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         cdf = make_counts_df(config, seqdf, label=base)  
         logging.info(f'initial counts df {len(cdf)} all reads.')
         of = os.path.join(dirname , f'{base}.44.counts.tsv')
-        cdf.to_csv(of, sep='\t') 
+        cdf.to_csv(of, sep='\t')
+        dflist.append(cdf)
+    logging.debug(f'returning list of {len(dflist)} counts DFs...')
+    return dflist 
+        
 
-
-def make_clustered_heatmap(normdf, outprefix ):
+def make_clustered_heatmap(df, outprefix, columns=None ):
+    '''
+    
+    Caller should edit columns in order to exclude injection areas from plot. 
+    '''
     camp = 'Reds'
-    g = sns.clustermap(normdf, cmap=camp, yticklabels=False, col_cluster=False, standard_scale=0)
+    g = sns.clustermap(df, cmap=camp, yticklabels=False, col_cluster=False, standard_scale=0)
     g.fig.subplots_adjust(right=0.7)
     g.ax_cbar.set_position((0.8, .2, .03, .4))
     plt.title(f'{prefix}\nCounts')
-    plt.savefig(f'{outprefix}.norm.heatmap.pdf')
-    logging.info(f'done making {outprefix}.norm.heatmap.pdf ')
+    plt.savefig(f'{outprefix}.heatmap.pdf')
+    logging.info(f'done making {outprefix}.heatmap.pdf ')
     
 
 def make_countsplots(config, filelist ): 
@@ -681,77 +674,120 @@ def make_countsplots(config, filelist ):
         plt.ylabel("log10(BC counts)")
         plt.savefig(bcfile.replace('tsv', 'pdf'))
 
-def counts_axis_plot(ax, bcdata):
-    ax.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['counts']))
-    ax.set_title(bcdata['label'][0],fontsize=11)
-    ax.set_xlabel("log10(BC index)", fontsize=9)
-    ax.set_ylabel("log10(BC counts)",fontsize=9)
+
+def counts_axis_plot_sns(ax, bcdata):
+    '''
+    Creates individual axes for single plot within figure. 
+    
+    '''
+    bcdata['log10index'] = np.log10(bcdata.index)
+    bcdata['log10counts'] = np.log10(bcdata['counts'])
+    sns.lineplot(ax=ax, x=bcdata['log10index'], y=bcdata['log10counts'] )
+    s = bcdata.counts.sum()
+    n = len(bcdata)
+    t = bcdata.counts.max()    
+    ax.set_title(bcdata['label'][0],fontsize=10)
+    ax.text(0.15, 0.2, f'n={n}\ntop={t}\nsum={s}', fontsize=9) #add text
+    
+    #sns.move_legend(ax, "lower left")
+    #ax.set_xlabel("log10(BC index)", fontsize=5)
+    #ax.set_ylabel("log10(BC counts)",fontsize=5)
 
 
-
-def make_countsplot_combined(config, filelist, outfile=None ):    
+def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):    
     '''
      makes combined figure with all plots. 
      assumes column 'label' for title. 
     '''
+    
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    
     if outfile is None:
         outfile = 'countsplots.pdf'
-        
-    # always make square figure..
-    figsize = math.ceil( math.sqrt(len(filelist)) )
-    fig, axs = plt.subplots(nrows=figsize, ncols=figsize, layout='constrained')
+        if expid is not None:
+            outfile = f'{expid}_{outfile}'
     
-    # numpy.flatirator doesn't handle indexing
-    axlist = []
-    for ax in axs.flat:
-        axlist.append(ax)
-        
-    for i, bcfile in enumerate(filelist):
-        logging.debug(f'handling {bcfile}')
-        bcdata = pd.read_csv(bcfile, sep='\t')
-        ax = axlist[i]
-        counts_axis_plot(ax, bcdata)
-    logging.info(f'saving plot PDF to {outfile}')
-    plt.savefig(outfile)
+    # do nine per figure...
+    page_dims = (11.7, 8.27)
 
+    with pdfpages(outfile) as pdfpages:
+        #fig_n = math.ceil( math.sqrt(len(filelist)) )
+        #fig, axes = plt.subplots(nrows=fig_n, ncols=fig_n, figsize=a4_dims,  layout='constrained')
+        plots_per_page = 9
+        num_figs = float(len(filelist)) / float(plots_per_page)
+        if num_figs % 9 == 0:
+            num_figs = int(num_figs)
+        else:
+            num_figs = int(num_figs) + 1
+        logging.info(f'with {plots_per_page} plots/page, need {num_figs} for {len(filelist)} file plots.')
         
+        figlist = []
+        axlist = []
+        for i in range(0,num_figs):
+            fig,axes = plt.subplots(nrows=3, ncols=3, figsize=page_dims,  layout='constrained') 
+            if expid is not None:
+                fig.suptitle(f'{expid} read counts frequency plots.')
+            else:
+                fig.suptitle(f'Read counts frequency plots')
+            figlist.append(fig)
+            # numpy.flatirator doesn't handle indexing
+            for a in axes.flat:
+                axlist.append(a)
+        logging.info(f'created {len(figlist)} figures to go on {num_figs} pages. ')
+                  
+        #fig.set_xlabel("log10(BC index)")
+        #fig.set_ylabel("log10(BC counts)")
+        filelist = natsorted(filelist)
+        logging.debug(f'handling {len(filelist)} files...')            
+        for i, bcfile in enumerate(filelist):
+            logging.debug(f'handling {bcfile}')
+            bcdata = pd.read_csv(bcfile, sep='\t')
+            ax = axlist[i]
+            counts_axis_plot_sns(ax, bcdata)
+    
+        for f in figlist:
+            pdfpages.savefig(f)
+    logging.info(f'saved plot PDF to {outfile}')
+    
 
-def normalize_by_spikeins(realdf, spikedf):
+
+
+def normalize_weight(df, weightdf, columns=None):
     '''
     Weight values in realdf by spikedf
     Assumes index is sequence.  
-    
+    If columns is none, use/weight all columns, otherwise ignore unlisted columns
     '''
     logging.debug(f'normalizing arg1 by arg2')
     #which SSI has highest spikein?
     sumlist = []
-    for col in spikedf.columns:
-        sum = spikedf[col].sum()
+    for col in weightdf.columns:
+        sum = weightdf[col].sum()
         sumlist.append(sum)
     sum_array = np.array(sumlist)
     maxidx = np.argmax(sum_array)
     maxval = sum_array[maxidx]  
-    maxcol = spikedf.columns[maxidx]
+    maxcol = weightdf.columns[maxidx]
     logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
     factor_array =  maxval / sum_array
     logging.debug(f'factor array= {list(factor_array)}')
 
     max_list = []
     sum_list = []
-    for col in realdf.columns:
-        max_list.append(realdf[col].max())
-        sum_list.append(realdf[col].sum())
+    for col in df.columns:
+        max_list.append(df[col].max())
+        sum_list.append(df[col].sum())
     logging.debug(f'real max_list={max_list}')
     logging.debug(f'real sum_list={sum_list}')
     
-    normdf = realdf.copy()
+    normdf = df.copy()
     for i, col in enumerate(normdf.columns):
         logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
         normdf[col] = (normdf[col] * factor_array[i] ) 
 
     max_list = []
     sum_list = []
-    for col in realdf.columns:
+    for col in normdf.columns:
         max_list.append(normdf[col].max())
         sum_list.append(normdf[col].sum())
     logging.debug(f'norm max_list={max_list}')
@@ -760,14 +796,13 @@ def normalize_by_spikeins(realdf, spikedf):
     return normdf
 
 
-def normalize_target_sum(normdf, columns = None):
+def normalize_scale(df, columns = None, min=0.0, max=1.0):
     '''
-    Normalize so values across rows sum to one across columns 
-    given, or all columns if none. 
+    Normalize whole matrix such that all values are between min and max. 
     
     '''
     logging.debug(f'making rows sum to one...')
-    return normdf
+    return df
 
 
 

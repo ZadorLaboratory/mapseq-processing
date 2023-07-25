@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 #
-#   merges and analyzes per-barcode dataframe files. 
-#   outputs normalized barcode matrix. 
-#
+#  creates read counts plot/plots to determine thresholds.   
 #
 
 import argparse
@@ -14,17 +12,20 @@ import traceback
 from configparser import ConfigParser
 
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
-from cshlwork.utils import write_config, merge_tsvs
+from cshlwork.utils import *
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import *
-
+from mapseq.barcode import *
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -49,13 +50,34 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
+
+    parser.add_argument('-b','--barcodes', 
+                        metavar='barcodes',
+                        required=False,
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
+                        type=str, 
+                        help='barcode file space separated.')
+
+    parser.add_argument('-m','--max_mismatch', 
+                        metavar='max_mismatch',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Max mismatch for aligner read collapse.')
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
     
-    parser.add_argument('-o','--outprefix', 
-                    metavar='outprefix',
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outfile prefix, e.g. M229 stdout if not given.')  
+                    help='PDF plot out file. "countsplots.pdf" if not given')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -64,18 +86,11 @@ if __name__ == '__main__':
                     type=str, 
                     help='outdir. input file base dir if not given.')     
 
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=True,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
-
     parser.add_argument('infiles',
                         metavar='infiles',
                         nargs ="+",
                         type=str,
-                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label)')
+                        help='SSI-specific .fasta files')
        
     args= parser.parse_args()
     
@@ -90,11 +105,16 @@ if __name__ == '__main__':
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
-        
+
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    sampdf.to_csv(f'{args.outdir}/sampleinfo.tsv', sep='\t')
+      
+   
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making missing outdir: {outdir} ')
+        logging.debug(f'making outdir: {outdir} ')
         os.makedirs(outdir, exist_ok=True)
     else:
         afile = args.infiles[0]
@@ -102,40 +122,7 @@ if __name__ == '__main__':
         dirname = os.path.dirname(filepath)
         outdir = dirname
 
-    if args.outdir is not None:
-        cfilename = f'{args.outdir}/merge_areas.config.txt'
-    else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
-        dirname = os.path.dirname(filepath)
-        cfilename = f'{dirname}/merge_areas.config.txt'
+    dflist = make_counts_dfs(cp, args.infiles, args.outdir)
+    logging.info(f'got list of {len(dflist)} counts DFs...')
     
-    write_config(cp, cfilename, timestamp=True)        
-    
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    #rtlist = list(sampdf['rtprimer'].dropna())
-    #rtlist = [int(x) for x in rtlist]
-    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-        
-    # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    (rbcmdf, sbcmdf) = process_merge_areas(cp, args.infiles, outdir)
-    nbcmdf = normalize_weight(rbcmdf, sbcmdf)
-    scbcmdf = normalize_scale(nbcmdf)
-    
-    if args.outprefix is None:
-        print(rbcmdf)
-        print(sbcmdf)
-        print(nbcmdf)
-    else:
-        rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
-        sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
-        nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
-    
-    logging.info('creating heatmap plot')
-    make_clustered_heatmap(nbcmdf, args.outprefix )
-    
-    
-    
-              
-    
+      

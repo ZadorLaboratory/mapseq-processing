@@ -14,6 +14,29 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+
+def match_strings(a, b, max_mismatch=0):
+    '''
+    attempt at efficient comparison of two same-length strings. 
+    
+    '''
+    if len(a) != len(b):
+        logging.error(f'two strings must be same length')
+    if len(a) <= max_mismatch:
+        logging.error(f'length less than mismatch, all will match.')
+    mm = 0
+    is_match = True
+    for i,v in enumerate(a):
+        if b[i] == v:
+            pass
+        else:
+            mm += 1
+            if mm > max_mismatch:
+                is_match = False
+                break
+    return is_match
+
+
 class BarcodeHandler(object):
     '''
     Basically implements fastx_barcode_handler.pl. 

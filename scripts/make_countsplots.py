@@ -49,6 +49,13 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
+
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
+                    required=False,
+                    default=None,
+                    type=str, 
+                    help='explicitly provided experiment id')
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -97,5 +104,5 @@ if __name__ == '__main__':
         outdir = dirname
 
     #make_countsplots(cp, args.infiles)
-    make_countsplot_combined(cp, args.infiles, outfile=args.outfile)
+    make_countsplot_combined_sns(cp, args.infiles, outfile=args.outfile, expid=args.expid)
       
