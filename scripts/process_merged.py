@@ -17,12 +17,11 @@ import pandas as pd
 
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
-
-from cshlwork.utils import write_config, merge_tsvs
-
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
+
+from cshlwork.utils import write_config, merge_tsvs
 from mapseq.core import *
 
     
@@ -49,13 +48,20 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
-    
-    parser.add_argument('-o','--outprefix', 
-                    metavar='outprefix',
+
+    parser.add_argument('-r','--recursion', 
+                        metavar='recursion',
+                        required=False,
+                        default=100000,
+                        type=int, 
+                        help='Max recursion. Handle larger input to collapse() Default is ~3000.')
+
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
                     required=False,
-                    default=None, 
+                    default=None,
                     type=str, 
-                    help='outfile prefix, e.g. M229 stdout if not given.')  
+                    help='explicitly provided experiment id')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -75,7 +81,7 @@ if __name__ == '__main__':
                         metavar='infiles',
                         nargs ="+",
                         type=str,
-                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label)')
+                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label, brain)')
        
     args= parser.parse_args()
     
@@ -90,6 +96,10 @@ if __name__ == '__main__':
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
+    
+    if args.recursion is not None:
+        sys.setrecursionlimit(int(args.recursion))
+    
         
     outdir = None
     if args.outdir is not None:
@@ -103,12 +113,12 @@ if __name__ == '__main__':
         outdir = dirname
 
     if args.outdir is not None:
-        cfilename = f'{args.outdir}/merge_areas.config.txt'
+        cfilename = f'{args.outdir}/process_merged.config.txt'
     else:
         afile = args.infiles[0]
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
-        cfilename = f'{dirname}/merge_areas.config.txt'
+        cfilename = f'{dirname}/process_merged.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
     
@@ -119,21 +129,21 @@ if __name__ == '__main__':
     #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    (rbcmdf, sbcmdf) = process_merge_areas(cp, args.infiles, outdir)
-    nbcmdf = normalize_weight(rbcmdf, sbcmdf)
-    scbcmdf = normalize_scale(nbcmdf)
+    process_merged(cp, args.infiles, outdir)
+    #nbcmdf = normalize_weight(rbcmdf, sbcmdf)
+    #scbcmdf = normalize_scale(nbcmdf)
     
-    if args.outprefix is None:
-        print(rbcmdf)
-        print(sbcmdf)
-        print(nbcmdf)
-    else:
-        rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
-        sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
-        nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
+    #if args.outprefix is None:
+    #    print(rbcmdf)
+    #    print(sbcmdf)
+    #    print(nbcmdf)
+    #else:
+    #    rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
+    #    sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
+    #    nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
     
-    logging.info('creating heatmap plot')
-    make_clustered_heatmap(nbcmdf, args.outprefix )
+    #logging.info('creating heatmap plot')
+    #make_clustered_heatmaps(nbcmdf )
     
     
     

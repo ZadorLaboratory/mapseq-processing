@@ -58,11 +58,12 @@ def guess_site(infile, sampdf):
     if len(df)> 0:
         try:
             site = df['siteinfo'][0]
-            logging.info(f'got site {site} for rtprimer {rtprimer_num}') 
+            brain = df['brain'][0]
+            logging.debug(f'got site={site} brain={brain} for rtprimer={rtprimer_num}') 
         except:
             logging.warning(f'unable to get siteinfo for {infile}') 
-    logging.info(f'got site {site} for rtprimer guessed from {infile}')
-    return site
+    logging.debug(f'got site={site} for rtprimer guessed from {infile}')
+    return (site, brain )
     
     
     
@@ -89,19 +90,19 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     
     # make raw fasta TSV of barcode-splitter output for one barcode. 
     # trim to 44 unique w/ counts. 
-    logging.info('calc counts...')
+    logging.debug('calc counts...')
     seqdf = make_fasta_df(config, infile)
     of = os.path.join(dirname , f'{base}.44.seq.tsv')
     seqdf.to_csv(of, sep='\t')
     
     # to calculate threshold we need counts calculated. 
     cdf = make_counts_df(config, seqdf, label=base)  
-    logging.info(f'initial counts df {len(cdf)} all reads.')
+    logging.debug(f'initial counts df {len(cdf)} all reads.')
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
         
     threshold = calculate_threshold(config, cdf, site)
-    logging.info(f'got threshold={threshold} for site {site}')
+    logging.debug(f'got threshold={threshold} for site {site}')
     tdf = threshold_counts(config, cdf, threshold=threshold)
     logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
     
@@ -166,25 +167,25 @@ def align_and_collapse(config, countsdf, outdir, base, label):
     
     '''
     newdf = None
-    logging.info(f'handling {base} {label}s...')
+    logging.debug(f'handling {base} {label}s...')
     aligner = config.get('ssifasta','tool')
     logging.info(f'{label} {len(countsdf)} sequences, representing {countsdf.counts.sum()} reads.')      
     of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
     seqfasta = write_fasta_from_df(config, countsdf, outfile=of)
     of = os.path.join(outdir , f'{base}.{label}.{aligner}')
-    logging.info(f'running {aligner}...')
+    logging.debug(f'running {aligner}...')
     try:
         afile = run_bowtie(config, seqfasta, of, tool=aligner )  
-        logging.info(f'handle {aligner} align file: {afile}')
+        logging.debug(f'handle {aligner} align file: {afile}')
         btdf = make_bowtie_df(afile)
         of = os.path.join(outdir , f'{base}.{label}.btdf.tsv')
         btdf.to_csv(of, sep='\t') 
         edgelist = edges_from_btdf(btdf)
         components = get_components(edgelist)
-        logging.info(f'countdf columns are {countsdf.columns}')
+        logging.debug(f'countdf columns are {countsdf.columns}')
         newdf = collapse_counts_df(countsdf, components)
-        logging.info(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
+        logging.debug(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
 
     except NonZeroReturnException:
         logging.warning(f'NonZeroReturn Exception. Probably no {label}s found. ')
@@ -230,7 +231,7 @@ def collapse_counts_df(countsdf, components):
      
     '''
     # list of lists to collect values..
-    logging.info(f'collapsing countsdf len={len(countsdf)} w/ {len(components)} components.')
+    logging.debug(f'collapsing countsdf len={len(countsdf)} w/ {len(components)} components.')
     lol = []
     colnames = list(countsdf.columns)
     for component in components:
@@ -257,7 +258,7 @@ def collapse_counts_df(countsdf, components):
                  logging.debug(f'skip distance calc, one sequence in component.')
         
     newdf = pd.DataFrame(data=lol, columns=colnames)
-    logging.info(f'original len={len(countsdf)} collapsed len={len(newdf)}')
+    logging.debug(f'original len={len(countsdf)} collapsed len={len(newdf)}')
     newdf.sort_values('counts',ascending=False, inplace=True)
     newdf.reset_index(drop=True, inplace=True)
     return newdf
@@ -271,12 +272,12 @@ def edges_from_btdf(btdf):
 
 def get_components(edgelist):
     complist = []
-    logging.info(f'getting connected components from edgelist len={len(edgelist)}')
+    logging.debug(f'getting connected components from edgelist len={len(edgelist)}')
     if len(edgelist) < 100:
         logging.debug(f'{edgelist}')
     for g in tarjan(from_edges(edgelist)):
         complist.append(g)
-    logging.info(f'{len(complist)} components.')
+    logging.debug(f'{len(complist)} components.')
     if len(edgelist) < 100:
         logging.debug(f'{complist}')
     return complist
@@ -342,7 +343,7 @@ def make_counts_df(config, seqdf, label=None):
     optionally assign a label to set in new column
     
     '''
-    logging.info(seqdf)
+    logging.debug(f'seqdf=\n{seqdf}')
     ser = seqdf['sequence'].value_counts()
     df = pd.DataFrame(columns=['sequence','counts'])
     df['sequence'] = ser.index
@@ -368,7 +369,7 @@ def make_fasta_df(config, infile, ignore_n=True):
         else:
             slist.append(str(s))
         handled += 1    
-    logging.info(f"kept {len(slist)} sequences out of {handled}")    
+    logging.debug(f"kept {len(slist)} sequences out of {handled}")    
     df = pd.DataFrame(slist, columns=['sequence'] )
     return df
 
@@ -393,7 +394,7 @@ def trim_fasta(config, infile, outdir=None, length=44):
         tsr = SeqRecord( tseq, id=sr.id, name=sr.name, description=sr.description)
         trimmed.append(tsr)
     SeqIO.write(trimmed, outfile, 'fasta')
-    logging.info(f'wrote {len(trimmed)} to {ofpath}')
+    logging.debug(f'wrote {len(trimmed)} to {ofpath}')
     return ofpath
 
 
@@ -415,7 +416,7 @@ def calculate_threshold(config, df, site=None):
         count_threshold = int(config.get('ssifasta', 'default_threshold'))
     else:
         count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
-    logging.info(f'count threshold for {site} = {count_threshold}')
+    logging.debug(f'count threshold for {site} = {count_threshold}')
     return count_threshold
 
 
@@ -490,12 +491,13 @@ def load_sample_info(config, file_name):
     #
     sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain' ]
     sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain'] 
-    int_sample_col = ['usertube', 'ourtube','rtprimer','brain']
+    # int_sample_col = ['usertube', 'ourtube','rtprimer','brain']
+    int_sample_col = ['usertube', 'ourtube','rtprimer']     # brain is sometimes not a number. 
     sheet_name = 'Sample information'
     edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
     sdf = pd.DataFrame()
     
-    for i,sc in enumerate(sheet_columns):
+    for i, sc in enumerate(sheet_columns):
         try:
             cser = edf[sc]
             logging.debug(f'column for {sc}:\n{cser}')
@@ -517,9 +519,9 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
     else:
         if not os.path.exists(outdir):
             os.makedirs(outdir, exist_ok=True)
-            logging.info(f'made outdir={outdir}')
+            logging.debug(f'made outdir={outdir}')
     output_exists = check_output(bclist)
-    logging.info(f'output_exists={output_exists} force={force}')
+    logging.debug(f'output_exists={output_exists} force={force}')
     
     if ( not output_exists ) or force:
         outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
@@ -545,7 +547,7 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         #
         for (read1file, read2file) in readfilelist:
             pairshandled += 1
-            logging.info(f'handling file pair {pairshandled}')
+            logging.debug(f'handling file pair {pairshandled}')
             if read1file.endswith('.gz'):
                  read1file = gzip.open(read1file, "rt")
             if read2file.endswith('.gz'):
@@ -582,7 +584,7 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
                     
                     seqshandled += 1
                     if seqshandled % seqhandled_interval == 0: 
-                        logging.info(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
+                        logging.debug(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
                 
                 except StopIteration as e:
                     logging.debug(f'iteration stopped')
@@ -613,7 +615,7 @@ def make_counts_dfs(config, filelist, outdir):
     '''
     dflist = []
     for filepath in filelist:
-        logging.info(f'calculating counts for  file {filepath} ...')    
+        logging.debug(f'calculating counts for  file {filepath} ...')    
         dirname = os.path.dirname(filepath)
         
         if outdir is not None:
@@ -631,7 +633,7 @@ def make_counts_dfs(config, filelist, outdir):
         
         # to calculate threshold we need counts calculated. 
         cdf = make_counts_df(config, seqdf, label=base)  
-        logging.info(f'initial counts df {len(cdf)} all reads.')
+        logging.debug(f'initial counts df {len(cdf)} all reads.')
         of = os.path.join(dirname , f'{base}.44.counts.tsv')
         cdf.to_csv(of, sep='\t')
         dflist.append(cdf)
@@ -709,7 +711,6 @@ def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):
     
     # do nine per figure...
     page_dims = (11.7, 8.27)
-
     with pdfpages(outfile) as pdfpages:
         #fig_n = math.ceil( math.sqrt(len(filelist)) )
         #fig, axes = plt.subplots(nrows=fig_n, ncols=fig_n, figsize=a4_dims,  layout='constrained')
@@ -719,7 +720,7 @@ def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):
             num_figs = int(num_figs)
         else:
             num_figs = int(num_figs) + 1
-        logging.info(f'with {plots_per_page} plots/page, need {num_figs} for {len(filelist)} file plots.')
+        logging.debug(f'with {plots_per_page} plots/page, need {num_figs} for {len(filelist)} file plots.')
         
         figlist = []
         axlist = []
@@ -733,7 +734,7 @@ def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):
             # numpy.flatirator doesn't handle indexing
             for a in axes.flat:
                 axlist.append(a)
-        logging.info(f'created {len(figlist)} figures to go on {num_figs} pages. ')
+        logging.debug(f'created {len(figlist)} figures to go on {num_figs} pages. ')
                   
         #fig.set_xlabel("log10(BC index)")
         #fig.set_ylabel("log10(BC counts)")
@@ -807,35 +808,61 @@ def normalize_scale(df, columns = None, min=0.0, max=1.0):
 
 
 
-def process_merge_areas(config, filelist, outdir=None ):
+def process_merged(config, filelist, outdir=None ):
     '''
-     merges SSI-specific real, spike, lone DFs with counts. 
-     outputs SSI x target matrix DF, with counts normalized to spikeins by target.  
+     takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
+     outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
+     writes all output to outdir (or current dir). 
+     
+     
      
     '''
-    logging.info(f'{filelist}')
+    
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    
+    logging.debug(f'{filelist}')
     alldf = merge_tsvs(filelist)
+    logging.debug(f'alldf len={len(alldf)}')
     
-    logging.info(f'alldf len={len(alldf)}')
-      
-    rdf = alldf[alldf['type'] == 'real']      
-    bcm = rdf.pivot(index='sequence', columns='label', values='counts')
-    #bcm.reset_index(inplace=True)
-    #bcm.drop(labels=['sequence'], axis=1, inplace=True)
-    #scol = natsorted(list(bcm.columns))
-    #bcm = bcm[scol]
-    bcm.fillna(value=0, inplace=True)
-    logging.info(f'real barcode matrix len={len(bcm)}')
+    cmap = config.get('plots','heatmap_cmap')
     
+    outfile = 'M205.all.heatmap.pdf'
+    page_dims = (11.7, 8.27)
+    with pdfpages(outfile) as pdfpages:
+        for brain_id in alldf['brain'].dropna().unique():
+            logging.debug(f'handling brain_id={brain_id}')
+            bdf = alldf[alldf['brain'] == brain_id]
+          
+            rdf = bdf[bdf['type'] == 'real']      
+            rbcmdf = rdf.pivot(index='sequence', columns='label', values='counts')
+            #rbcmdf.reset_index(inplace=True, drop=True)
+            scol = natsorted(list(rbcmdf.columns))
+            rbcmdf = rbcmdf[scol]
+            rbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
+            
+            
+            sdf = bdf[bdf.type == 'spike']
+            sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
+            #sbcm.reset_index(inplace=True)
+            #sbcm.drop(labels=['sequence'], axis=1, inplace=True)
+            #spcol = natsorted(list(sbcm.columns))
+            #sbcm = sbcm[spcol]
+            sbcmdf.fillna(value=0, inplace=True)    
+            logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
     
-    sdf = alldf[alldf.type == 'spike']
-    sbcm = sdf.pivot(index='sequence', columns='label', values='counts')
-    #sbcm.reset_index(inplace=True)
-    #sbcm.drop(labels=['sequence'], axis=1, inplace=True)
-    #spcol = natsorted(list(sbcm.columns))
-    #sbcm = sbcm[spcol]
-    sbcm.fillna(value=0, inplace=True)    
-    logging.info(f'spike barcode matrix len={len(sbcm)}')
-        
-    return (bcm, sbcm)
+            nbcmdf = normalize_weight(rbcmdf, sbcmdf)
+            #scbcmdf = normalize_scale(nbcmdf)
+            
+            rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
+            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
+            nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
+            #scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
+            
+            g = sns.clustermap(nbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1)
+            g.ax_cbar.set_position((0.8, .2, .03, .4))
+            plt.title(f'{brain_id} Counts.')
+            plt.savefig(f'{outdir}/{brain_id}.heatmap.pdf')
+            #pdfpages.savefig(g)
+   
 

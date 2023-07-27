@@ -31,13 +31,11 @@ import pandas as pd
 
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
-
-from cshlwork.utils import write_config, merge_dfs
-
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import load_sample_info, process_ssifasta, fix_columns_int, guess_site
+from cshlwork.utils import write_config, merge_dfs
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -172,11 +170,15 @@ if __name__ == '__main__':
     outdflist = []    
     for infile in args.infiles:
         # rtprimer will be guessed from filename. "BC<rtprimer>.fasta"
-        site = guess_site(infile, sampdf)
-        logging.info(f'guessed site as {site}')
+        (site, brain) = guess_site(infile, sampdf)
+        logging.info(f'guessed site={site} brain={brain}')
         try:
             outdf = process_ssifasta(cp, infile, outdir=outdir, site=site)
-            logging.info(f'got outdf {outdf}')
+            logging.debug(f'initial outdf {outdf}')
+            outdf['brain'] = brain
+            
+            outdf['site'] = site
+            logging.info(f'got outdf:\n{outdf}')
             if args.outfile is None:
                 print(outdf)
             else:
