@@ -59,9 +59,9 @@ if __name__ == '__main__':
     parser.add_argument('-e','--expid', 
                     metavar='expid',
                     required=False,
-                    default=None,
+                    default='MAPSeq Experiment',
                     type=str, 
-                    help='explicitly provided experiment id')
+                    help='Explicitly provided experiment id, e.g. M205')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -124,26 +124,9 @@ if __name__ == '__main__':
     
     sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
-    #rtlist = list(sampdf['rtprimer'].dropna())
-    #rtlist = [int(x) for x in rtlist]
-    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    process_merged(cp, args.infiles, outdir)
-    #nbcmdf = normalize_weight(rbcmdf, sbcmdf)
-    #scbcmdf = normalize_scale(nbcmdf)
-    
-    #if args.outprefix is None:
-    #    print(rbcmdf)
-    #    print(sbcmdf)
-    #    print(nbcmdf)
-    #else:
-    #    rbcmdf.to_csv(f'{args.outprefix}.rbcm.tsv', sep='\t')
-    #    sbcmdf.to_csv(f'{args.outprefix}.sbcm.tsv', sep='\t')    
-    #    nbcmdf.to_csv(f'{args.outprefix}.nbcm.tsv', sep='\t')
-    
-    #logging.info('creating heatmap plot')
-    #make_clustered_heatmaps(nbcmdf )
+    process_merged(cp, args.infiles, outdir, expid=args.expid)
     
     
     

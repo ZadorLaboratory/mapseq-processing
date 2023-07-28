@@ -758,6 +758,8 @@ def normalize_weight(df, weightdf, columns=None):
     Weight values in realdf by spikedf
     Assumes index is sequence.  
     If columns is none, use/weight all columns, otherwise ignore unlisted columns
+    
+    
     '''
     logging.debug(f'normalizing arg1 by arg2')
     #which SSI has highest spikein?
@@ -799,16 +801,21 @@ def normalize_weight(df, weightdf, columns=None):
 
 def normalize_scale(df, columns = None, min=0.0, max=1.0):
     '''
-    Normalize whole matrix such that all values are between min and max. 
+    Log scale whole matrix. 
+    Set -inf to 0
+    Set NaN to 0
     
     '''
-    logging.debug(f'making rows sum to one...')
-    return df
+    #logging.debug(f'making rows sum to one...')
+    ldf = np.log10(df)
+    for c in ldf.columns:
+        ldf[c] = np.nan_to_num(ldf[c], neginf=0.0)
+    return ldf
 
 
 
 
-def process_merged(config, filelist, outdir=None ):
+def process_merged(config, filelist, outdir=None, expid=None ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
@@ -819,6 +826,7 @@ def process_merged(config, filelist, outdir=None ):
     '''
     
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    sys.setrecursionlimit(100000)
     
     logging.debug(f'{filelist}')
     alldf = merge_tsvs(filelist)
@@ -841,7 +849,6 @@ def process_merged(config, filelist, outdir=None ):
             rbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
             
-            
             sdf = bdf[bdf.type == 'spike']
             sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
             #sbcm.reset_index(inplace=True)
@@ -852,16 +859,26 @@ def process_merged(config, filelist, outdir=None ):
             logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
     
             nbcmdf = normalize_weight(rbcmdf, sbcmdf)
-            #scbcmdf = normalize_scale(nbcmdf)
+            logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            scbcmdf = normalize_scale(nbcmdf)
+            logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
             
             rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
             sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
             nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
-            #scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
+            scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
             
-            g = sns.clustermap(nbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1)
-            g.ax_cbar.set_position((0.8, .2, .03, .4))
-            plt.title(f'{brain_id} Counts.')
+            
+            #kws = dict(cbar_kws=dict(ticks=[0, 0.50, 1], orientation='horizontal'), figsize=(6, 6))            
+            
+            kws = dict(cbar_kws=dict(orientation='horizontal'))  
+            g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
+            #g.ax_cbar.set_title('scaled log10(cts)')
+            x0, _y0, _w, _h = g.cbar_pos
+            #g.ax_cbar.set_position((0.8, .2, .03, .4))
+            g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
+            g.fig.suptitle(f'{expid} {brain_id}')
+            g.ax_heatmap.set_title(f'Scaled log10(counts)')
             plt.savefig(f'{outdir}/{brain_id}.heatmap.pdf')
             #pdfpages.savefig(g)
    
