@@ -130,6 +130,11 @@ if __name__ == '__main__':
         logging.info(f'set new recursionlimit={rlimit}')
         sys.setrecursionlimit(rlimit)
     
+    if args.outdir is not None:
+        outdir = os.path.abspath(args.outdir)
+        logging.debug(f'making missing outdir: {outdir} ')
+        os.makedirs(outdir, exist_ok=True)
+    
     
     sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
