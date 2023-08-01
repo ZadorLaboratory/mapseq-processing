@@ -489,8 +489,13 @@ def load_sample_info(config, file_name):
     #   ['Tube # by user', 'Our Tube #', 'Sample names provided by user',
     #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
     #
-    sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain' ]
-    sample_columns = ['usertube', 'ourtube','samplename','siteinfo','rtprimer','brain'] 
+    # If brain is not given, or is empty, all are set to 1. 
+    # If region is not given, or is empty, all are set to brain (1 if no brain info was given).
+    # 
+    #
+    
+    sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain', 'Region' ]
+    sample_columns = ['usertube',       'ourtube',   'samplename',                    'siteinfo',          'rtprimer',             'brain', 'region'] 
     # int_sample_col = ['usertube', 'ourtube','rtprimer','brain']
     int_sample_col = ['usertube', 'ourtube','rtprimer']     # brain is sometimes not a number. 
     sheet_name = 'Sample information'
@@ -801,7 +806,7 @@ def normalize_weight(df, weightdf, columns=None):
 
 def normalize_scale(df, columns = None, min=0.0, max=1.0):
     '''
-    Log scale whole matrix. 
+    Log scale whole matrix.   log10 or log2 ???
     Set -inf to 0
     Set NaN to 0
     
