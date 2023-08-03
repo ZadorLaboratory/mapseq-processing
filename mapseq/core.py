@@ -609,6 +609,7 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
     filelist = []
     for bch in bclist:
         filelist.append(bch.filename)
+    logging.info(f'Making counts df for {filelist} in {outdir}')
     make_counts_dfs(config, filelist, outdir)
 
 
@@ -804,7 +805,7 @@ def normalize_weight(df, weightdf, columns=None):
     return normdf
 
 
-def normalize_scale(df, columns = None, min=0.0, max=1.0):
+def normalize_scale(df, columns = None, logscale='log2', min=0.0, max=1.0):
     '''
     Log scale whole matrix.   log10 or log2 ???
     Set -inf to 0
@@ -812,7 +813,11 @@ def normalize_scale(df, columns = None, min=0.0, max=1.0):
     
     '''
     #logging.debug(f'making rows sum to one...')
-    ldf = np.log10(df)
+    if logscale == 'log2':
+        ldf = np.log2(df)
+    elif logscale == 'log10':
+        ldf = np.log10(df)
+    
     for c in ldf.columns:
         ldf[c] = np.nan_to_num(ldf[c], neginf=0.0)
     return ldf
@@ -838,6 +843,7 @@ def process_merged(config, filelist, outdir=None, expid=None ):
     logging.debug(f'alldf len={len(alldf)}')
     
     cmap = config.get('plots','heatmap_cmap')
+    clustermap_logscale = config.get('plots','clustermap_logscale') # log10 | log2
     
     outfile = 'M205.all.heatmap.pdf'
     page_dims = (11.7, 8.27)
@@ -865,7 +871,7 @@ def process_merged(config, filelist, outdir=None, expid=None ):
     
             nbcmdf = normalize_weight(rbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
-            scbcmdf = normalize_scale(nbcmdf)
+            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_logscale)
             logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
             
             rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
@@ -883,8 +889,8 @@ def process_merged(config, filelist, outdir=None, expid=None ):
             #g.ax_cbar.set_position((0.8, .2, .03, .4))
             g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
             g.fig.suptitle(f'{expid} {brain_id}')
-            g.ax_heatmap.set_title(f'Scaled log10(counts)')
-            plt.savefig(f'{outdir}/{brain_id}.heatmap.pdf')
+            g.ax_heatmap.set_title(f'Scaled {clustermap_logscale}(counts)')
+            plt.savefig(f'{outdir}/{brain_id}.{clustermap_logscale}.clustermap.pdf')
             #pdfpages.savefig(g)
    
 
