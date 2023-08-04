@@ -844,8 +844,10 @@ def process_merged(config, filelist, outdir=None, expid=None ):
     
     cmap = config.get('plots','heatmap_cmap')
     clustermap_logscale = config.get('plots','clustermap_logscale') # log10 | log2
-    
-    outfile = 'M205.all.heatmap.pdf'
+    if  expid is None:
+        expid = 'MAPseq'
+            
+    outfile = f'{expid}.all.heatmap.pdf'
     page_dims = (11.7, 8.27)
     with pdfpages(outfile) as pdfpages:
         for brain_id in alldf['brain'].dropna().unique():
@@ -864,8 +866,8 @@ def process_merged(config, filelist, outdir=None, expid=None ):
             sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
             #sbcm.reset_index(inplace=True)
             #sbcm.drop(labels=['sequence'], axis=1, inplace=True)
-            #spcol = natsorted(list(sbcm.columns))
-            #sbcm = sbcm[spcol]
+            spcol = natsorted(list(sbcmdf.columns))
+            sbcmdf = sbcmdf[spcol]
             sbcmdf.fillna(value=0, inplace=True)    
             logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
     
@@ -891,6 +893,6 @@ def process_merged(config, filelist, outdir=None, expid=None ):
             g.fig.suptitle(f'{expid} {brain_id}')
             g.ax_heatmap.set_title(f'Scaled {clustermap_logscale}(counts)')
             plt.savefig(f'{outdir}/{brain_id}.{clustermap_logscale}.clustermap.pdf')
-            #pdfpages.savefig(g)
+            pdfpages.savefig(g.fig)
    
 
