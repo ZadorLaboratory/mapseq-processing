@@ -175,14 +175,15 @@ if __name__ == '__main__':
     outdflist = []    
     for infile in args.infiles:
         # rtprimer will be guessed from filename. "BC<rtprimer>.fasta"
-        (site, brain) = guess_site(infile, sampdf)
-        logging.info(f'guessed site={site} brain={brain}')
+        (site, brain, region) = guess_site(infile, sampdf)
+        logging.info(f'guessed site={site} brain={brain} region={region}')
         try:
             outdf = process_ssifasta(cp, infile, outdir=outdir, site=site)
             logging.debug(f'initial outdf {outdf}')
-            outdf['brain'] = brain
-            
             outdf['site'] = site
+            outdf['brain'] = brain
+            outdf['region'] = region
+
             logging.info(f'got outdf:\n{outdf}')
             if args.outfile is None:
                 print(outdf)

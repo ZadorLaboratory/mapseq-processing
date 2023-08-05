@@ -42,8 +42,12 @@ def get_default_config():
 
 def guess_site(infile, sampdf):
     '''
-    will look at filename and try to guess rt primer number, then look for siteinfo in sampledf
-    assumes BC<rtprimer>.fasta
+    will look at filename and try to guess rt primer number, then 
+    look for siteinfo in sampledf
+    
+    NOTE: assumes BC<rtprimer>.fasta or SSI<rtprimer>.fasta and <rtprimer> identifiers
+    consist of digits. 
+    
     '''
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
@@ -52,18 +56,33 @@ def guess_site(infile, sampdf):
     rtprimer_num = ''.join(i for i in base if i.isdigit())
     rtprimer_num = int(rtprimer_num)
     logging.debug(f'base={base} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
+    
     df = sampdf[sampdf['rtprimer'] == rtprimer_num]
     df.reset_index(inplace=True, drop=True)
     site = None
     if len(df)> 0:
         try:
             site = df['siteinfo'][0]
-            brain = df['brain'][0]
-            logging.debug(f'got site={site} brain={brain} for rtprimer={rtprimer_num}') 
         except:
-            logging.warning(f'unable to get siteinfo for {infile}') 
+            logging.warning(f'unable to get siteinfo for {infile}')
+            site = 'target'  # default to target. 
+        
+        try:        
+            brain = df['brain'][0]
+        except:
+            logging.warning(f'unable to get brain info for {infile}')
+            brain = '1'
+
+        try:        
+            region = df['region'][0]
+        except:
+            logging.warning(f'unable to get region info for {infile}')
+            region = str(rtprimer_num) # default to SSI       
+            
+        logging.debug(f'got site={site} brain={brain} region={region} for rtprimer={rtprimer_num}') 
+
     logging.debug(f'got site={site} for rtprimer guessed from {infile}')
-    return (site, brain )
+    return (site, brain, region )
     
     
     
@@ -853,7 +872,8 @@ def process_merged(config, filelist, outdir=None, expid=None ):
         for brain_id in alldf['brain'].dropna().unique():
             logging.debug(f'handling brain_id={brain_id}')
             bdf = alldf[alldf['brain'] == brain_id]
-          
+            # only plot target areas...
+            bdf = bdf[bdf['site'].str.startswith('target')]
             rdf = bdf[bdf['type'] == 'real']      
             rbcmdf = rdf.pivot(index='sequence', columns='label', values='counts')
             #rbcmdf.reset_index(inplace=True, drop=True)
