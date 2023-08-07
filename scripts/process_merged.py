@@ -41,12 +41,6 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
-
-    parser.add_argument('-C', '--combined', 
-                        action="store_true",
-                        default=True, 
-                        dest='combined', 
-                        help='make combined multi-plot PDF file. ')
     
     parser.add_argument('-c','--config', 
                         metavar='config',
@@ -55,6 +49,11 @@ if __name__ == '__main__':
                         type=str, 
                         help='config file.')    
 
+    parser.add_argument('--combined', 
+                        action=argparse.BooleanOptionalAction
+                        )
+    
+    
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
@@ -89,7 +88,10 @@ if __name__ == '__main__':
                         type=str,
                         help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label, brain)')
        
+
     args= parser.parse_args()
+    
+    
     
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
