@@ -41,6 +41,12 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
+
+    parser.add_argument('-C', '--combined', 
+                        action="store_true",
+                        default=True, 
+                        dest='combined', 
+                        help='make combined multi-plot PDF file. ')
     
     parser.add_argument('-c','--config', 
                         metavar='config',
@@ -126,7 +132,7 @@ if __name__ == '__main__':
     logging.debug(f'\n{sampdf}')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    process_merged(cp, args.infiles, outdir, expid=args.expid, recursion = args.recursion)
+    process_merged(cp, args.infiles, outdir, expid=args.expid, recursion = args.recursion, combined_pdf=args.combined )
     
     
     
