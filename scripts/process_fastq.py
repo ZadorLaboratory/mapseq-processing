@@ -126,7 +126,7 @@ if __name__ == '__main__':
                             max_mismatch=args.max_mismatch)
     logging.debug(bcolist)
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir}')
-    #process_fastq_pairs(cp, args.infiles[0], args.infiles[1], bcolist, outdir=args.outdir, force=args.force)
+    
     
     # pack up input files into tuple list. 
     infilelist = []

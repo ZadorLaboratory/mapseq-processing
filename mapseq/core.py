@@ -781,12 +781,18 @@ def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):
 def normalize_weight(df, weightdf, columns=None):
     '''
     Weight values in realdf by spikedf
-    Assumes index is sequence.  
+    Assumes matrix index is sequence.
+    Assumes matrices have same columns!!  
+    If column numbers are mis-matched, will create empty column
     If columns is none, use/weight all columns, otherwise ignore unlisted columns
-    
     
     '''
     logging.debug(f'normalizing arg1 by arg2')
+    
+    # sanity checks, fixes. 
+    if len(df.columns) != len(weightdf.columns):
+        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
+        
     #which SSI has highest spikein?
     sumlist = []
     for col in weightdf.columns:
@@ -842,6 +848,34 @@ def normalize_scale(df, columns = None, logscale='log2', min=0.0, max=1.0):
     return ldf
 
 
+def sync_columns(df1, df2, fillval=0.0):
+    '''
+    If two DFs don't have same columns, add empty columns to make the same. 
+    Note columns may be missing in either DF, so number of columns is not enough to compare...
+    '''
+    x = set(df1.columns)
+    y = set(df2.columns)
+    w = x.difference(y) # columns to be added to df2
+    z = y.difference(x) # columns to be added to df1    
+
+    # only process if there is a problem...
+    if len(w) > 0 or len(z) > 0:
+        logging.debug('mismatched matrix columns, fixing..')
+        for c in w:
+            df2[c] = fillval
+        for c in z:
+            df1[c] = fillval
+        
+        scol = natsorted(list(df1.columns))
+        df1 = df1[scol]
+        scol = natsorted(list(df2.columns))
+        df2 = df2[scol]    
+        logging.debug(f'df1 col={df1.columns}')
+        logging.debug(f'df2 col={df2.columns}')    
+    else:
+        logging.debug('matrix columns match.')
+    
+    return (df1, df2)
 
 
 def process_merged(config, filelist, outdir=None, expid=None ):
@@ -891,6 +925,8 @@ def process_merged(config, filelist, outdir=None, expid=None ):
             sbcmdf.fillna(value=0, inplace=True)    
             logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
     
+            (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
+            
             nbcmdf = normalize_weight(rbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
             scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_logscale)
