@@ -878,7 +878,7 @@ def sync_columns(df1, df2, fillval=0.0):
     return (df1, df2)
 
 
-def process_merged(config, filelist, outdir=None, expid=None, recursion=100000 ):
+def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, combined_pdf=True ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
@@ -949,6 +949,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000 )
             g.fig.suptitle(f'{expid} {brain_id}')
             g.ax_heatmap.set_title(f'Scaled {clustermap_logscale}(counts)')
             plt.savefig(f'{outdir}/{brain_id}.{clustermap_logscale}.clustermap.pdf')
-            pdfpages.savefig(g.fig)
+            if combined_pdf:
+                pdfpages.savefig(g.fig)
    
 
