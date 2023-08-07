@@ -878,7 +878,7 @@ def sync_columns(df1, df2, fillval=0.0):
     return (df1, df2)
 
 
-def process_merged(config, filelist, outdir=None, expid=None ):
+def process_merged(config, filelist, outdir=None, expid=None, recursion=100000 ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
@@ -889,7 +889,7 @@ def process_merged(config, filelist, outdir=None, expid=None ):
     '''
     
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    sys.setrecursionlimit(100000)
+    sys.setrecursionlimit(recursion)
     
     logging.debug(f'{filelist}')
     alldf = merge_tsvs(filelist)
