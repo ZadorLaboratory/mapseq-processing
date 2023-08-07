@@ -50,7 +50,8 @@ if __name__ == '__main__':
                         help='config file.')    
 
     parser.add_argument('--combined', 
-                        action=argparse.BooleanOptionalAction
+                        action=argparse.BooleanOptionalAction,
+                        help='Create single-document PDF that combines plots'
                         )
     
     
