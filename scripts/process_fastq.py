@@ -20,7 +20,7 @@ from cshlwork.utils import JobRunner, JobStack, JobSet
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import load_sample_info, process_fastq_pairs, fix_columns_int, make_countsplots
+from mapseq.core import *
 from mapseq.barcode import load_barcodes  
 
 
