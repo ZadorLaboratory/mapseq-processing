@@ -1,3 +1,4 @@
+import glob
 import gzip
 import logging
 import math
@@ -40,6 +41,36 @@ def get_default_config():
     return cp
 
 
+def get_rtlist(sampledf):
+    rtlist = list(sampledf['rtprimer'].dropna())
+    rtlist = [int(x) for x in rtlist]
+    rtlist = [f'BC{x}' for x in rtlist]
+    return rtlist
+
+
+def package_pairfiles(infiles):
+    '''
+    pack up input list of elements into list of paired tuples. 
+    ['a','b','c','d'] -> [('a','b'),('c','d')]
+
+    '''
+    if len(infiles) %2 != 0:
+        logging.error(f'number of elements must be multiple of two!')
+        
+    infilelist = []
+    a = None
+    b = None
+    for i,v in enumerate(infiles):
+        if i % 2 == 0:
+            a = v
+        else:
+            b = v
+            t = (a,b)
+            logging.info(f'input pair of readfiles: r1={a} r2={b}')
+            infilelist.append(t)
+    return infilelist
+
+
 def guess_site(infile, sampdf):
     '''
     will look at filename and try to guess rt primer number, then 
@@ -77,7 +108,7 @@ def guess_site(infile, sampdf):
             region = df['region'][0]
         except:
             logging.warning(f'unable to get region info for {infile}')
-            region = str(rtprimer_num) # default to SSI       
+            region = str(rtprimer_num) # default to SSI label      
             
         logging.debug(f'got site={site} brain={brain} region={region} for rtprimer={rtprimer_num}') 
 
@@ -158,7 +189,8 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     realcdf.to_csv(os.path.join(dirname , f'{base}.real.counts.tsv'), sep='\t')
     lonecdf.to_csv(os.path.join(dirname , f'{base}.lone.counts.tsv'), sep='\t')
     spikecdf.to_csv(os.path.join(dirname , f'{base}.spike.counts.tsv'), sep='\t')    
-            
+    
+    # align and collapse all.         
     acrealdf = align_and_collapse(config, realcdf, dirname, base, 'real')
     acspikedf = align_and_collapse(config, spikecdf, dirname, base, 'spike')
     aclonedf = align_and_collapse(config, lonecdf, dirname, base, 'lone')
@@ -167,6 +199,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     acspikedf.to_csv(os.path.join(dirname , f'{base}.spike.tsv'), sep='\t')
     aclonedf.to_csv(os.path.join(dirname , f'{base}.lone.tsv'), sep='\t')
 
+    # add labels for merging...
     acrealdf['type'] = 'real'
     acspikedf['type'] = 'spike'
     aclonedf['type'] = 'lone'
@@ -878,6 +911,35 @@ def sync_columns(df1, df2, fillval=0.0):
     return (df1, df2)
 
 
+def filter_non_injection(rtdf, ridf, min_injection=1):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and clumns from first argument (rtdf)
+    
+    '''
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.counts >= min_injection]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf
+
+
+
 def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, combined_pdf=True ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
@@ -885,41 +947,61 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, 
      writes all output to outdir (or current dir). 
      
      
-     
     '''
     
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    sys.setrecursionlimit(recursion)
+    sys.setrecursionlimit(recursion)    
     
     logging.debug(f'{filelist}')
+    
     alldf = merge_tsvs(filelist)
     logging.debug(f'alldf len={len(alldf)}')
     
     cmap = config.get('plots','heatmap_cmap')
-    clustermap_logscale = config.get('plots','clustermap_logscale') # log10 | log2
+    require_injection = config.getboolean('analysis','require_injection')
+    min_injection = int(config.get('analysis','min_injection'))
+    min_target = int(config.get('analysis','min_target'))   
+    clustermap_scale = config.get('plots','clustermap_scale') # log10 | log2
+    
+    
+    
     if  expid is None:
         expid = 'MAPseq'
             
     outfile = f'{expid}.all.heatmap.pdf'
+    
+    logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} cmap={cmap} clustermap_scale={clustermap_scale} ')
+    
     page_dims = (11.7, 8.27)
     with pdfpages(outfile) as pdfpages:
         for brain_id in alldf['brain'].dropna().unique():
             logging.debug(f'handling brain_id={brain_id}')
             bdf = alldf[alldf['brain'] == brain_id]
-            # only plot target areas...
-            bdf = bdf[bdf['site'].str.startswith('target')]
-            rdf = bdf[bdf['type'] == 'real']      
+                        
+            # handle target areas...
+            tdf = bdf[bdf['site'].str.startswith('target')]
+            
+            
+            if require_injection:
+                # extract and filter injection areas. 
+                idf = bdf[bdf['site'].str.startswith('injection')]
+                ridf = idf[idf['type'] == 'real']  
+                if len(idf) == 0:
+                    logging.warning('require_injection=True but no VBCs from injection site.')
+                logging.debug(f'{len(tdf)} target VBCs before filtering.')      
+                tdf = filter_non_injection(tdf, idf, min_injection=min_injection)
+                logging.debug(f'{len(tdf)} target VBCs after injection filtering.')
+            
+            # reals
+            rdf = tdf[tdf['type'] == 'real']      
             rbcmdf = rdf.pivot(index='sequence', columns='label', values='counts')
-            #rbcmdf.reset_index(inplace=True, drop=True)
             scol = natsorted(list(rbcmdf.columns))
             rbcmdf = rbcmdf[scol]
             rbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
-            
-            sdf = bdf[bdf.type == 'spike']
+            # spikes
+            sdf = tdf[tdf['type'] == 'spike']
             sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
-            #sbcm.reset_index(inplace=True)
-            #sbcm.drop(labels=['sequence'], axis=1, inplace=True)
             spcol = natsorted(list(sbcmdf.columns))
             sbcmdf = sbcmdf[spcol]
             sbcmdf.fillna(value=0, inplace=True)    
@@ -929,7 +1011,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, 
             
             nbcmdf = normalize_weight(rbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
-            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_logscale)
+            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
             logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
             
             rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
@@ -937,8 +1019,13 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, 
             nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
             scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
             
-            
-            #kws = dict(cbar_kws=dict(ticks=[0, 0.50, 1], orientation='horizontal'), figsize=(6, 6))            
+            # check to ensure no columns are missing barcodes.
+            droplist = []
+            for c in scbcmdf.columns:
+                if not scbcmdf[c].sum() > 0:
+                    logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
+                    droplist.append(c)
+                    scbcmdf.drop([c],inplace=True, axis=1 )    
             
             kws = dict(cbar_kws=dict(orientation='horizontal'))  
             g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
@@ -947,9 +1034,66 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, 
             #g.ax_cbar.set_position((0.8, .2, .03, .4))
             g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
             g.fig.suptitle(f'{expid} {brain_id}')
-            g.ax_heatmap.set_title(f'Scaled {clustermap_logscale}(counts)')
-            plt.savefig(f'{outdir}/{brain_id}.{clustermap_logscale}.clustermap.pdf')
+            g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
+            plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
             if combined_pdf:
+                logging.info(f'saving plot to {outfile} ...')
                 pdfpages.savefig(g.fig)
-   
+
+
+def process_qc(config, exp_dir ):
+    '''
+    consume files in standard directories and generate qc stats and analysis report..
+    
+    '''
+    pass
+
+
+
+def process_mapseq_dir(exp_id, loglevel, force):
+    '''
+    
+    process_fastq.py -d/-v -force -b barcode_v2.<dir>.txt -s <dir>_sampleinfo.jrh.xlsx -O fastq.out fastq/*.fastq*  
+    process_ssifasta.py -d/-v -s <dir>_sampleinfo.jrh.xlsx -o <dir>.all.tsv -O ssi.out 
+    process_merged.py -d/-v  -e <dir> --combined -s <dir>_sampleinfo.jrh.xlsx -O merged.out 
+           
+    '''   
+    d = os.path.abspath(exp_id)
+    if not os.path.exists(d):
+        sys.exit(f'Experiment directory {d} does not exist.')
+
+    logging.info(f'processing experiment dir: {d}')
+    
+    config = get_default_config()
+    expconfig = f'{d}/mapseq.conf'
+
+    if os.path.exists(expconfig):
+         config.read(expconfig)
+         logging.debug(f'read {expconfig}')
+    
+         
+    try:
+       samplefile = f'{d}/{exp_id}_sampleinfo.jrh.xlsx'
+       sampdf = load_sample_info(config, samplefile)
+       rtlist = get_rtlist(sampdf)
+       
+       outdir = f'{d}/fastq.out'
+       bcfile = f'{d}/barcode_v2.{exp_id}.txt'       
+       bclist = load_barcodes(config, bcfile, labels=rtlist, outdir=outdir)
+       readfilelist = package_pairfiles( glob.glob(f'{d}/fastq/*.fastq*'))
+
+       logging.info(f'running process_fastq_pairs. readfilelist={readfilelist} outdir={outdir}')
+       process_fastq_pairs(config, readfilelist, bclist, outdir, force=False)
+       
+         
+       #process_ssifasta(config, infile, outdir=None, site=None)
+       #process_merged(config, filelist, outdir=None, expid=None, recursion=100000, combined_pdf=True)
+       #process_qc(config, exp_dir)
+
+    except Exception as ex:
+        logging.error(f'error while handling {d} ')
+        logging.warning(traceback.format_exc(None))
+        
+
+
 

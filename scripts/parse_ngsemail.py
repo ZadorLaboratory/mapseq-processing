@@ -257,7 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('-o','--outdir', 
                     metavar='outdir',
                     required=False,
-                    default='/grid/mbseq/data_norepl/mapseq/library_data', 
+                    default='/grid/mbseq/data_norepl/mapseq/raw_data/nextseq', 
                     type=str, 
                     help='outdir on server. ') 
 

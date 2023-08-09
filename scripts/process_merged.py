@@ -51,6 +51,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--combined', 
                         action=argparse.BooleanOptionalAction,
+                        default=True,
                         help='Create single-document PDF that combines plots'
                         )
     
@@ -91,8 +92,6 @@ if __name__ == '__main__':
        
 
     args= parser.parse_args()
-    
-    
     
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)

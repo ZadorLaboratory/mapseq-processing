@@ -92,10 +92,10 @@ if __name__ == '__main__':
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
-                    required=False,
-                    default=None, 
+                    required=True,
+                    default='experiment.all.tsv', 
                     type=str, 
-                    help='out file. stdout if not given.')  
+                    help='out file for all merged info')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -179,7 +179,7 @@ if __name__ == '__main__':
         logging.info(f'guessed site={site} brain={brain} region={region}')
         try:
             outdf = process_ssifasta(cp, infile, outdir=outdir, site=site)
-            logging.debug(f'initial outdf {outdf}')
+            logging.debug(f'initial outdf\n{outdf}')
             outdf['site'] = site
             outdf['brain'] = brain
             outdf['region'] = region
