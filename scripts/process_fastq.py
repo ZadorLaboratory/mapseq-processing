@@ -123,6 +123,7 @@ if __name__ == '__main__':
                             outdir=args.outdir, 
                             eol=True, 
                             max_mismatch=args.max_mismatch)
+    logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir}')
            
