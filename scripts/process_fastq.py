@@ -10,18 +10,14 @@ import pandas as pd
 
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
-
-gitpath=os.path.expanduser("~/git/mapseq")
+gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from cshlwork.utils import write_config
 from cshlwork.utils import JobRunner, JobStack, JobSet
 
-gitpath=os.path.expanduser("~/git/mapseq-processing")
-sys.path.append(gitpath)
-
 from mapseq.core import *
-from mapseq.barcode import load_barcodes  
+from mapseq.barcode import *  
 
 
 if __name__ == '__main__':

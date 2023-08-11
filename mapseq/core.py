@@ -28,10 +28,41 @@ from scipy.sparse.csgraph import connected_components
 
 from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df, remove_base_repeats
 from cshlwork.utils import run_command_shell, NonZeroReturnException, merge_dfs 
-from cshlwork.utils import merge_tsvs, setup_logging, fix_columns_int
+from cshlwork.utils import merge_tsvs, setup_logging
 from alignment.bowtie import run_bowtie, make_bowtie_df
 
 from mapseq.barcode import *
+
+def fix_columns_int(df, columns):
+    '''
+    forces column in dataframe to be an integer. NaNs become '0'
+    Only floating points can be NaN. No good solution for integers...
+    '''
+    for col in columns:
+        try:
+            logging.debug(f'trying to fix col {col}')
+            fixed = np.array(df[col], np.int16)
+            logging.debug(f'fixed=\n{fixed}')
+            df[col] = fixed
+                
+        except ValueError:
+            logging.debug(f'invalid literal in {col}')
+    return df
+
+def fix_columns_str(df, columns):
+    '''
+    forces column in dataframe to be string NaNs become ''
+    '''
+    for col in columns:
+        try:
+            logging.debug(f'trying to fix col {col}')
+            df[col].replace(0,'',inplace=True)
+            df[col].replace(np.nan,'', inplace=True)
+                 
+        except Exception as ex:
+            logging.error(f'error while handling {col} ')
+            logging.warning(traceback.format_exc(None))
+    return df
 
 
 def get_default_config():
@@ -535,34 +566,67 @@ def split_spike_real_lone_barcodes(config, df):
 
 def load_sample_info(config, file_name):
     #
-    # Parses Excel spreadsheet to get orderly sample metadata.     
+    # Parses Excel spreadsheet to get orderly sample metadata, saves as sampleinfo.tsv.     
+    # OR Reads in sampleinfo.tsv
     # Assumes various properties of spreadsheet that need to stay static. 
     #
     #   ['Tube # by user', 'Our Tube #', 'Sample names provided by user',
     #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
     #
-    # If brain is not given, or is empty, all are set to 1. 
-    # If region is not given, or is empty, all are set to brain (1 if no brain info was given).
+    # If brain is not given, or is empty, all are set to 'brain1'. 
+    # If region is not given, or is empty, all are set to <rtprimer>
     # 
-    #
     
-    sheet_columns = ['Tube # by user', 'Our Tube #', 'Sample names provided by user', 'Site information', 'RT primers for MAPseq', 'Brain', 'Region' ]
-    sample_columns = ['usertube',       'ourtube',   'samplename',                    'siteinfo',          'rtprimer',             'brain', 'region'] 
-    # int_sample_col = ['usertube', 'ourtube','rtprimer','brain']
-    int_sample_col = ['usertube', 'ourtube','rtprimer']     # brain is sometimes not a number. 
-    sheet_name = 'Sample information'
-    edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
-    sdf = pd.DataFrame()
+    # Mappings for excel columns. 
+    sheet_to_sample = {
+            'Tube # by user'                  : 'usertube', 
+            'Our Tube #'                      : 'ourtube', 
+            'Sample names provided by user'   : 'samplename', 
+            'Site information'                : 'siteinfo',
+            'RT primers for MAPseq'           : 'rtprimer',
+            'Brain'                           : 'brain',
+            'Region'                          : 'region',
+        }
     
-    for i, sc in enumerate(sheet_columns):
-        try:
-            cser = edf[sc]
-            logging.debug(f'column for {sc}:\n{cser}')
-            sdf[sample_columns[i]] = cser
-        except:
-            sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
-    
-    sdf = fix_columns_int(sdf, columns=int_sample_col)
+    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region'] 
+    int_sample_col = ['usertube', 'ourtube', 'rtprimer']     # brain is often not a number. 
+    str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
+
+    if file_name.endswith('.xlsx'):
+        sheet_name = 'Sample information'
+        edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
+        sdf = pd.DataFrame()
+        
+        for ecol in edf.columns:
+            ecol_stp = ecol.strip()    
+            try:
+                # map using stripped column name, retrieve using actual excel column name
+                # which may have trailing spaces...
+                scol = sheet_to_sample[ecol_stp]
+                logging.debug(f'found mapping {ecol} -> {scol}')
+                cser = edf[ecol]
+                logging.debug(f'column for {scol}:\n{cser}')
+                sdf[scol] = cser
+            
+            except KeyError:
+                logging.debug(f'no mapping for {ecol} continuing...')
+            
+            except Exception as ex:
+                logging.error(f'error while handling {ecol} ')
+                logging.warning(traceback.format_exc(None))
+
+                #sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
+        sdf = fix_columns_int(sdf, columns=int_sample_col)
+        sdf = fix_columns_str(sdf, columns=str_sample_col)
+
+    elif file_name.endswith('.tsv'):
+        sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
+        #df.fillna(value='', inplace=True)
+        sdf = sdf.astype('str', copy=False)    
+        sdf = fix_columns_int(sdf, columns=int_sample_col)
+    else:
+        logging.error(f'file {file_name} neither .xlsx or .tsv')
+        sdf = None
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
