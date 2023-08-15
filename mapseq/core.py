@@ -111,6 +111,7 @@ def guess_site(infile, sampdf):
     consist of digits. 
     
     '''
+    logging.info(f'guessing site/brain/region for FASTA file {infile}')
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
