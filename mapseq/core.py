@@ -1005,7 +1005,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
 
 
 
-def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, combined_pdf=True ):
+def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
@@ -1099,19 +1099,22 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, 
                 logging.debug(f'dropping columns {droplist}')
                 scbcmdf.drop(droplist,inplace=True, axis=1 )    
                 
-                kws = dict(cbar_kws=dict(orientation='horizontal'))  
-                g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
-                #g.ax_cbar.set_title('scaled log10(cts)')
-                x0, _y0, _w, _h = g.cbar_pos
-                #g.ax_cbar.set_position((0.8, .2, .03, .4))
-                g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
-                g.fig.suptitle(f'{expid} {brain_id}')
-                g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
-                plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
-                if combined_pdf:
-                    logging.info(f'saving plot to {outfile} ...')
-                    pdfpages.savefig(g.fig)
-
+                try:
+                    kws = dict(cbar_kws=dict(orientation='horizontal'))  
+                    g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
+                    #g.ax_cbar.set_title('scaled log10(cts)')
+                    x0, _y0, _w, _h = g.cbar_pos
+                    #g.ax_cbar.set_position((0.8, .2, .03, .4))
+                    g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
+                    g.fig.suptitle(f'{expid} {brain_id}')
+                    g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
+                    plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
+                    if combined_pdf:
+                        logging.info(f'saving plot to {outfile} ...')
+                        pdfpages.savefig(g.fig)
+                except ValueError as vee:
+                    logging.warning(f'nable to clustermap plot for {brain_id}. Message: {vee.message}')
+                    
             logging.info(f'done with brain={brain_id}')
 
 

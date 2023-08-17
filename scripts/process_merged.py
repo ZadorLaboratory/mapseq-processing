@@ -59,7 +59,7 @@ if __name__ == '__main__':
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
-                        default=100000,
+                        default=200000,
                         type=int, 
                         help='Max recursion. Handle larger input to collapse() Default is ~3000.')
 
