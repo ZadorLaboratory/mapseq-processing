@@ -1087,6 +1087,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 nbcmdf = normalize_weight(rbcmdf, sbcmdf)
                 logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
                 scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
+                scbcmdf.fillna(value=0, inplace=True)
                 logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
                 
                 rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
@@ -1103,7 +1104,6 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 logging.debug(f'dropping columns {droplist}')
                 scbcmdf.drop(droplist,inplace=True, axis=1 )    
                 
-                scbcmdf.fillna(value=0, inplace=True)
                 
                 try:
                     kws = dict(cbar_kws=dict(orientation='horizontal'))  
