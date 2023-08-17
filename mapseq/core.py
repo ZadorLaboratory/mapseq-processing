@@ -1040,7 +1040,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
     page_dims = (11.7, 8.27)
     with pdfpages(outfile) as pdfpages:
         bidlist = list(alldf['brain'].dropna().unique())
-        bidlist = [ x for s in bidlist if len(x) > 0 ]
+        bidlist = [ x for x in bidlist if len(x) > 0 ]
         bidlist.sort()
         logging.debug(f'handling brain list: {bidlist}')
         for brain_id in bidlist:
