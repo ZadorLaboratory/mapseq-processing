@@ -1114,8 +1114,8 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                     if combined_pdf:
                         logging.info(f'saving plot to {outfile} ...')
                         pdfpages.savefig(g.fig)
-                except ValueError as vee:
-                    logging.warning(f'nable to clustermap plot for {brain_id}. Message: {vee}')
+                except Exception as ee:
+                    logging.warning(f'nable to clustermap plot for {brain_id}. Message: {ee}')
                     
             logging.info(f'done with brain={brain_id}')
 
