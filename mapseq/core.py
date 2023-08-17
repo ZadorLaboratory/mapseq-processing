@@ -885,7 +885,7 @@ def normalize_weight(df, weightdf, columns=None):
     If columns is none, use/weight all columns, otherwise ignore unlisted columns
     
     '''
-    logging.debug(f'normalizing arg1 by arg2')
+    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
     
     # sanity checks, fixes. 
     if len(df.columns) != len(weightdf.columns):
@@ -1040,70 +1040,80 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=100000, 
     page_dims = (11.7, 8.27)
     with pdfpages(outfile) as pdfpages:
         for brain_id in alldf['brain'].dropna().unique():
+            valid = True
             logging.debug(f'handling brain_id={brain_id}')
             bdf = alldf[alldf['brain'] == brain_id]
                         
             # handle target areas...
             tdf = bdf[bdf['site'].str.startswith('target')]
-            
-            
+            rtdf = tdf[tdf['type'] == 'real'] 
             if require_injection:
-                # extract and filter injection areas. 
+                # extract and filter injection areas.
+                logging.debug(f'require_injection={require_injection} min_injection={min_injection}') 
                 idf = bdf[bdf['site'].str.startswith('injection')]
                 ridf = idf[idf['type'] == 'real']  
-                if len(idf) == 0:
-                    logging.warning('require_injection=True but no VBCs from injection site.')
-                logging.debug(f'{len(tdf)} target VBCs before filtering.')      
-                tdf = filter_non_injection(tdf, idf, min_injection=min_injection)
-                logging.debug(f'{len(tdf)} target VBCs after injection filtering.')
+                if len(ridf) == 0:
+                    logging.warning('require_injection=True but no real VBCs from any injection site.')
+                logging.debug(f'{len(rtdf)} ral target VBCs before filtering.')      
+                frtdf = filter_non_injection(rtdf, ridf, min_injection=min_injection)
+                logging.debug(f'{len(rtdf)} real target VBCs after injection filtering.')
+                if not len(rtdf) > 0:
+                    logging.warning(f'No VBCs passed injection filtering! Skip brain.')
+                    valid = False
+            else:
+                logging.debug(f'require_injection={require_injection} proceeding...')
+                frtdf = rtdf
             
-            # reals
-            rdf = tdf[tdf['type'] == 'real']      
-            rbcmdf = rdf.pivot(index='sequence', columns='label', values='counts')
-            scol = natsorted(list(rbcmdf.columns))
-            rbcmdf = rbcmdf[scol]
-            rbcmdf.fillna(value=0, inplace=True)
-            logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
-            # spikes
-            sdf = tdf[tdf['type'] == 'spike']
-            sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
-            spcol = natsorted(list(sbcmdf.columns))
-            sbcmdf = sbcmdf[spcol]
-            sbcmdf.fillna(value=0, inplace=True)    
-            logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
-    
-            (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
-            
-            nbcmdf = normalize_weight(rbcmdf, sbcmdf)
-            logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
-            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
-            logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
-            
-            rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
-            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
-            nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
-            scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
-            
-            # check to ensure no columns are missing barcodes.
-            droplist = []
-            for c in scbcmdf.columns:
-                if not scbcmdf[c].sum() > 0:
-                    logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
-                    droplist.append(c)
-                    scbcmdf.drop([c],inplace=True, axis=1 )    
-            
-            kws = dict(cbar_kws=dict(orientation='horizontal'))  
-            g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
-            #g.ax_cbar.set_title('scaled log10(cts)')
-            x0, _y0, _w, _h = g.cbar_pos
-            #g.ax_cbar.set_position((0.8, .2, .03, .4))
-            g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
-            g.fig.suptitle(f'{expid} {brain_id}')
-            g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
-            plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
-            if combined_pdf:
-                logging.info(f'saving plot to {outfile} ...')
-                pdfpages.savefig(g.fig)
+            if valid:       
+                rbcmdf = frtdf.pivot(index='sequence', columns='label', values='counts')
+                scol = natsorted(list(rbcmdf.columns))
+                rbcmdf = rbcmdf[scol]
+                rbcmdf.fillna(value=0, inplace=True)
+                logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
+                # spikes
+                sdf = tdf[tdf['type'] == 'spike']
+                sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
+                spcol = natsorted(list(sbcmdf.columns))
+                sbcmdf = sbcmdf[spcol]
+                sbcmdf.fillna(value=0, inplace=True)    
+                logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
+        
+                (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
+                
+                nbcmdf = normalize_weight(rbcmdf, sbcmdf)
+                logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+                scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
+                logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
+                
+                rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
+                sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
+                nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
+                scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
+                
+                # check to ensure no columns are missing barcodes.
+                droplist = []
+                for c in scbcmdf.columns:
+                    if not scbcmdf[c].sum() > 0:
+                        logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
+                        droplist.append(c)
+                logging.debug(f'dropping columns {droplist}')
+                scbcmdf.drop(droplist,inplace=True, axis=1 )    
+                
+                kws = dict(cbar_kws=dict(orientation='horizontal'))  
+                g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
+                #g.ax_cbar.set_title('scaled log10(cts)')
+                x0, _y0, _w, _h = g.cbar_pos
+                #g.ax_cbar.set_position((0.8, .2, .03, .4))
+                g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
+                g.fig.suptitle(f'{expid} {brain_id}')
+                g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
+                plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
+                if combined_pdf:
+                    logging.info(f'saving plot to {outfile} ...')
+                    pdfpages.savefig(g.fig)
+
+            logging.info(f'done with brain={brain_id}')
+
 
 
 def process_qc(config, exp_dir ):
