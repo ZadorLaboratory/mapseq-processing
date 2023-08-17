@@ -1099,6 +1099,8 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 logging.debug(f'dropping columns {droplist}')
                 scbcmdf.drop(droplist,inplace=True, axis=1 )    
                 
+                scbcmdf.fillna(value=0, inplace=True)
+                
                 try:
                     kws = dict(cbar_kws=dict(orientation='horizontal'))  
                     g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
