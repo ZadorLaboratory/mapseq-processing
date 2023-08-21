@@ -116,9 +116,10 @@ def guess_site(infile, sampdf):
     dirname = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
     (base, ext) = os.path.splitext(filename)   
-    rtprimer_num = ''.join(i for i in base if i.isdigit())
+    head = base.split('.')[0]
+    rtprimer_num = ''.join(i for i in head if i.isdigit())
     rtprimer_num = int(rtprimer_num)
-    logging.debug(f'base={base} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
+    logging.debug(f'base={base} head={head} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
     
     df = sampdf[sampdf['rtprimer'] == rtprimer_num]
     df.reset_index(inplace=True, drop=True)
@@ -145,7 +146,7 @@ def guess_site(infile, sampdf):
         logging.debug(f'got site={site} brain={brain} region={region} for rtprimer={rtprimer_num}') 
 
     logging.debug(f'got site={site} for rtprimer guessed from {infile}')
-    return (site, brain, region )
+    return (rtprimer_num, site, brain, region )
     
     
     
@@ -154,9 +155,8 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     by default, outdir will be same dir as infile
     assumes infile fasta has already been trimmed to remove SSI
     
-
-    site = ['control','injection','target']   
-        Will use relevant threshold. If None, will use default threshold
+    site = ['target-control','injection-control','target','target-negative',target-lone']   
+    Will use relevant threshold. If None, will use default threshold
     
     '''
     aligner = config.get('ssifasta','tool')
@@ -183,7 +183,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
         
-    threshold = calculate_threshold(config, cdf, site)
+    threshold = get_threshold(config, cdf, site)
     logging.debug(f'got threshold={threshold} for site {site}')
     tdf = threshold_counts(config, cdf, threshold=threshold)
     logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
@@ -482,10 +482,116 @@ def trim_fasta(config, infile, outdir=None, length=44):
     return ofpath
 
 
-def calculate_threshold(config, df, site=None):
+def cumulative_fract_idx_naive(ser, fract):
+    '''
+    value at index of row that marks cumulative fraction of total. 
+    assumes series sorted in descending order. 
+    starts with largest value. 
+    '''
+    sum_total = ser.sum()
+    fraction_int = int(fract * sum_total)
+    cum_total = 0
+    val = 0
+    idx = 0
+    for idx in range(0, len(ser)):
+        val = ser[idx]
+        cum_total = cum_total + val
+        fraction =  cum_total / sum_total
+        if cum_total > fraction_int:
+            break
+        else:
+            logging.debug(f'at idx={idx} fraction is {fraction}')
+    logging.debug(f'val={val} idx={idx} cum_total={cum_total} ')
+    return val    
+        
+
+def cumulative_fract_idx(ser, fract):
+    '''
+    value at index of row that marks cumulative fraction of total. 
+    assumes series sorted in descending order. 
+    starts with largest value. 
+    '''
+    sum_total = ser.sum()
+    fraction_int = int(fract * sum_total)
+    cumsum = ser.cumsum()
+    ltser = cumsum[cumsum < fraction_int]
+    idx =  ltser.index[-1]
+    val = ser[idx]
+    logging.debug(f'val={val} idx={idx} ')
+    return val    
+
+
+def calculate_thresholds_all(config, sampdf, filelist, outfile=None, fraction=None ):
+    '''
+    reads in all counts.df (assumes counts column). 
+    calculates thresholds for 'target' and 'injection'
+    
+    returns dictionary for thresholds for each category, e.g. 
+    { 'target' : 100,
+    'injection' :  1000
+    }
+    '''
+    if fraction is not None:
+        config.set('ssifasta','count_threshold_fraction', fraction)
+    
+    outlist = []
+    
+    for filename in filelist:
+       logging.debug(f'handling {filename}') 
+       (rtprimer, site, brain, region) = guess_site(filename, sampdf)
+       cdf = pd.read_csv(filename ,sep='\t', index_col=0)
+       val = calculate_threshold(config, cdf, site )
+       outlist.append( (rtprimer, site, val))
+
+    return outlist
+    
+   
+    
+
+def calculate_threshold(config, cdf, site=None):
     '''
     takes counts dataframe (with 'counts' column) 
+    if 'label', use that. 
     and calculates 'shoulder' threshold
+    site = ['control','injection','target']   
+        Will use relevant threshold. If None, will use default threshold
+    
+    target_threshold=100
+    target_ctrl_threshold=1000
+    inj_threshold=2
+    inj_ctrl_threshold=2
+    
+    '''
+    count_pct = float(config.get('ssifasta','count_threshold_fraction'))
+    label = 'BCXXX'
+    
+    try:
+        label = cdf['label'].unique()[0]
+    except:
+        logging.debug(f'no label in DF')
+        
+    # assess distribution.
+    counts = cdf['counts']
+    clength = len(counts)
+    max = counts.max()
+    min = counts.min()
+    mean = counts.mean()
+    logging.info(f'handling {label} length={clength} max={max} min={min} ')
+    
+    val =  cumulative_fract_idx(counts, count_pct)
+    count_threshold=val
+      
+    
+    #if site is None:
+    #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
+    #else:
+    #    count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
+    #logging.debug(f'count threshold for {site} = {count_threshold}')
+    return count_threshold
+
+
+def get_threshold(config, cdf, site=None):
+    '''
     site = ['control','injection','target']   
         Will use relevant threshold. If None, will use default threshold
     
@@ -616,7 +722,17 @@ def load_sample_info(config, file_name):
                 logging.error(f'error while handling {ecol} ')
                 logging.warning(traceback.format_exc(None))
 
-                #sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
+            #sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
+        for scol in sample_columns:
+            try:
+                ser = sdf[scol]
+            except KeyError as ke:
+                logging.warn(f'no column {scol}, required. Creating...')
+                if scol == 'samplename':
+                    sdf[scol] = sdf['ourtube']
+                
+        sdf.replace(r'^s*$', float('NaN'), regex = True, inplace=True)
+        sdf.dropna(how='all', axis=0, inplace=True)        
         sdf = fix_columns_int(sdf, columns=int_sample_col)
         sdf = fix_columns_str(sdf, columns=str_sample_col)
 
@@ -823,6 +939,7 @@ def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):
     '''
      makes combined figure with all plots. 
      assumes column 'label' for title. 
+     
     '''
     
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
@@ -1028,12 +1145,15 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
     min_target = int(config.get('analysis','min_target'))   
     clustermap_scale = config.get('plots','clustermap_scale') # log10 | log2
     
-    
-    
-    if  expid is None:
+      
+    if expid is None:
         expid = 'MAPseq'
             
     outfile = f'{expid}.all.heatmap.pdf'
+    if require_injection:
+        outfile = f'{expid}.all.{min_injection}.{min_target}.{clustermap_scale}.pdf'
+    else:
+        outfile = f'{expid}.all.noinj.{min_target}.{clustermap_scale}.pdf'
     
     logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} cmap={cmap} clustermap_scale={clustermap_scale} ')
     

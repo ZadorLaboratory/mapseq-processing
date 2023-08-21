@@ -48,21 +48,28 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='config file.')    
+                        help='config file.')  
+    
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file or sampleinfo.tsv. ')  
 
-    parser.add_argument('-e','--expid', 
-                    metavar='expid',
+    parser.add_argument('-f','--fraction', 
+                    metavar='fraction',
                     required=False,
                     default=None,
-                    type=str, 
-                    help='explicitly provided experiment id')
+                    type=float, 
+                    help='threshold that captures fraction of counts')
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='PDF plot out file. "countsplots.pdf" if not given')  
+                    help='PDF plot out file. "thresholds.tsv" if not given')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -90,8 +97,10 @@ if __name__ == '__main__':
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
+    
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
       
-   
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
@@ -104,6 +113,7 @@ if __name__ == '__main__':
         outdir = dirname
 
     #make_countsplots(cp, args.infiles)
-    #make_countsplots(cp, args.infiles, outfile=args.outfile, expid=args.expid)
-    make_countsplot_combined_sns(cp, args.infiles, outfile=args.outfile, expid=args.expid )
+    threshlist = calculate_thresholds_all(cp, sampdf, args.infiles, outfile=args.outfile, fraction=args.fraction)
+    for item in threshlist:
+        print(item)
       
