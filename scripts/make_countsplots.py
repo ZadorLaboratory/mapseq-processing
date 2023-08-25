@@ -56,6 +56,13 @@ if __name__ == '__main__':
                     default=None,
                     type=str, 
                     help='explicitly provided experiment id')
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file or sampleinfo.tsv. ') 
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -102,8 +109,10 @@ if __name__ == '__main__':
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
         outdir = dirname
+        
+    sampdf = load_sample_info(cp, args.sampleinfo)
 
     #make_countsplots(cp, args.infiles)
     #make_countsplots(cp, args.infiles, outfile=args.outfile, expid=args.expid)
-    make_countsplot_combined_sns(cp, args.infiles, outfile=args.outfile, expid=args.expid )
+    make_countsplot_combined_sns(cp, sampdf, args.infiles, outfile=args.outfile, expid=args.expid )
       

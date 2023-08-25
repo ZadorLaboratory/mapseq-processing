@@ -196,12 +196,12 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     tdf.to_csv(of, sep='\t') 
     
     # now have actual viral barcode df with *unique molecule counts.*
-    bcdf = make_counts_df(config, tdf)
+    vbcdf = make_counts_df(config, tdf)
     of = os.path.join(dirname , f'{base}.32.counts.tsv')
-    bcdf.to_csv(of, sep='\t')     
+    vbcdf.to_csv(of, sep='\t')     
     
     # split out spike, real, lone, otherwise same as 32.counts.tsv    
-    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, bcdf)
+    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
     
     # write out this step...
     realdf.to_csv(os.path.join(dirname , f'{base}.real.seq.tsv'), sep='\t')
@@ -540,12 +540,10 @@ def calculate_thresholds_all(config, sampdf, filelist, outfile=None, fraction=No
        logging.debug(f'handling {filename}') 
        (rtprimer, site, brain, region) = guess_site(filename, sampdf)
        cdf = pd.read_csv(filename ,sep='\t', index_col=0)
-       val = calculate_threshold(config, cdf, site )
-       outlist.append( (rtprimer, site, val))
-
+       (count_threshold, label, clength, counts_max, counts_min)   = calculate_threshold(config, cdf, site )
+       outlist.append( [rtprimer, site, count_threshold, label, clength, counts_max, counts_min    ])
     return outlist
-    
-   
+     
     
 
 def calculate_threshold(config, cdf, site=None):
@@ -563,31 +561,36 @@ def calculate_threshold(config, cdf, site=None):
     
     '''
     count_pct = float(config.get('ssifasta','count_threshold_fraction'))
+    min_threshold = int(config.get('ssifasta','count_threshold_min'))
     label = 'BCXXX'
     
     try:
         label = cdf['label'].unique()[0]
     except:
-        logging.debug(f'no label in DF')
+        logging.warn(f'no SSI label in DF')
         
     # assess distribution.
     counts = cdf['counts']
     clength = len(counts)
-    max = counts.max()
-    min = counts.min()
-    mean = counts.mean()
-    logging.info(f'handling {label} length={clength} max={max} min={min} ')
+    counts_max = counts.max()
+    counts_min = counts.min()
+    counts_mean = counts.mean()
+    logging.info(f'handling {label} length={clength} max={counts_max} min={counts_min} ')
     
     val =  cumulative_fract_idx(counts, count_pct)
-    count_threshold=val
-      
+    if val < min_threshold:
+        logging.warning(f'calc threshold < min...')
+    else:
+        logging.debug(f'calculated count threshold={val} for SSI={label}')
+    count_threshold=max(val, min_threshold)
+    
     
     #if site is None:
     #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
     #else:
     #    count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
     #logging.debug(f'count threshold for {site} = {count_threshold}')
-    return count_threshold
+    return (count_threshold, label, clength, counts_max, counts_min)
 
 
 def get_threshold(config, cdf, site=None):
@@ -916,7 +919,7 @@ def make_countsplots(config, filelist ):
         plt.savefig(bcfile.replace('tsv', 'pdf'))
 
 
-def counts_axis_plot_sns(ax, bcdata):
+def counts_axis_plot_sns(ax, bcdata, labels):
     '''
     Creates individual axes for single plot within figure. 
     
@@ -926,22 +929,24 @@ def counts_axis_plot_sns(ax, bcdata):
     sns.lineplot(ax=ax, x=bcdata['log10index'], y=bcdata['log10counts'] )
     s = bcdata.counts.sum()
     n = len(bcdata)
-    t = bcdata.counts.max()    
-    ax.set_title(bcdata['label'][0],fontsize=10)
-    ax.text(0.15, 0.2, f'n={n}\ntop={t}\nsum={s}', fontsize=9) #add text
+    t = bcdata.counts.max()
+    
+
+    title = f"{bcdata['label'][0]}"      
+    ax.set_title(title, fontsize=10)
+    ax.text(0.15, 0.2, f"site={labels['site']}\nn={n}\ntop={t}\nsum={s}\nthreshold={labels['threshold']}", fontsize=9) #add text
     
     #sns.move_legend(ax, "lower left")
     #ax.set_xlabel("log10(BC index)", fontsize=5)
     #ax.set_ylabel("log10(BC counts)",fontsize=5)
 
 
-def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):    
+def make_countsplot_combined_sns(config, sampdf, filelist, outfile=None, expid=None ):    
     '''
      makes combined figure with all plots. 
      assumes column 'label' for title. 
      
     '''
-    
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     
     if outfile is None:
@@ -983,8 +988,17 @@ def make_countsplot_combined_sns(config, filelist, outfile=None, expid=None ):
         for i, bcfile in enumerate(filelist):
             logging.debug(f'handling {bcfile}')
             bcdata = pd.read_csv(bcfile, sep='\t')
+            (rtprimer_num, site, brain, region ) = guess_site(bcfile, sampdf )           
+            threshold = calculate_threshold(config, bcdata)
+            labels = {'rtprimer':rtprimer_num,
+                      'site':site,
+                      'brain':brain,
+                      'region': region,
+                      'threshold' : threshold
+                      }
+            
             ax = axlist[i]
-            counts_axis_plot_sns(ax, bcdata)
+            counts_axis_plot_sns(ax, bcdata, labels=labels)
     
         for f in figlist:
             pdfpages.savefig(f)
