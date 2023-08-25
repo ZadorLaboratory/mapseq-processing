@@ -555,15 +555,13 @@ def calc_final_thresholds(config, threshdf):
 
 
 
-def calc_thresholds_all(config, sampdf, filelist, outfile=None, fraction=None ):
+def calc_thresholds_all(config, sampdf, filelist, fraction=None ):
     '''
-    reads in all counts.df (assumes counts column). 
+    reads in all counts.df (assumes counts column).
+     
     calculates thresholds for 'target' and 'injection'
     
-    returns dictionary for thresholds for each category, e.g. 
-    { 'target' : 100,
-    'injection' :  1000
-    }
+    returns 2 dfs. one general info, one with final thresholds
     '''
     if fraction is not None:
         config.set('ssifasta','count_threshold_fraction', fraction)

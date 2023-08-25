@@ -64,17 +64,17 @@ if __name__ == '__main__':
                     type=float, 
                     help='threshold that captures fraction of counts')
     
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='PDF plot out file. "thresholds.tsv" if not given')  
+#    parser.add_argument('-o','--outfile', 
+#                    metavar='outfile',
+#                   required=False,
+#                    default=None, 
+#                    type=str, 
+#                    help='PDF plot out file. "thresholds.tsv" if not given')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
-                    default=None, 
+                    default='./', 
                     type=str, 
                     help='outdir. input file base dir if not given.')     
 
@@ -113,14 +113,15 @@ if __name__ == '__main__':
         outdir = dirname
 
     #make_countsplots(cp, args.infiles)
-    (finaldf, threshdf) = calc_thresholds_all(cp, sampdf, args.infiles, outfile=args.outfile, fraction=args.fraction)
+    (finaldf, threshdf) = calc_thresholds_all(cp, sampdf, args.infiles, fraction=args.fraction)
         
-    if args.outfile is None:
+    if args.outdir is None:
         print(threshdf)
         print(finaldf)
     
     else:    
-        threshdf.to_csv(args.outfile, sep='\t')
+        threshdf.to_csv(f'{args.outdir}/thresholds.info.tsv', sep='\t')
+        finaldf.to_csv(f'{args.outdir}/thresholds.final.tsv', sep='\t')
         
         
         
