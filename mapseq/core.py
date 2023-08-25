@@ -521,7 +521,41 @@ def cumulative_fract_idx(ser, fract):
     return val    
 
 
-def calculate_thresholds_all(config, sampdf, filelist, outfile=None, fraction=None ):
+def calc_final_thresholds(config, threshdf):
+    '''
+    take threshold df for all sites, and derive final thresholds df for
+    
+    threshdf columns used:   site  count_threshold   
+    
+    target_threshold = 100
+    target-control_threshold = 1000
+    target-negative_threshold = 100
+    target-lone_threshold = 100
+    injection_threshold = 2
+    injection-control_threshold=2
+    
+    
+        'site'  'threshold'
+    
+    
+    '''
+    tdf = pd.concat( [threshdf[threshdf['site'] == 'target-negative'], 
+                      threshdf[threshdf['site'] == 'target']] )
+    idf = threshdf[threshdf['site'] == 'injection']
+    
+    target_thresh = int(tdf['count_threshold'].min())
+    inj_thresh = int(idf['count_threshold'].min())
+
+    finaldf = pd.DataFrame( data=[ ['target', target_thresh ],['injection', inj_thresh] ], 
+                            columns= ['site','threshold'] )
+                  
+    return finaldf
+    
+
+
+
+
+def calc_thresholds_all(config, sampdf, filelist, outfile=None, fraction=None ):
     '''
     reads in all counts.df (assumes counts column). 
     calculates thresholds for 'target' and 'injection'
@@ -542,7 +576,10 @@ def calculate_thresholds_all(config, sampdf, filelist, outfile=None, fraction=No
        cdf = pd.read_csv(filename ,sep='\t', index_col=0)
        (count_threshold, label, clength, counts_max, counts_min)   = calculate_threshold(config, cdf, site )
        outlist.append( [rtprimer, site, count_threshold, label, clength, counts_max, counts_min    ])
-    return outlist
+    threshdf = pd.DataFrame(data=outlist, columns=['rtprimer', 'site', 'count_threshold', 'label', 'counts_length', 'counts_max', 'counts_min'  ])
+    finaldf = calc_final_thresholds(config, threshdf)   
+    
+    return (finaldf, threshdf)
      
     
 

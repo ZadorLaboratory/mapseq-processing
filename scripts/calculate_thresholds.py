@@ -113,14 +113,15 @@ if __name__ == '__main__':
         outdir = dirname
 
     #make_countsplots(cp, args.infiles)
-    threshlist = calculate_thresholds_all(cp, sampdf, args.infiles, outfile=args.outfile, fraction=args.fraction)
-    
+    (finaldf, threshdf) = calc_thresholds_all(cp, sampdf, args.infiles, outfile=args.outfile, fraction=args.fraction)
+        
     if args.outfile is None:
-        for item in threshlist:
-            print(item)
-    else:
-        df = pd.DataFrame(data=threshlist, columns=['rtprimer', 'site', 'count_threshold', 'label', 'counts_length', 'counts_max', 'counts_min'  ])
-        df.to_csv(args.outfile, sep='\t')
+        print(threshdf)
+        print(finaldf)
+    
+    else:    
+        threshdf.to_csv(args.outfile, sep='\t')
+        
         
         
       
