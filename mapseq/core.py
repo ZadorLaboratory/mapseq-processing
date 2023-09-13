@@ -515,8 +515,12 @@ def cumulative_fract_idx(ser, fract):
     fraction_int = int(fract * sum_total)
     cumsum = ser.cumsum()
     ltser = cumsum[cumsum < fraction_int]
-    idx =  ltser.index[-1]
-    val = ser[idx]
+    if len(ltser) < 1:
+        idx = 0
+        val = cumsum
+    else:
+        idx =  ltser.index[-1]
+        val = ser[idx]
     logging.debug(f'val={val} idx={idx} ')
     return val    
 
