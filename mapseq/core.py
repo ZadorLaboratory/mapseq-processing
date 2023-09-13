@@ -986,6 +986,8 @@ def make_countsplot_combined_sns(config, sampdf, filelist, outfile=None, expid=N
      assumes column 'label' for title. 
      
     '''
+    min_ssi_count = int(config.get('analysis','min_ssi_count')) 
+    
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     
     if outfile is None:
@@ -1027,17 +1029,21 @@ def make_countsplot_combined_sns(config, sampdf, filelist, outfile=None, expid=N
         for i, bcfile in enumerate(filelist):
             logging.debug(f'handling {bcfile}')
             bcdata = pd.read_csv(bcfile, sep='\t')
-            (rtprimer_num, site, brain, region ) = guess_site(bcfile, sampdf )           
-            threshold = calculate_threshold(config, bcdata)
-            labels = {'rtprimer':rtprimer_num,
-                      'site':site,
-                      'brain':brain,
-                      'region': region,
-                      'threshold' : threshold
-                      }
-            
-            ax = axlist[i]
-            counts_axis_plot_sns(ax, bcdata, labels=labels)
+            if len(bcdata) > min_ssi_count:
+                (rtprimer_num, site, brain, region ) = guess_site(bcfile, sampdf )           
+                threshold = calculate_threshold(config, bcdata)
+                labels = {'rtprimer':rtprimer_num,
+                          'site':site,
+                          'brain':brain,
+                          'region': region,
+                          'threshold' : threshold
+                          }
+                
+                ax = axlist[i]
+                counts_axis_plot_sns(ax, bcdata, labels=labels)
+            else:
+                ax = axlist[i]
+                # make empty axis?
     
         for f in figlist:
             pdfpages.savefig(f)
