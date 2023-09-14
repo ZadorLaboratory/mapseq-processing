@@ -1031,12 +1031,12 @@ def make_countsplot_combined_sns(config, sampdf, filelist, outfile=None, expid=N
             bcdata = pd.read_csv(bcfile, sep='\t')
             if len(bcdata) > min_ssi_count:
                 (rtprimer_num, site, brain, region ) = guess_site(bcfile, sampdf )           
-                threshold = calculate_threshold(config, bcdata)
+                count_threshold, label, clength, counts_max, counts_min = calculate_threshold(config, bcdata)
                 labels = {'rtprimer':rtprimer_num,
                           'site':site,
                           'brain':brain,
                           'region': region,
-                          'threshold' : threshold
+                          'threshold' : count_threshold
                           }
                 
                 ax = axlist[i]
