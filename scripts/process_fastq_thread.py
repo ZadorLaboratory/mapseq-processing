@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+#
+# Single-CPU single-threaded barcode
+#
+#
+#
+#
 import argparse
 import logging
 import os
@@ -14,6 +20,7 @@ gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from cshlwork.utils import write_config
+from cshlwork.utils import JobRunner, JobStack, JobSet
 
 from mapseq.core import *
 from mapseq.barcode import *  
@@ -50,12 +57,11 @@ if __name__ == '__main__':
                         type=str, 
                         help='barcode file space separated.')
 
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
+    parser.add_argument('-B','--barcode', 
+                        metavar='barcode',
                         required=True,
-                        default=None,
                         type=str, 
-                        help='XLS sampleinfo file. ')
+                        help='single barcode label in barcode file')    
 
     parser.add_argument('-m','--max_mismatch', 
                         metavar='max_mismatch',
@@ -76,13 +82,6 @@ if __name__ == '__main__':
                     default=False, 
                     help='Recalculate even if output exists.') 
    
-    parser.add_argument('-t','--threads', 
-                        metavar='threads',
-                        required=False,
-                        default=1,
-                        type=int, 
-                        help='Perform SSI matching in separate processes, one per SSI. Default 1. Negative numbers mean use all but that number.')    
-
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
@@ -122,13 +121,14 @@ if __name__ == '__main__':
     if args.outdir is not None:
         outdir = args.outdir    
 
-    cfilename = f'{outdir}/process_fastq.config.txt'
-    write_config(cp, cfilename, timestamp=True)
+    #cfilename = f'{outdir}/process_fastq.config.txt'
+    #write_config(cp, cfilename, timestamp=True)
 
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-    rtlist = get_rtlist(sampdf)
+    #sampdf = load_sample_info(cp, args.sampleinfo)
+    #logging.debug(f'\n{sampdf}')
+    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    #logging.debug(f'making rtlist with single barcode: {args.barcode}')
+    rtlist = [args.barcode]
 
     logging.debug(f'making barcodes with label list={rtlist}')
     bcolist = load_barcodes(cp, 
@@ -140,15 +140,8 @@ if __name__ == '__main__':
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir}')
-           
     infilelist = package_pairfiles(args.infiles)
     
     logging.debug(f'infilelist = {infilelist}')
-    if args.threads == 1:
-        logging.info('Running in single process. ')
-        process_fastq_pairs(cp, infilelist, bcolist, outdir=args.outdir, force=args.force)
-    else:
-        logging.info(f'Running in {args.threads} separate processes.')
-        process_fastq_pairs_parallel(cp, infilelist, bcolist, outdir=args.outdir, nthreads = args.threads, force=args.force )
-    
-    
+    process_fastq_pairs_single(cp, infilelist, bcolist, outdir=args.outdir, force=args.force)
+   
