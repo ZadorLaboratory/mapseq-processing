@@ -77,9 +77,18 @@ def get_default_config():
 
 def get_rtlist(sampledf):
     rtlist = list(sampledf['rtprimer'].dropna())
-    rtlist = [int(x) for x in rtlist]
-    rtlist = [f'BC{x}' for x in rtlist]
-    return rtlist
+    nrtlist = []
+    for x in rtlist:
+        try:
+            y = int(x)
+            nrtlist.append(y)
+        except ValueError:
+            logging.debug(f'ignoring bad int() input.')
+    
+    #rtlist = [int(x) for x in rtlist]
+    
+    nrtlist = [f'BC{x}' for x in nrtlist]
+    return nrtlist
 
 
 def package_pairfiles(infiles):
