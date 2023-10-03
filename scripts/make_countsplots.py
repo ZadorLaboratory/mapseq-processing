@@ -16,15 +16,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-gitpath=os.path.expanduser("~/git/cshlwork")
-sys.path.append(gitpath)
-
-from cshlwork.utils import *
-
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import *
+from mapseq.utils import *
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'

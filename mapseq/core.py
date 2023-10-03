@@ -10,9 +10,6 @@ import traceback
 from configparser import ConfigParser
 from collections import defaultdict
 
-gitpath=os.path.expanduser("~/git/cshlwork")
-sys.path.append(gitpath)
-
 import pandas as pd
 import numpy as np
 from natsort import natsorted
@@ -24,15 +21,17 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+from kneed import KneeLocator
+
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from cshlwork.utils import dataframe_to_seqlist, write_fasta_from_df, remove_base_repeats
-from cshlwork.utils import run_command_shell, NonZeroReturnException, merge_dfs 
-from cshlwork.utils import merge_tsvs, setup_logging
-from cshlwork.utils import JobRunner, JobStack, JobSet
+from mapseq.utils import dataframe_to_seqlist, write_fasta_from_df, remove_base_repeats
+from mapseq.utils import run_command_shell, NonZeroReturnException, merge_dfs 
+from mapseq.utils import merge_tsvs, setup_logging
+from mapseq.utils import JobRunner, JobStack, JobSet
 
-from alignment.bowtie import run_bowtie, make_bowtie_df
+from mapseq.bowtie import run_bowtie, make_bowtie_df
 
 from mapseq.barcode import *
 
@@ -536,6 +535,24 @@ def cumulative_fract_idx(ser, fract):
     logging.debug(f'val={val} idx={idx} ')
     return val    
 
+def calc_kneed_idx(x, y , inflect, poly=2, sense=4):
+    '''
+    assumes convex, then concave, decreasing curve.
+    inflect = 'knee'|'elbow'
+    
+    '''
+    if inflect == 'knee':
+        kl = KneeLocator(x=x, y=y, S=sense, curve='convex',direction='decreasing',interp_method='polynomial',polynomial_degree=poly)
+        val = kl.knee
+        logging.debug(f'got value {val} for knee from kneed...')
+    elif inflect == 'elbow':
+        # not validated!
+        kl = KneeLocator(x=x, y=y, S=sense, curve='convex',direction='decreasing',interp_method='polynomial',polynomial_degree=poly)        
+        val = kl.elbow
+        logging.debug(f'got value {val} for knee from kneed...')
+    return val
+
+
 
 def calc_final_thresholds(config, threshdf):
     '''
@@ -636,6 +653,54 @@ def calculate_threshold(config, cdf, site=None):
     count_threshold=max(val, min_threshold)
     
     
+    #if site is None:
+    #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
+    #else:
+    #    count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
+    #logging.debug(f'count threshold for {site} = {count_threshold}')
+    return (count_threshold, label, clength, counts_max, counts_min)
+
+
+
+def calculate_threshold_kneed(config, cdf, site=None, inflect=None ):
+    '''
+    takes counts dataframe (with 'counts' column) 
+    if 'label', use that. 
+    and calculates 'knee' or 'elbow' threshold
+    site = ['control','injection','target']   
+        Will use relevant threshold. If None, will use default threshold
+    
+    target_threshold=100
+    target_ctrl_threshold=1000
+    inj_threshold=2
+    inj_ctrl_threshold=2
+    
+    '''
+    if inflect is None:
+        inflect = config.get('ssifasta','threshold_heuristic')
+    min_threshold = int(config.get('ssifasta','count_threshold_min'))
+    label = 'BCXXX'
+    
+    try:
+        label = cdf['label'].unique()[0]
+    except:
+        logging.warn(f'no SSI label in DF')
+        
+    # assess distribution.
+    counts = cdf['counts']
+    clength = len(counts)
+    counts_max = counts.max()
+    counts_min = counts.min()
+    counts_mean = counts.mean()
+    logging.info(f'handling {label} length={clength} max={counts_max} min={counts_min} ')
+    
+    val = calc_kneed_idx(cdf.index, cdf.counts, inflect='knee'  )
+    if val < min_threshold:
+        logging.warning(f'kneed calc threshold < min...')
+    else:
+        logging.debug(f'calculated count threshold={val} for SSI={label}')
+    count_threshold=max(val, min_threshold)
+        
     #if site is None:
     #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
     #else:

@@ -2,7 +2,6 @@
 #  quick and dirty script to remove spaces, caps, and special characters
 #  from filenames 
 
-
 import sys 
 import os 
 import getopt
@@ -31,8 +30,6 @@ def filterName(name):
     #    name = replace(name, k, FILTERMAP[k])
     #return name
     return name.translate(str.maketrans(FILTERMAP))
-
-
 
 
 if __name__ == "__main__":  

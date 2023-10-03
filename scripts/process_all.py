@@ -15,11 +15,8 @@ import pandas as pd
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
-gitpath=os.path.expanduser("~/git/cshlwork")
-sys.path.append(gitpath)
 
-from cshlwork.utils import write_config
-
+from mapseq.utils import *
 from mapseq.core import *  
 
 

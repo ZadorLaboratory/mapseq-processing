@@ -16,14 +16,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-gitpath=os.path.expanduser("~/git/cshlwork")
-sys.path.append(gitpath)
-
-from cshlwork.utils import *
-
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
+from mapseq.utils import *
 from mapseq.core import *
     
 if __name__ == '__main__':

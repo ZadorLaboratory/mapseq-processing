@@ -25,17 +25,11 @@ from configparser import ConfigParser
 
 import pandas as pd
 
-#from Bio import SeqIO
-#from Bio.Seq import Seq
-#from Bio.SeqRecord import SeqRecord
-
-gitpath=os.path.expanduser("~/git/cshlwork")
-sys.path.append(gitpath)
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import load_sample_info, process_ssifasta, fix_columns_int, guess_site
-from cshlwork.utils import write_config, merge_dfs
+from mapseq.utils import *
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
