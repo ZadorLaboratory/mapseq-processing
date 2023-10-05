@@ -74,7 +74,7 @@ if __name__ == '__main__':
                         required=False,
                         default=None,
                         type=int, 
-                        help='Max recursion. Handle larger input to collapse() Default is ~3000.')
+                        help='Max recursion. Handle larger input to collapse() Default is ~5000.')
 
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',

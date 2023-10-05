@@ -1408,12 +1408,11 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
 
 
 
-def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True ):
+def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
      writes all output to outdir (or current dir). 
-     
      
     '''
     
@@ -1475,14 +1474,14 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 frtdf = rtdf
             
             if valid:       
-                rbcmdf = frtdf.pivot(index='sequence', columns='label', values='counts')
+                rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='counts')
                 scol = natsorted(list(rbcmdf.columns))
                 rbcmdf = rbcmdf[scol]
                 rbcmdf.fillna(value=0, inplace=True)
                 logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
                 # spikes
                 sdf = tdf[tdf['type'] == 'spike']
-                sbcmdf = sdf.pivot(index='sequence', columns='label', values='counts')
+                sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='counts')
                 spcol = natsorted(list(sbcmdf.columns))
                 sbcmdf = sbcmdf[spcol]
                 sbcmdf.fillna(value=0, inplace=True)    
@@ -1537,7 +1536,6 @@ def process_qc(config, exp_dir ):
     
     '''
     pass
-
 
 
 def process_mapseq_dir(exp_id, loglevel, force):

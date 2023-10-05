@@ -1,0 +1,33 @@
+Install Conda
+
+Get installer:
+	wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh  
+	OR
+	wget https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+
+Install:
+	bash Miniconda3-latest-Linux-x86_64.sh
+
+You may need to restart your shell to enable the conda command.
+
+Create an environment for the MAPseq pipeline:
+	conda create -n mapseq python==3.9 
+
+Activate the environment:
+	conda activate mapseq
+
+Enable additional Conda repositories:
+	conda config --add channels conda-forge
+	conda config --add channels bioconda
+
+Install dependencies, useful tools:
+	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2  
+
+Clone the mapseq-processing software from the repository to the standard location:
+
+	mkdir -p ~/git ; cd ~/git
+	git clone https://github.com/ZadorLaboratory/mapseq-processing.git 
+
+All the code is currently organized so it can be run directly from the git directory (rather than installed). 
+
+

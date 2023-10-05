@@ -67,6 +67,13 @@ if __name__ == '__main__':
                     type=str, 
                     help='Explicitly provided experiment id, e.g. M205')
 
+    parser.add_argument('-l','--label', 
+                    metavar='label',
+                    required=False,
+                    default='label', 
+                    type=str, 
+                    help='column to use to label plots label | region [label] ')   
+
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -131,7 +138,7 @@ if __name__ == '__main__':
     logging.debug(f'\n{sampdf}')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    process_merged(cp, args.infiles, outdir, expid=args.expid, recursion = args.recursion, combined_pdf=args.combined )
+    process_merged(cp, args.infiles, outdir, expid=args.expid, recursion = args.recursion, combined_pdf=args.combined, label_column=args.label )
     
     
     
