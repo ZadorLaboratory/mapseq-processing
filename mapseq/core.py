@@ -868,7 +868,7 @@ def load_sample_info(config, file_name):
     return sdf
    
 
-def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
+def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
 
     # if all the output files for bclist exist, don't recalc unless force=True. 
     if outdir is None:
@@ -963,6 +963,19 @@ def process_fastq_pairs(config, readfilelist, bclist, outdir, force=False):
         filelist.append(bch.filename)
     logging.info(f'Making counts df for {filelist} in {outdir}')
     make_counts_dfs(config, filelist, outdir)
+
+    # by default make countsplots 
+    if countsplots:
+        logging.info('Making combined countsplots PDF...')
+        countsfilelist = []
+        for bch in bclist:
+            dirname = os.path.dirname(bch.filename)
+            filename = os.path.basename(bch.filename)
+            (base, ext) = os.path.splitext(filename)   
+            of = os.path.join(dirname , f'{base}.44.seq.tsv')
+            countsfilelist.append(of)
+        make_countsplot_combined_sns(config, sampdf, countsfilelist, outfile=None, expid=None )
+
 
 
 def calc_thread_count(nthreads):
@@ -1119,7 +1132,6 @@ def process_fastq_pairs_single(config, readfilelist, bclist, outdir, force=False
 def make_counts_dfs(config, filelist, outdir):
     '''
     
-        
     '''
     dflist = []
     for filepath in filelist:

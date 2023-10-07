@@ -143,9 +143,9 @@ if __name__ == '__main__':
     logging.debug(f'infilelist = {infilelist}')
     if args.threads == 1:
         logging.info('Running in single process. ')
-        process_fastq_pairs(cp, infilelist, bcolist, outdir=args.outdir, force=args.force)
+        process_fastq_pairs(cp, sampdf, infilelist, bcolist, outdir=args.outdir, force=args.force)
     else:
         logging.info(f'Running in {args.threads} separate processes.')
-        process_fastq_pairs_parallel(cp, infilelist, bcolist, outdir=args.outdir, nthreads = args.threads, force=args.force )
+        process_fastq_pairs_parallel(cp, sampdf, infilelist, bcolist, outdir=args.outdir, nthreads = args.threads, force=args.force )
     
     
