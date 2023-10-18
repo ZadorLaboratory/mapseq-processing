@@ -866,6 +866,23 @@ def load_sample_info(config, file_name):
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
+
+
+def merge_fastq_pairs(config, readfilelist, outdir):
+    logging.debug(f'processing {readfilelist}')
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+    pairshandled = 0
+    for (read1file, read2file) in readfilelist:
+        logging.debug(f'read1file = {read1file}')
+        logging.debug(f'read2file = {read2file}')
+        pairshandled += 1    
+
+
    
 
 def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
@@ -1397,7 +1414,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     remove rows from rtdf that do not have at least <min_injection> value in the row 
     of ridf with the same index (VBC sequence)
     Does an inner join() on the dataframes, keyed on sequence. 
-    Keeps values and clumns from first argument (rtdf)
+    Keeps values and columns from first argument (rtdf)
     
     '''
     logging.debug(f'before threshold inj df len={len(ridf)}')
@@ -1417,6 +1434,28 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     mdf.columns = outcol
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
+
+def filter_min_target(df, min_target=1):
+    '''
+    
+    '''
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.counts >= min_injection]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf    
 
 
 
@@ -1468,6 +1507,16 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
             # handle target areas...
             tdf = bdf[bdf['site'].str.startswith('target')]
             rtdf = tdf[tdf['type'] == 'real'] 
+
+            #threshold by min_target ...
+            if min_target > 1:
+                before = len(rtdf)
+                rtdf = rtdf[rtdf['counts'] >= min_target]
+                rtdf.reset_index(inplace=True, drop=True)
+                logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
+            else:
+                logging.debug(f'min_target={min_target} no filtering.')
+            
             if require_injection:
                 # extract and filter injection areas.
                 logging.debug(f'require_injection={require_injection} min_injection={min_injection}') 
@@ -1475,7 +1524,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 ridf = idf[idf['type'] == 'real']  
                 if len(ridf) == 0:
                     logging.warning('require_injection=True but no real VBCs from any injection site.')
-                logging.debug(f'{len(rtdf)} ral target VBCs before filtering.')      
+                logging.debug(f'{len(rtdf)} real target VBCs before filtering.')      
                 frtdf = filter_non_injection(rtdf, ridf, min_injection=min_injection)
                 logging.debug(f'{len(rtdf)} real target VBCs after injection filtering.')
                 if not len(rtdf) > 0:
@@ -1485,6 +1534,8 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 logging.debug(f'require_injection={require_injection} proceeding...')
                 frtdf = rtdf
             
+            
+            # make 
             if valid:       
                 rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='counts')
                 scol = natsorted(list(rbcmdf.columns))

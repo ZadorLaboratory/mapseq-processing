@@ -24,12 +24,13 @@ Enable additional Conda repositories:
 	conda config --add channels bioconda
 
 Install dependencies, useful tools:
-	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort kneed  
+	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort kneed fastx_toolkit  
 
 Clone the mapseq-processing software from the repository to the standard location:
 
 	mkdir -p ~/git ; cd ~/git
-	git clone https://github.com/ZadorLaboratory/mapseq-processing.git 
+	git clone https://github.com/ZadorLaboratory/mapseq-processing.git
+	export PATH=~/git/mapseq-processing/scripts:$PATH 
 
 All the code is currently organized so it can be run directly from the git directory (rather than installed). 
 

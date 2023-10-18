@@ -124,16 +124,6 @@ if __name__ == '__main__':
         logging.info(f'set new recursionlimit={rlimit}')
         sys.setrecursionlimit(rlimit)
     
-    if args.outdir is not None:
-        outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making missing outdir: {outdir} ')
-        os.makedirs(outdir, exist_ok=True)
-    
-    
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{args.outdir}/sampleinfo.tsv', sep='\t')
-    
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
@@ -144,6 +134,12 @@ if __name__ == '__main__':
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
         outdir = dirname
+    
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    
+
 
     if args.aligner is not None:
         logging.info(f'setting aligner to {args.aligner}')
@@ -156,13 +152,7 @@ if __name__ == '__main__':
         cp.set(tool, 'max_mismatch', mm )
         #logging.debug(f"after set. max_mismatch={cp.get('bowtie', 'max_mismatch')} ")   
 
-    if args.outdir is not None:
-        cfilename = f'{args.outdir}/process_ssifasta.config.txt'
-    else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
-        dirname = os.path.dirname(filepath)
-        cfilename = f'{dirname}/process_ssifasta.config.txt'
+    cfilename = f'{outdir}/process_ssifasta.config.txt'
     
     write_config(cp, cfilename, timestamp=True)        
 
@@ -185,7 +175,7 @@ if __name__ == '__main__':
                 outdflist.append(outdf)
     
         except Exception as ex:
-            logging.warning(f'problem with {infile}')
+            logging.warning(f'Possible problem with {infile}. ')
             logging.warning(traceback.format_exc(None))
 
     if len(outdflist) > 0:                     
