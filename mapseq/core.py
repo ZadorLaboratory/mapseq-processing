@@ -958,7 +958,7 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
                     
                     seqshandled += 1
                     if seqshandled % seqhandled_interval == 0: 
-                        logging.debug(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
+                        logging.info(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
                 
                 except StopIteration as e:
                     logging.debug(f'iteration stopped')
