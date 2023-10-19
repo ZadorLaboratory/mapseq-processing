@@ -51,8 +51,7 @@ if __name__ == '__main__':
                         default=True,
                         help='Create single-document PDF that combines plots'
                         )
-    
-    
+
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,

@@ -3,13 +3,13 @@ import os
 import sys
 import traceback
 
-gitpath=os.path.expanduser("~/git/cshlwork")
+gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 import numpy as np
 import pandas as pd
 
-from cshlwork.utils import run_command_shell, NonZeroReturnException, setup_logging
+from mapseq.utils import run_command_shell, NonZeroReturnException, setup_logging
 
 #
 # Possibly set up to do pipline internally?

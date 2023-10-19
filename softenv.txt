@@ -24,8 +24,8 @@ Enable additional Conda repositories:
 	conda config --add channels bioconda
 
 Install dependencies, useful tools:
-	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort kneed fastx_toolkit  
-
+	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort kneed git fastx_toolkit  
+	conda install cmake?
 Clone the mapseq-processing software from the repository to the standard location:
 
 	mkdir -p ~/git ; cd ~/git
