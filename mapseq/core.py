@@ -989,7 +989,7 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
             dirname = os.path.dirname(bch.filename)
             filename = os.path.basename(bch.filename)
             (base, ext) = os.path.splitext(filename)   
-            of = os.path.join(dirname , f'{base}.44.seq.tsv')
+            of = os.path.join(dirname , f'{base}.44.counts.tsv')
             countsfilelist.append(of)
         make_countsplot_combined_sns(config, sampdf, countsfilelist, outfile=None, expid=None )
 
