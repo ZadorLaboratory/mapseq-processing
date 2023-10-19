@@ -113,11 +113,16 @@ if __name__ == '__main__':
         sys.exit(1)    
        
     # set outdir
-    afile = args.infiles[0]
-    filepath = os.path.abspath(afile)    
-    outdir = os.path.dirname(filepath)
+    outdir = None
     if args.outdir is not None:
-        outdir = args.outdir    
+        outdir = os.path.abspath(args.outdir)
+        logging.debug(f'making missing outdir: {outdir} ')
+        os.makedirs(outdir, exist_ok=True)
+    else:
+        afile = args.infiles[0]
+        filepath = os.path.abspath(afile)    
+        dirname = os.path.dirname(filepath)
+        outdir = dirname
 
     cfilename = f'{outdir}/process_fastq.config.txt'
     write_config(cp, cfilename, timestamp=True)
@@ -131,7 +136,7 @@ if __name__ == '__main__':
     bcolist = load_barcodes(cp, 
                             args.barcodes, 
                             labels=rtlist, 
-                            outdir=args.outdir, 
+                            outdir=outdir, 
                             eol=True, 
                             max_mismatch=args.max_mismatch)
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
@@ -146,6 +151,6 @@ if __name__ == '__main__':
         process_fastq_pairs(cp, sampdf, infilelist, bcolist, outdir=args.outdir, force=args.force)
     else:
         logging.info(f'Running in {args.threads} separate processes.')
-        process_fastq_pairs_parallel(cp, sampdf, infilelist, bcolist, outdir=args.outdir, nthreads = args.threads, force=args.force )
+        process_fastq_pairs_parallel(cp, sampdf, infilelist, bcolist, outdir=outdir, nthreads = args.threads, force=args.force )
     
     
