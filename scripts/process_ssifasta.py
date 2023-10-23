@@ -86,8 +86,8 @@ if __name__ == '__main__':
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
-                    required=True,
-                    default='experiment.all.tsv', 
+                    required=False,
+                    default=None, 
                     type=str, 
                     help='out file for all merged info')  
 
@@ -139,8 +139,6 @@ if __name__ == '__main__':
     logging.debug(f'\n{sampdf}')
     sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
     
-
-
     if args.aligner is not None:
         logging.info(f'setting aligner to {args.aligner}')
         cp.set('ssifasta', 'tool', args.aligner )  
@@ -169,10 +167,7 @@ if __name__ == '__main__':
             outdf['region'] = region
 
             logging.info(f'got outdf:\n{outdf}')
-            if args.outfile is None:
-                print(outdf)
-            else:
-                outdflist.append(outdf)
+            outdflist.append(outdf)
     
         except Exception as ex:
             logging.warning(f'Possible problem with {infile}. ')
@@ -181,5 +176,9 @@ if __name__ == '__main__':
     if len(outdflist) > 0:                     
         logging.debug(f'merging dfs in outdflist len={len(outdflist)}')
         outdf = merge_dfs(outdflist)
-        outdf.to_csv(args.outfile, sep='\t')          
+        if args.outfile is None:
+            outfile = os.path.join(outdir, 'experiment.all.tsv')
+        else:
+            outfile = args.outfile
+        outdf.to_csv(outfile, sep='\t')          
     
