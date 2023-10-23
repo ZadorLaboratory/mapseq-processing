@@ -701,6 +701,26 @@ def calculate_threshold_kneed(config, cdf, site=None, inflect=None ):
     return (count_threshold, label, clength, counts_max, counts_min)
 
 
+def calc_min_target(config, braindf):
+    '''
+    how many molecules (unique UMIs) are in supposedly target-negative area?
+    '''
+    countlist = []
+    min_target = 0
+    braindf['counts'] = braindf['counts'].astype(int)
+    tndf = braindf[ braindf['site'] == 'target-negative']
+    tndf = tndf[ tndf['type'] == 'real']
+    lablist = list(tndf['label'].dropna().unique())
+    for label in lablist:
+        ldf = tndf[tndf['label'] == label]
+        if len(ldf) > 0:
+            countslist.append( ldf['counts'].sum())
+    if len(countslist) > 0:
+        min_target = max(countslist)
+        logging.debug(f'calculated min_target={min_target}')
+    return min_target
+
+
 def get_threshold(config, cdf, site=None):
     '''
     site = ['control','injection','target']   
@@ -981,7 +1001,7 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
             (base, ext) = os.path.splitext(filename)   
             of = os.path.join(dirname , f'{base}.44.counts.tsv')
             countsfilelist.append(of)
-        make_countsplot_combined_sns(config, sampdf, countsfilelist, outfile=None, expid=None )
+        make_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
 
 
 
@@ -1448,7 +1468,6 @@ def filter_min_target(df, min_target=1):
     return mdf    
 
 
-
 def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
@@ -1456,7 +1475,6 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
      writes all output to outdir (or current dir). 
      
     '''
-    
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     sys.setrecursionlimit(recursion)    
     
@@ -1475,15 +1493,16 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
     if expid is None:
         expid = 'MAPseq'
             
-    outfile = f'{expid}.all.heatmap.pdf'
+    outfile = os.path.join(outdir, f'{expid}.all.heatmap.pdf')
     if require_injection:
-        outfile = f'{expid}.all.{min_injection}.{min_target}.{clustermap_scale}.pdf'
+        outfile = os.path.join(outdir, f'{expid}.all.{min_injection}.{min_target}.{clustermap_scale}.pdf')
     else:
-        outfile = f'{expid}.all.noinj.{min_target}.{clustermap_scale}.pdf'
+        outfile = os.path.join(outdir, f'{expid}.all.noinj.{min_target}.{clustermap_scale}.pdf')
     
     logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} cmap={cmap} clustermap_scale={clustermap_scale} ')
     
     page_dims = (11.7, 8.27)
+    
     with pdfpages(outfile) as pdfpages:
         bidlist = list(alldf['brain'].dropna().unique())
         bidlist = [ x for x in bidlist if len(x) > 0 ]
@@ -1498,7 +1517,8 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
             tdf = bdf[bdf['site'].str.startswith('target')]
             rtdf = tdf[tdf['type'] == 'real'] 
 
-            #threshold by min_target ...
+            # threshold by min_target ...
+            # or threshold by target-negative
             if min_target > 1:
                 before = len(rtdf)
                 rtdf = rtdf[rtdf['counts'] >= min_target]
@@ -1523,8 +1543,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
             else:
                 logging.debug(f'require_injection={require_injection} proceeding...')
                 frtdf = rtdf
-            
-            
+           
             # make 
             if valid:       
                 rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='counts')
@@ -1580,6 +1599,136 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                     logging.warning(f'Unable to clustermap plot for {brain_id}. Message: {ee}')
                     
             logging.info(f'done with brain={brain_id}')
+
+def process_merged_new(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
+    '''
+     takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
+     outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
+     writes all output to outdir (or current dir). 
+     
+    '''
+    logging.debug(f'{filelist}')    
+    alldf = merge_tsvs(filelist)
+    logging.debug(f'alldf len={len(alldf)}')
+    if outdir is None:
+        outdir = './'
+
+    require_injection = config.getboolean('analysis','require_injection')
+    min_injection = int(config.get('analysis','min_injection'))
+    min_target = int(config.get('analysis','min_target'))   
+    use_target_negative=bool(config.get('analysis','use_target_negative'))
+      
+    if expid is None:
+        expid = 'MAPseq'
+    
+    logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} use_target_negative={use_target_negative} ')
+
+    bidlist = list(alldf['brain'].dropna().unique())
+    bidlist = [ x for x in bidlist if len(x) > 0 ]
+    bidlist.sort()
+    logging.debug(f'handling brain list: {bidlist}')
+    for brain_id in bidlist:
+        valid = True
+        logging.debug(f'handling brain_id={brain_id}')
+        bdf = alldf[alldf['brain'] == brain_id]
+                    
+        # handle target areas...
+        tdf = bdf[bdf['site'].str.startswith('target')]
+        rtdf = tdf[tdf['type'] == 'real'] 
+
+        # threshold by min_target or threshold by target-negative
+        # if use_target_negative is true, but no target negative site 
+        # defined, use min_target and throw warning. 
+        if use_target_negative:
+            min_target = calc_min_target(config, bdf)
+            if tcount != 0:
+                logging.debug(f'non-zero target-negative UMI count = {tcount}')
+
+        if min_target > 1:
+            before = len(rtdf)
+            rtdf = rtdf[rtdf['counts'] >= min_target]
+            rtdf.reset_index(inplace=True, drop=True)
+            logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
+        else:
+            logging.debug(f'min_target={min_target} no filtering.')
+        
+        if require_injection:
+            # extract and filter injection areas.
+            logging.debug(f'require_injection={require_injection} min_injection={min_injection}') 
+            idf = bdf[bdf['site'].str.startswith('injection')]
+            ridf = idf[idf['type'] == 'real']  
+            if len(ridf) == 0:
+                logging.warning('require_injection=True but no real VBCs from any injection site.')
+            logging.debug(f'{len(rtdf)} real target VBCs before filtering.')      
+            frtdf = filter_non_injection(rtdf, ridf, min_injection=min_injection)
+            logging.debug(f'{len(rtdf)} real target VBCs after injection filtering.')
+            if not len(rtdf) > 0:
+                logging.warning(f'No VBCs passed injection filtering! Skip brain.')
+                valid = False
+        else:
+            logging.debug(f'require_injection={require_injection} proceeding...')
+            frtdf = rtdf
+       
+        # make 
+        if valid:       
+            rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='counts')
+            scol = natsorted(list(rbcmdf.columns))
+            rbcmdf = rbcmdf[scol]
+            rbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
+            # spikes
+            sdf = tdf[tdf['type'] == 'spike']
+            sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='counts')
+            spcol = natsorted(list(sbcmdf.columns))
+            sbcmdf = sbcmdf[spcol]
+            sbcmdf.fillna(value=0, inplace=True)    
+            logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
+    
+            (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
+            
+            nbcmdf = normalize_weight(rbcmdf, sbcmdf)
+            logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
+            scbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
+            
+            rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
+            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
+            nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
+            scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
+            
+            # check to ensure no columns are missing barcodes.
+            droplist = []
+            for c in scbcmdf.columns:
+                if not scbcmdf[c].sum() > 0:
+                    logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
+                    droplist.append(c)
+            logging.debug(f'dropping columns {droplist}')
+            scbcmdf.drop(droplist,inplace=True, axis=1 )    
+            
+            
+            try:
+                kws = dict(cbar_kws=dict(orientation='horizontal'))  
+                g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
+                #g.ax_cbar.set_title('scaled log10(cts)')
+                x0, _y0, _w, _h = g.cbar_pos
+                #g.ax_cbar.set_position((0.8, .2, .03, .4))
+                g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
+                g.fig.suptitle(f'{expid} {brain_id}')
+                g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
+                plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
+                if combined_pdf:
+                    logging.info(f'saving plot to {outfile} ...')
+                    pdfpages.savefig(g.fig)
+            except Exception as ee:
+                logging.warning(f'Unable to clustermap plot for {brain_id}. Message: {ee}')
+                
+        logging.info(f'done with brain={brain_id}')
+
+def make_merged_plots_new(config, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
+    '''
+    consume barcode matrices and create heatmap plots.
+    '''
 
 
 

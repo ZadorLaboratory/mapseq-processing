@@ -19,8 +19,9 @@ import seaborn as sns
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import *
 from mapseq.utils import *
+from mapseq.core import *
+from mapseq.barcode import *
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -46,26 +47,19 @@ if __name__ == '__main__':
                         type=str, 
                         help='config file.')    
 
-    parser.add_argument('-e','--expid', 
-                    metavar='expid',
-                    required=False,
-                    default=None,
-                    type=str, 
-                    help='explicitly provided experiment id')
-
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',
                         required=True,
                         default=None,
                         type=str, 
-                        help='XLS sampleinfo file or sampleinfo.tsv. ') 
+                        help='XLS sampleinfo file. ')
     
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=False,
-                    default=None, 
+                    default="matlabplots.pdf", 
                     type=str, 
-                    help='PDF plot out file. "countsplots.pdf" if not given')  
+                    help='PDF plot out file. "matlabplots.pdf" if not given')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -74,11 +68,11 @@ if __name__ == '__main__':
                     type=str, 
                     help='outdir. input file base dir if not given.')     
 
-    parser.add_argument('infiles',
+    parser.add_argument('infile',
                         metavar='infiles',
-                        nargs ="+",
+                        nargs =1,
                         type=str,
-                        help='BCXXX.44.counts.tsv files')
+                        help='Export of final MATLAB pipeline barcode matrix. ')
        
     args= parser.parse_args()
     
@@ -92,23 +86,11 @@ if __name__ == '__main__':
     cdict = {section: dict(cp[section]) for section in cp.sections()}
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
-      
-   
-    outdir = None
-    if args.outdir is not None:
-        outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making outdir: {outdir} ')
-        os.makedirs(outdir, exist_ok=True)
-    else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
-        dirname = os.path.dirname(filepath)
-        outdir = dirname
-        
-    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'infiles={args.infile}')
 
-    #make_countsplots(cp, args.infiles)
-    #make_countsplots(cp, args.infiles, outfile=args.outfile, expid=args.expid)
-    make_countsplot_combined_sns(cp, sampdf, args.infiles, outdir=outdir, expid=args.expid )
-      
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    #sampdf.to_csv(f'{args.outdir}/sampleinfo.tsv', sep='\t')
+    
+    
+    
