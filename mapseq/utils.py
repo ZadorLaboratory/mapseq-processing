@@ -375,6 +375,7 @@ def load_df(filepath):
     filepath = os.path.expanduser(filepath)
     df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
     df.fillna(value='', inplace=True)
+    df = df.apply(pd.to_numeric, errors='ignore')
     #df = df.astype('str', copy=False)
     #for col in df.columns:
     #    try:
