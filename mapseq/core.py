@@ -182,7 +182,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     logging.debug(f'handling {filepath} base={base}')
     
     # make raw fasta TSV of barcode-splitter output for one barcode. 
-    # trim to 44 unique w/ counts. 
+    # trim to 44 nt since we know last 8 are SSI  
     logging.debug('calc counts...')
     seqdf = make_fasta_df(config, infile)
     of = os.path.join(dirname , f'{base}.44.seq.tsv')
@@ -199,7 +199,8 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     tdf = threshold_counts(config, cdf, threshold=threshold)
     logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
     
-    # now that we've only kept bc + umi, the counts is distinct molecules. trim to viral barcode only  
+    # thresholded raw counts. duplicates are all one UMI, so set counts to 1. 
+    # each row (should be) a distinct UMI, so trim to 32. 
     tdf['counts'] = 1          
     tdf['sequence'] = tdf['sequence'].str[:32]
     
@@ -212,31 +213,22 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     vbcdf.to_csv(of, sep='\t')     
     
     # split out spike, real, lone, otherwise same as 32.counts.tsv    
+    #spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
     spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
     
     # write out this step...
-    realdf.to_csv(os.path.join(dirname , f'{base}.real.seq.tsv'), sep='\t')
-    lonedf.to_csv(os.path.join(dirname , f'{base}.lone.seq.tsv'), sep='\t')
-    spikedf.to_csv(os.path.join(dirname , f'{base}.spike.seq.tsv'), sep='\t')
+    realdf.to_csv(os.path.join(dirname , f'{base}.real.counts.tsv'), sep='\t')
+    lonedf.to_csv(os.path.join(dirname , f'{base}.lone.counts.tsv'), sep='\t')
+    spikedf.to_csv(os.path.join(dirname , f'{base}.spike.counts.tsv'), sep='\t')
 
     # remove homopolymers in real sequences.
     max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
     realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
-   
-    # make counts df
-    realcdf = make_counts_df(config, realdf)
-    spikecdf = make_counts_df(config, spikedf)
-    lonecdf = make_counts_df(config, lonedf)    
-
-    # these are counts of copies of the same UMI, so same original molecule
-    realcdf.to_csv(os.path.join(dirname , f'{base}.real.counts.tsv'), sep='\t')
-    lonecdf.to_csv(os.path.join(dirname , f'{base}.lone.counts.tsv'), sep='\t')
-    spikecdf.to_csv(os.path.join(dirname , f'{base}.spike.counts.tsv'), sep='\t')    
-    
+     
     # align and collapse all.         
-    acrealdf = align_and_collapse(config, realcdf, dirname, base, 'real')
-    acspikedf = align_and_collapse(config, spikecdf, dirname, base, 'spike')
-    aclonedf = align_and_collapse(config, lonecdf, dirname, base, 'lone')
+    acrealdf = align_and_collapse(config, realdf, dirname, base, 'real')
+    acspikedf = align_and_collapse(config, spikedf, dirname, base, 'spike')
+    aclonedf = align_and_collapse(config, lonedf, dirname, base, 'lone')
     
     acrealdf.to_csv(os.path.join(dirname , f'{base}.real.tsv'), sep='\t')
     acspikedf.to_csv(os.path.join(dirname , f'{base}.spike.tsv'), sep='\t')
@@ -246,6 +238,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     acrealdf['type'] = 'real'
     acspikedf['type'] = 'spike'
     aclonedf['type'] = 'lone'
+
     outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
     outdf['label'] = base
     outdf.sort_values(by = ['type', 'counts'], ascending = [True, False], inplace=True)
@@ -321,7 +314,6 @@ def collapse_counts_df(countsdf, components):
     determines sequence with largest count columns: 'sequence', 'counts'
     collapses all other member components to the sequence of the largest.
     adds their counts to that of that sequence.
-
     retain columns and values for highest counts row. 
      
     '''
@@ -765,25 +757,23 @@ def split_spike_real_lone_barcodes(config, df):
     realre = config.get('ssifasta','realregex')
     lonere = config.get('ssifasta', 'loneregex')
     
-    logging.debug(f'before filtering: {len(df)}')
-    
-    # get spikeins
-    siseq = 'CGTCAGTC'
+    logging.debug(f'before filtering: {len(df)}')   
     logging.debug(f"spike-in regex = '{sire}' ")
-    #simap = df['sequence'].str.contains(sire, regex=True) == True
-    simap = df['sequence'].str.endswith(siseq) == True
+    simap = df['sequence'].str.contains(sire, regex=True) == True
+        
     spikedf = df[simap]
     spikedf.reset_index(inplace=True, drop=True)
+    
     remaindf = df[~simap]
     logging.debug(f'spikeins={len(spikedf)} remaindf={len(remaindf)}')
     
     # split real/L1
     logging.debug(f"realre = '{realre}' lonere = '{lonere}' ")
     realmap = remaindf['sequence'].str.contains(realre, regex=True) == True
-    lonemap = remaindf['sequence'].str.contains(lonere, regex=True) == True 
-    
     realdf = remaindf[realmap]
     realdf.reset_index(inplace=True, drop=True)
+    
+    lonemap = remaindf['sequence'].str.contains(lonere, regex=True) == True 
     lonedf = remaindf[lonemap]
     lonedf.reset_index(inplace=True, drop=True)
     logging.info(f'initial={len(df)} spikeins={len(spikedf)} real={len(realdf)} lone={len(lonedf)}')    
@@ -1236,7 +1226,7 @@ def counts_axis_plot_sns(ax, bcdata, labels):
     #ax.set_ylabel("log10(BC counts)",fontsize=5)
 
 
-def make_countsplot_combined_sns(config, sampdf, filelist, outfile=None, expid=None ):    
+def make_countsplot_combined_sns(config, sampdf, filelist, outdir, expid=None ):    
     '''
      makes combined figure with all plots. 
      assumes column 'label' for title. 
@@ -1246,10 +1236,10 @@ def make_countsplot_combined_sns(config, sampdf, filelist, outfile=None, expid=N
     
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     
-    if outfile is None:
-        outfile = 'countsplots.pdf'
-        if expid is not None:
-            outfile = f'{expid}_{outfile}'
+    outfile = 'countsplots.pdf'
+    if expid is not None:
+        outfile = f'{expid}_{outfile}'
+    outfile = os.path.join(outdir, outfile)
     
     # do nine per figure...
     page_dims = (11.7, 8.27)

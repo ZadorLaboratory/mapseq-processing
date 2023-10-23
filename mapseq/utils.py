@@ -145,6 +145,7 @@ def remove_base_repeats(df, col='sequence', n=7):
     
     endlen=(len(df))
     logging.debug(f'df without {n} repeats len={endlen}')
+    df.reset_index(drop=True, inplace=True)
     return df
 
 
