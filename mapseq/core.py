@@ -191,6 +191,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     # to calculate threshold we need counts calculated. 
     cdf = make_counts_df(config, seqdf, label=base)  
     logging.debug(f'initial counts df {len(cdf)} all reads.')
+    # these are ***READ*** counts
     of = os.path.join(dirname , f'{base}.44.counts.tsv')
     cdf.to_csv(of, sep='\t') 
         
@@ -204,6 +205,7 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     tdf['counts'] = 1          
     tdf['sequence'] = tdf['sequence'].str[:32]
     
+    # this contains duplicate VBCs with *different* UMIs
     of = os.path.join(dirname , f'{base}.32.seq.tsv')
     tdf.to_csv(of, sep='\t') 
     
@@ -1488,21 +1490,29 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
     min_injection = int(config.get('analysis','min_injection'))
     min_target = int(config.get('analysis','min_target'))   
     clustermap_scale = config.get('plots','clustermap_scale') # log10 | log2
-    
-      
+         
     if expid is None:
         expid = 'MAPseq'
+    
+    if outdir is None:
+        outdir = './'
             
     outfile = os.path.join(outdir, f'{expid}.all.heatmap.pdf')
     if require_injection:
         outfile = os.path.join(outdir, f'{expid}.all.{min_injection}.{min_target}.{clustermap_scale}.pdf')
     else:
         outfile = os.path.join(outdir, f'{expid}.all.noinj.{min_target}.{clustermap_scale}.pdf')
-    
     logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} cmap={cmap} clustermap_scale={clustermap_scale} ')
     
-    page_dims = (11.7, 8.27)
+    # list to handle return information. 
+    #  {
+    #     B1  : [rbcm, sbcm, nbcm],
+    #     B2  : [rbcm, sbcm, nbcm]
+    #  }
+    brainlist = {}
     
+    
+    page_dims = (11.7, 8.27)
     with pdfpages(outfile) as pdfpages:
         bidlist = list(alldf['brain'].dropna().unique())
         bidlist = [ x for x in bidlist if len(x) > 0 ]
@@ -1551,6 +1561,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 rbcmdf = rbcmdf[scol]
                 rbcmdf.fillna(value=0, inplace=True)
                 logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
+                                
                 # spikes
                 sdf = tdf[tdf['type'] == 'spike']
                 sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='counts')
@@ -1563,6 +1574,10 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                 
                 nbcmdf = normalize_weight(rbcmdf, sbcmdf)
                 logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+                
+                # store output. 
+                brainlist[brain_id] = [rbcmdf, sbcmdf, nbcmdf]
+                    
                 scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
                 scbcmdf.fillna(value=0, inplace=True)
                 logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
@@ -1599,6 +1614,7 @@ def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, 
                     logging.warning(f'Unable to clustermap plot for {brain_id}. Message: {ee}')
                     
             logging.info(f'done with brain={brain_id}')
+    return brainlist
 
 def process_merged_new(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
     '''
