@@ -58,7 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('-a','--aligner', 
                     metavar='aligner',
                     required=False,
-                    default=None, 
+                    default='bowtie', 
                     type=str, 
                     help='aligner tool  [bowtie | bowtie2]')
 
@@ -83,7 +83,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='XLS sampleinfo file. ')
 
-    
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=False,
