@@ -14,6 +14,84 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+from collections import defaultdict
+
+
+def build_bcmatcher(bclist):
+    '''
+    take list of BarcodeHandler objects, and make matching dict of dicts:
+    
+    AGAT
+    ACGA
+    CGGT
+                      a         c 
+                   c    g       g
+                    g  a        g
+                   a    t       t 
+    
+    
+    seqdict    { 'AGAT' : [],
+                  'ACGA' : [],
+                  'CGGT': []
+                 }    
+    '''
+    matchdict = {}
+    seqdict = {}
+    unmatched = []
+    
+    for bco in bclist:
+        seq = bco.barcode
+        seqlen = len(seq)
+        stoplen = seqlen - 1
+
+        subdict = matchdict
+        for i, nt in enumerate(seq):
+            logging.debug(f'i={i} nt={nt}')
+            if i < stoplen:
+                try:
+                    subdict = subdict[nt]
+                    logging.debug(f'subdict = {subdict}')
+                except KeyError:
+                    subdict[nt] = {}
+                    subdict = subdict[nt]
+            else:
+                logging.debug(f'end condition reached')
+                subdict[nt] = [ ]
+                seqdict[seq] = subdict[nt]
+            
+        #print(matchdict)
+    return (matchdict, seqdict, unmatched)
+
+def do_match(id, seq, matchdict, fullseq, unmatched):
+    '''
+    given a sequence, walk the matchdict and either place a (id, fullseq) tuple in the list at the end of the seq
+    or add the (id, fullseq) tuple to the unmatched list. 
+    
+    return whether matched or not True | False
+    
+    '''
+    subdict = matchdict
+    seqlen = len(seq)
+    stoplen = len(seq) - 1
+    for i, nt in enumerate(seq):
+        #logging.debug(f'i={i} nt={nt}')
+        if i < stoplen:
+            try:
+                subdict = subdict[nt]
+            except KeyError:
+                unmatched.append((id, fullseq))
+                return False
+        else:
+            try:
+                seqlist = subdict[nt]
+                seqlist.append((id, fullseq[:-seqlen]))
+                return True
+            except KeyError:
+                unmatched.append((id, fullseq))
+                return False
+        
+
+
 
 def match_strings(a, b, max_mismatch=0):
     '''
@@ -35,6 +113,7 @@ def match_strings(a, b, max_mismatch=0):
                 is_match = False
                 break
     return is_match
+
 
 
 class BarcodeHandler(object):
@@ -153,8 +232,9 @@ def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mism
      labellist is a python list of ids. barcode labels will be checked against
      <id> from labellist. 
     '''
-    codelist = [ f'{x}' for x in labels]
-    logging.debug(f'codelist={codelist}')
+    if labels is not None:
+        codelist = [ f'{x}' for x in labels]
+        logging.debug(f'codelist={codelist}')
     bclist = []
     with open(bcfile) as fh:
         logging.debug(f"opened barcode file {bcfile}")
@@ -163,7 +243,7 @@ def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mism
             if len(ln) < 2:
                 break
             (label, bcseq) = ln.split()
-            logging.debug(f'handling label={label} and bcseq={bcseq}')
+            logging.debug(f'handling label={label} and barcode={bcseq}')
             
             if labels is None or label in codelist:
                 bch = BarcodeHandler(label, bcseq, outdir, eol, max_mismatch)

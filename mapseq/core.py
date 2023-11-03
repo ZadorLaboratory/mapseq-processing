@@ -897,7 +897,7 @@ def merge_fastq_pairs(config, readfilelist, outdir):
 
    
 
-def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
+def process_fastq_pairs_old(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
 
     # if all the output files for bclist exist, don't recalc unless force=True. 
     if outdir is None:
@@ -984,6 +984,154 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
         # close possible gzip filehandles??
         #max_mismatch = bclist[0].max_mismatch
         logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {unmatched} unmatched')
+    else:
+        logging.warn('all output exists and force=False. Not recalculating.')
+    
+    filelist = []
+    for bch in bclist:
+        filelist.append(bch.filename)
+    logging.info(f'Making counts df for {filelist} in {outdir}')
+    make_counts_dfs(config, filelist, outdir)
+
+    # by default make countsplots 
+    if countsplots:
+        logging.info('Making combined countsplots PDF...')
+        countsfilelist = []
+        for bch in bclist:
+            dirname = os.path.dirname(bch.filename)
+            filename = os.path.basename(bch.filename)
+            (base, ext) = os.path.splitext(filename)   
+            of = os.path.join(dirname , f'{base}.44.counts.tsv')
+            countsfilelist.append(of)
+        make_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
+
+
+def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
+    '''
+    Do not use BioConda data structures. 
+    Use combined barcode sorter structure to minimize character comparisons. 
+
+    '''
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+    output_exists = check_output(bclist)
+    logging.debug(f'output_exists={output_exists} force={force}')
+    
+    if ( not output_exists ) or force:
+        
+        # create structure to search for all barcode simultaneously
+        labeldict = {}
+        for bco in bclist:
+            labeldict[bco.barcode] = bco.label
+        matchdict, seqdict, unmatched_list = build_bcmatcher(bclist) 
+        bc_length=len(bclist[0].barcode)
+        
+               
+        outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
+        pairedfile = os.path.abspath(f'{outdir}/paired.txt')
+        #umf = open(outfile, 'w')
+        pf = open(pairedfile, 'w')
+        r1s = int(config.get('fastq','r1start'))
+        r1e = int(config.get('fastq','r1end'))
+        r2s = int(config.get('fastq','r2start'))
+        r2e = int(config.get('fastq','r2end'))
+        
+        #seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
+        #matched_interval = int(config.get('fastq','matched_interval'))
+        #unmatched_interval = int(config.get('fastq','unmatched_interval'))
+        seqhandled_interval = 1000000 
+        matched_interval = 1000000
+        unmatched_interval = 1000000
+
+        seqshandled = 0
+        pairshandled = 0
+        num_unmatched = 0
+        didmatch = 0
+    
+        #
+        # handle pairs of readfiles from readfilelist
+        #
+        for (read1file, read2file) in readfilelist:
+            pairshandled += 1
+            logging.debug(f'handling file pair {pairshandled}')
+            if read1file.endswith('.gz'):
+                r1f = gzip.open(read1file, "rt")
+            else:
+                r1f = open(read1file)
+            
+            if read2file.endswith('.gz'):
+                r2f = gzip.open(read2file, "rt")         
+            else:
+                r2f = open(read2file)
+        
+            while True:
+                try:
+                    meta1 = r1f.readline()
+                    if len(meta1) == 0:
+                        break
+                    seq1 = r1f.readline().strip()
+                    sep1 = r1f.readline()
+                    qual1 = r1f.readline().strip()
+
+                    meta2 = r2f.readline()
+                    if len(meta2) == 0:
+                        break
+                    seq2 = r2f.readline().strip()
+                    sep2 = r2f.readline()
+                    qual2 = r2f.readline().strip()                    
+
+                    sub1 = seq1[r1s:r1e]
+                    sub2 = seq2[r2s:r2e]
+                    fullread = sub1 + sub2
+                    pf.write(f'{fullread}\n')
+                    
+                    matched = False
+                    seq = fullread[-bc_length:]
+                    # id, seq, matchdict, fullseq, unmatched
+                    matched = do_match(seqshandled, seq, matchdict, fullread, unmatched_list)
+                    
+                    if not matched:
+                        num_unmatched += 1
+                        if num_unmatched % unmatched_interval == 0:
+                            logging.debug(f'{num_unmatched} unmatched so far.')
+                    else:
+                        didmatch += 1
+                        if didmatch % matched_interval == 0:
+                            logging.debug(f'match {didmatch}: found SSI in {fullread}!')                        
+                                        
+                    seqshandled += 1
+                    if seqshandled % seqhandled_interval == 0: 
+                        logging.info(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={num_unmatched}')
+                
+                except StopIteration as e:
+                    logging.debug(f'iteration stopped')
+                    break
+            
+        #matchdict, seqdict, unmatched_list    
+        logging.info(f'{unmatched_list[0]}\n {unmatched_list[1]}\n')
+        logging.info(f'writing {len(unmatched_list)} sequences to {outfile}')
+        umf = open(outfile, 'w')
+        for id, s in unmatched_list:
+            umf.write(f'>{id}\n{s}\n')
+        umf.close()
+        
+        for sk in seqdict.keys():
+            label = labeldict[sk]
+            logging.debug(f'handling sequence {sk} label={label}')            
+            outfile = os.path.abspath(f'{outdir}/{label}.fasta')
+            with open(outfile, 'w') as faf:
+                logging.debug(f'writing {len(seqdict)} sequences to {outfile}')
+                for id, s in seqdict[sk]:
+                    faf.write(f'>{id}\n{s}\n')
+
+        pf.close()              
+        # close possible gzip filehandles??
+        #max_mismatch = bclist[0].max_mismatch
+        logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {num_unmatched} unmatched')
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
     
