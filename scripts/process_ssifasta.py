@@ -164,7 +164,6 @@ if __name__ == '__main__':
             outdf['site'] = site
             outdf['brain'] = brain
             outdf['region'] = region
-
             logging.info(f'got outdf:\n{outdf}')
             outdflist.append(outdf)
     

@@ -6,7 +6,9 @@
 
 import logging
 import os
+import pprint 
 import traceback
+
 
 import pandas as pd
 
@@ -15,11 +17,11 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 from collections import defaultdict
-
+pp = pprint.PrettyPrinter(indent=4)
 
 def build_bcmatcher(bclist):
     '''
-    take list of BarcodeHandler objects, and make matching dict of dicts:
+    Take list of BarcodeHandler objects, and make matching dict of dicts:
     
     AGAT
     ACGA
@@ -33,7 +35,9 @@ def build_bcmatcher(bclist):
     seqdict    { 'AGAT' : [],
                   'ACGA' : [],
                   'CGGT': []
-                 }    
+                 }
+                 
+    unmached  list      
     '''
     matchdict = {}
     seqdict = {}
@@ -62,10 +66,11 @@ def build_bcmatcher(bclist):
         #print(matchdict)
     return (matchdict, seqdict, unmatched)
 
+
 def do_match(id, seq, matchdict, fullseq, unmatched):
     '''
-    given a sequence, walk the matchdict and either place a (id, fullseq) tuple in the list at the end of the seq
-    or add the (id, fullseq) tuple to the unmatched list. 
+    given a target sequence, walk the matchdict and either place a (id, fullseq) tuple in the list 
+    at the end of the seq or add the (id, fullseq) tuple to the unmatched list. 
     
     return whether matched or not True | False
     
@@ -73,6 +78,7 @@ def do_match(id, seq, matchdict, fullseq, unmatched):
     subdict = matchdict
     seqlen = len(seq)
     stoplen = len(seq) - 1
+    
     for i, nt in enumerate(seq):
         #logging.debug(f'i={i} nt={nt}')
         if i < stoplen:
