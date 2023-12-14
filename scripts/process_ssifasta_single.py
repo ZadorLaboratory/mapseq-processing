@@ -1,27 +1,25 @@
 #!/usr/bin/env python
 #
-#  creates read counts plot/plots to determine thresholds.   
+# Single-CPU single-threaded barcode splitter
 #
-
+#
 import argparse
 import logging
 import os
 import sys
-import traceback
 
 from configparser import ConfigParser
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
+#from mapseq.utils import *
 from mapseq.core import *
-from mapseq.utils import *
-    
+#from mapseq.barcode import *  
+
+
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -44,41 +42,41 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='config file.')    
-
-    parser.add_argument('-e','--expid', 
-                    metavar='expid',
-                    required=False,
-                    default=None,
-                    type=str, 
-                    help='explicitly provided experiment id')
+                        help='Config file to use. ')    
 
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',
                         required=True,
                         default=None,
                         type=str, 
-                        help='XLS sampleinfo file or sampleinfo.tsv. ') 
-    
+                        help='XLS sampleinfo file. ')
+
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
+                    required=True,
+                    default=None, 
+                    type=str, 
+                    help='Combined out TSV for all info for this FASTA, e.g. BC1.all.tsv') 
+
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='PDF plot out file. "countsplots.pdf" if not given')  
+                    help='Logfile for subprocess.')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. input file base dir if not given.')     
-
-    parser.add_argument('infiles',
-                        metavar='infiles',
-                        nargs ="+",
+                    help='outdir. input file base dir if not given.')   
+   
+    parser.add_argument('infile' ,
+                        metavar='infile', 
                         type=str,
-                        help='BCXXX.reads.counts.tsv files')
+                        nargs='?',
+                        help='Barcode-specific FASTA file(s). Should be one.')
        
     args= parser.parse_args()
     
@@ -87,25 +85,36 @@ if __name__ == '__main__':
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)   
 
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+
+
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
-    
+    cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
-      
-   
+    logging.debug(f'infile={args.infile}')
+       
+    # set outdir
     outdir = None
-    if args.outdir is not None:
-        outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making outdir: {outdir} ')
-        os.makedirs(outdir, exist_ok=True)
+    if args.outdir is None: 
+        outdir = os.path.dirname(os.path.abspath(args.outfile))
     else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
-        dirname = os.path.dirname(filepath)
-        outdir = dirname
-        
+        outdir = args.outdir
     sampdf = load_sample_info(cp, args.sampleinfo)
-    make_reads_countsplot_combined_sns(cp, sampdf, args.infiles, outdir=outdir, expid=args.expid )
-      
+    (rtprimer, site, brain, region) = guess_site(args.infile, sampdf)
+    logging.info(f'guessed rtprimer={rtprimer} site={site} brain={brain} region={region}')
+    logging.info(f'outdir={outdir} outfile={args.outfile}')
+    outdf = process_ssifasta(cp, args.infile, outdir=outdir, site=site, datestr=None)
+    outdf['site'] = site
+    outdf['brain'] = brain
+    outdf['region'] = region
+    outdf.to_csv(args.outfile, sep='\t')
+    logging.info(f'wrote output to {args.outfile}')
+        
+   

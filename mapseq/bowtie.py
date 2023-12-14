@@ -186,7 +186,7 @@ def make_bowtie2_df(infile):
     
     current = 0
     sumreport = 1
-    suminterval = 5000
+    suminterval = 10000
     repthresh = sumreport * suminterval
     
     # list of lists to hold data
@@ -244,10 +244,6 @@ def make_bowtie2_df(infile):
 
     df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS )
     return df
-
-    
-    
-     
 
 
 def make_adjacency_df(bowtiedf):

@@ -1,27 +1,21 @@
 #!/usr/bin/env python
-#
-#  creates read counts plot/plots to determine thresholds.   
-#
-
 import argparse
 import logging
 import os
 import sys
-import traceback
 
 from configparser import ConfigParser
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import *
+from mapseq.barcode import *
 from mapseq.utils import *
-    
+from mapseq.stats import *
+
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -44,41 +38,33 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='config file.')    
+                        help='out file.')    
 
-    parser.add_argument('-e','--expid', 
-                    metavar='expid',
-                    required=False,
-                    default=None,
-                    type=str, 
-                    help='explicitly provided experiment id')
-
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=True,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file or sampleinfo.tsv. ') 
-    
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
+                    required=True,
+                    default=None, 
+                    type=str, 
+                    help='Combined output FASTA')   
+
+    parser.add_argument('-D','--datestr', 
+                    metavar='datestr',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='PDF plot out file. "countsplots.pdf" if not given')  
+                    help='Include datestr in relevant files.')
 
-    parser.add_argument('-O','--outdir', 
-                    metavar='outdir',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='outdir. input file base dir if not given.')     
-
-    parser.add_argument('infiles',
-                        metavar='infiles',
-                        nargs ="+",
+    parser.add_argument('-f','--force', 
+                    action="store_true", 
+                    default=False, 
+                    help='Recalculate even if output exists.') 
+   
+    parser.add_argument('infiles' ,
+                        metavar='infiles', 
                         type=str,
-                        help='BCXXX.reads.counts.tsv files')
+                        nargs='+',
+                        default=None, 
+                        help='Read1 and Read2 [Read1B  Read2B ... ] fastq files')
        
     args= parser.parse_args()
     
@@ -89,23 +75,25 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
-    
+    cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
-      
-   
-    outdir = None
-    if args.outdir is not None:
-        outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making outdir: {outdir} ')
+
+
+    # check nargs. 
+    if (len(args.infiles) < 2)  or (len(args.infiles) % 2 != 0 ):
+        parser.print_help()
+        print('error: the following arguments are required: 2 or multiple of 2 infiles')
+        sys.exit(1)
+       
+    # set outdir
+    outdir = os.path.dirname(args.outfile)
+    if not os.path.exists(outdir):
         os.makedirs(outdir, exist_ok=True)
-    else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
-        dirname = os.path.dirname(filepath)
-        outdir = dirname
-        
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    make_reads_countsplot_combined_sns(cp, sampdf, args.infiles, outdir=outdir, expid=args.expid )
-      
+        logging.debug(f'made outdir={outdir}')
+
+    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
+    infilelist = package_pairfiles(args.infiles)   
+    logging.debug(f'infilelist = {infilelist}')
+    process_fastq_pairs_fasta(cp, infilelist, args.outfile, force=args.force, datestr=args.datestr)
+    

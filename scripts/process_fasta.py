@@ -95,13 +95,12 @@ if __name__ == '__main__':
                         default=False, 
                         help='create read tsvs.' )   
    
-    parser.add_argument('infiles' ,
-                        metavar='infiles', 
+    parser.add_argument('infile',
+                        metavar='infile',
+                        nargs ="?",
                         type=str,
-                        nargs='+',
-                        default=None, 
-                        help='Read1 and Read2 [Read1B  Read2B ... ] fastq files')
-       
+                        help='Single FASTA file to be split by SSI')
+        
     args= parser.parse_args()
     
     if args.debug:
@@ -113,19 +112,7 @@ if __name__ == '__main__':
     cp.read(args.config)
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
-
-
-    # check nargs. 
-    if len(args.infiles) < 2:
-        parser.print_help()
-        print('error: the following arguments are required: 2 infiles')
-        sys.exit(1)
-
-    if len(args.infiles) % 2 != 0:
-        parser.print_help()
-        print('error: the following arguments are required: 2 or multiple of 2 infiles')
-        sys.exit(1)    
+    logging.debug(f'infiles={args.infile}')
        
     # set outdir
     outdir = None
@@ -153,11 +140,8 @@ if __name__ == '__main__':
                             max_mismatch=args.max_mismatch)
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
-    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir} with countsplots={args.countsplots}')
-           
-    infilelist = package_pairfiles(args.infiles)
-    
-    logging.debug(f'infilelist = {infilelist}')
-    process_fastq_pairs(cp, sampdf, infilelist, bcolist, outdir=args.outdir, force=args.force, countsplots=args.countsplots, datestr=args.datestr)
+    logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots}')    
+    logging.debug(f'infile = {args.infile}')
+    process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, countsplots=args.countsplots, datestr=args.datestr)
     
     

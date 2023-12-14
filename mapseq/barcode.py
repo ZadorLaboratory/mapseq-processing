@@ -3,7 +3,7 @@
 #  Module for generic barcode/SSI handling, not specific to MAPseq or BARseq. 
 #
 #
-
+import atexit
 import logging
 import os
 import pprint 
@@ -37,12 +37,21 @@ def build_bcmatcher(bclist):
                   'CGGT': []
                  }
                  
-    unmached  list      
+    unmatched  list      
     '''
     matchdict = {}
     seqdict = {}
-    unmatched = []
-    
+
+    #unmatched = []    
+    # calculate directory
+    afile = bclist[0].filename
+    filepath = os.path.abspath(afile)    
+    dirname = os.path.dirname(filepath)
+    unmatchedfile = f'{dirname}/unmatched.fasta'
+    unmatched = open(unmatchedfile,'w')
+    logging.debug(f'opened {unmatchedfile} for writing...')
+
+
     for bco in bclist:
         seq = bco.barcode
         seqlen = len(seq)
@@ -60,7 +69,8 @@ def build_bcmatcher(bclist):
                     subdict = subdict[nt]
             else:
                 logging.debug(f'end condition reached')
-                subdict[nt] = [ ]
+                #subdict[nt] = [ ]
+                subdict[nt] = bco
                 seqdict[seq] = subdict[nt]
             
         #print(matchdict)
@@ -85,20 +95,23 @@ def do_match(id, seq, matchdict, fullseq, unmatched):
             try:
                 subdict = subdict[nt]
             except KeyError:
-                unmatched.append((id, fullseq))
+                #unmatched.append((id, fullseq))
+                unmatched.write(f'>{id}\n{fullseq}\n')
                 return False
         else:
             try:
-                seqlist = subdict[nt]
-                seqlist.append((id, fullseq[:-seqlen]))
+                #seqlist = subdict[nt]
+                # seqlist.append((id, fullseq[:-seqlen]))
+                bco = subdict[nt]
+                bco.of.write(f'>{id}\n{fullseq[:-seqlen]}\n')
                 return True
+            
             except KeyError:
-                unmatched.append((id, fullseq))
+                #unmatched.append((id, fullseq))
+                # unmatched is a file object. 
+                unmatched.write(f'>{id}\n{fullseq}\n')
                 return False
         
-
-
-
 def match_strings(a, b, max_mismatch=0):
     '''
     attempt at efficient comparison of two same-length strings. 
@@ -127,21 +140,24 @@ class BarcodeHandler(object):
     Basically implements fastx_barcode_handler.pl. 
     Matches against given barcode/SSI sequence, and
     writes out target fasta (minus SSI) to SSI-specific file.
-    
     check end of line of sequence, length of barcode only.   
     
-        
     '''
     def __init__(self, label, barcode, outdir, eol=True, max_mismatch=0):
         self.barcode = barcode
         self.label = label
         self.filename = os.path.abspath(f'{outdir}/{label}.fasta')
         self.eol = True
-        self.max_mismatch = max_mismatch
-        self.of = None
+        self.max_mismatch = int(max_mismatch)
+        self.of = open(self.filename, 'w')
         self.dataframe = None
         if outdir is None:
             outdir = "."
+        atexit.register(self.cleanup)
+
+    def cleanup(self):
+        logging.debug(f'running cleanup(). Closing outfile {self.filename} ')
+        self.of.close()
 
     def do_match(self, id, seq ):
         '''

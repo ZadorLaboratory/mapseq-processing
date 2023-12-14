@@ -20,7 +20,7 @@ sys.path.append(gitpath)
 
 from mapseq.core import *
 from mapseq.utils import *
-
+from mapseq.stats import *
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -87,11 +87,11 @@ if __name__ == '__main__':
                         type=str, 
                         help='XLS sampleinfo file. ')
 
-    parser.add_argument('infiles',
-                        metavar='infiles',
-                        nargs ="+",
+    parser.add_argument('infile',
+                        metavar='infile',
+                        nargs ="?",
                         type=str,
-                        help='"all" TSV from process_ssifasta. columns=(sequence, counts, type, label, brain)')
+                        help='Single "all" TSV from process_ssifasta. columns=(sequence, counts, type, label, brain)')
        
 
     args= parser.parse_args()
@@ -103,15 +103,13 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
-    
+    cdict = format_config(cp)    
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
+    logging.debug(f'infiles={args.infile}')
     
     if args.recursion is not None:
         sys.setrecursionlimit(int(args.recursion))
     
-        
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
@@ -122,22 +120,14 @@ if __name__ == '__main__':
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
         outdir = dirname
-
-    if args.outdir is not None:
-        cfilename = f'{args.outdir}/process_merged.config.txt'
-    else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
-        dirname = os.path.dirname(filepath)
-        cfilename = f'{dirname}/process_merged.config.txt'
-    
+    cfilename = f'{outdir}/process_merged.config.txt'
     write_config(cp, cfilename, timestamp=True)        
     
     sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    process_merged(cp, args.infiles, outdir, expid=args.expid, recursion = args.recursion, combined_pdf=args.combined, label_column=args.label )
+    process_merged(cp, args.infile, outdir, expid=args.expid, recursion = args.recursion, combined_pdf=args.combined, label_column=args.label )
     
     
     
