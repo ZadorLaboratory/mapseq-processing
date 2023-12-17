@@ -140,8 +140,9 @@ if __name__ == '__main__':
                             max_mismatch=args.max_mismatch)
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
-    logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots}')    
+    logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots} readtsvs={args.readtsvs}')    
     logging.debug(f'infile = {args.infile}')
-    process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, countsplots=args.countsplots, datestr=args.datestr)
+    process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, 
+                  countsplots=args.countsplots, readtsvs=args.readtsvs, datestr=args.datestr)
     
     

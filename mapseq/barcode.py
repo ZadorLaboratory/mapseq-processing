@@ -103,7 +103,8 @@ def do_match(id, seq, matchdict, fullseq, unmatched):
                 #seqlist = subdict[nt]
                 # seqlist.append((id, fullseq[:-seqlen]))
                 bco = subdict[nt]
-                bco.of.write(f'>{id}\n{fullseq[:-seqlen]}\n')
+                bco.writeseq(id, fullseq[:-seqlen] )
+                #bco.of.write(f'>{id}\n{fullseq[:-seqlen]}\n')
                 return True
             
             except KeyError:
@@ -149,7 +150,7 @@ class BarcodeHandler(object):
         self.filename = os.path.abspath(f'{outdir}/{label}.fasta')
         self.eol = True
         self.max_mismatch = int(max_mismatch)
-        self.of = open(self.filename, 'w')
+        self.of = None  # do not open file until necessary. 
         self.dataframe = None
         if outdir is None:
             outdir = "."
@@ -157,7 +158,8 @@ class BarcodeHandler(object):
 
     def cleanup(self):
         logging.debug(f'running cleanup(). Closing outfile {self.filename} ')
-        self.of.close()
+        if self.of is not None:
+            self.of.close()
 
     def do_match(self, id, seq ):
         '''
@@ -168,9 +170,9 @@ class BarcodeHandler(object):
          
         '''
         if self.of is None:
-            logging.debug(f'open file for {self.label}')
+            logging.debug(f'opening new file for {self.label}')
             self.of = open(self.filename, 'w')
-            self.of.write(f';sequences for  barcode {self.label}\n')
+            self.of.write(f'sequences for  barcode {self.label}\n')
         
         r = False
         if self.max_mismatch == 0:
@@ -196,6 +198,13 @@ class BarcodeHandler(object):
                     logging.warning(traceback.format_exc(None))            
                 r = True
         return r
+    
+    
+    def writeseq(self, header, sequence ):
+        if self.of is None:
+            logging.debug(f'opening new file for {self.label}')
+            self.of = open(self.filename, 'w')
+        self.of.write(f'>{header}\n{sequence}\n')        
         
     def finalize(self):
         logging.debug(f'closing file for {self.label}')
@@ -282,14 +291,22 @@ def check_output(bclist):
     missing = []
     for bch in bclist:
         logging.debug(f'checking path {bch.filename}...')
-        if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
-            logging.debug(f'Non-empty BC{bch.label}.fasta exists.')
+        #if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
+        nonzero = False
+        pathexists = False
+        pathexists = os.path.exists(bch.filename)
+        if pathexists:
+            nonzero = os.path.getsize(bch.filename) >= 1
+        
+        logging.info(f'file={bch.filename} pathexists={pathexists} nonzero={nonzero}')
+        if pathexists and nonzero : 
+            logging.info(f'Non-empty BC{bch.label}.fasta exists.')
         else:
             logging.info(f"{bch.filename} doesn't exist. output_exists=False")
             missing.append(bch.label)
             output_exists = False
     
-    if output_exists == False:
+    if not output_exists:
         logging.debug(f'missing BC labels: {missing}')
     else:
         logging.info('all output exists.')

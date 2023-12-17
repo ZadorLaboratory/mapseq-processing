@@ -534,7 +534,7 @@ def make_umi_counts_df(config, seqdf, label=None):
     make counts column for identical sequences.  
     optionally assign a label to set in new column
     combine values from collapsed read_counts 
-    sequence   read_counts  label     
+    sequence   read_count  label     
     AAA        23           A
     AAA        5            A
     BBB        7            A
@@ -542,7 +542,7 @@ def make_umi_counts_df(config, seqdf, label=None):
     CCC        5            A
     
     ->
-    AAA    read_counts  umi_counts label
+    AAA    read_count  umi_count label
     BBB    13           2          A
     CCC    28           2          A
     CCC    5            1          A
@@ -753,7 +753,7 @@ def calculate_threshold(config, cdf, site=None):
         logging.warn(f'no SSI label in DF')
         
     # assess distribution.
-    counts = cdf['read_counts']
+    counts = cdf['read_count']
     clength = len(counts)
     counts_max = counts.max()
     counts_min = counts.min()
@@ -1032,12 +1032,13 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
             logging.debug(f'made outdir={outdir}')
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+
+    if countsplots:
+        readtsvs = True
     
     output_exists = check_output(bclist)
     logging.debug(f'output_exists={output_exists} force={force}')
 
-
-    
     cfilename = f'{outdir}/process_fastq.config.txt'
     bc_length=len(bclist[0].barcode)
     outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
@@ -1182,8 +1183,6 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     
     output_exists = check_output(bclist)
-    logging.debug(f'output_exists={output_exists} force={force}')
-
     cfilename = f'{outdir}/process_fasta.config.txt'
     bc_length=len(bclist[0].barcode)
     unmatched = os.path.abspath(f'{outdir}/unmatched.fasta')
@@ -1191,6 +1190,9 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
     seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
     matched_interval = int(config.get('fastq','matched_interval'))
     unmatched_interval = int(config.get('fastq','unmatched_interval'))
+    
+    logging.info(f'performing split. outdir={outdir} output_exists={output_exists} force={force} countsplots={countsplots} readtsvs={readtsvs}')
+    
     
     if ( not output_exists ) or force:
         write_config(config, cfilename, timestamp=True, datestring=datestr)
@@ -1212,7 +1214,7 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
             num_matched = 0
             num_unmatched = 0
             
-            logging.debug(f'handling file pair {infile}')
+            logging.debug(f'handling file {infile}')
             while True:
                 try:
                     line = f.readline()
@@ -1253,15 +1255,24 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
         logging.debug(f'finished with {infile}')
         sh.add_value('/fasta','reads_handled', num_handled_total )
         sh.add_value('/fasta','reads_unmatched', num_unmatched_total )
-        pf.close()              
-        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs. {num_matched_total} matched. {num_unmatched_total} unmatched')
+        f.close()
+        
+        matchrate = 0.0
+        if num_matched_total > 0: 
+            matchrate = num_unmatched_total / num_matched_total              
+                  
+        logging.info(f'handled {num_handled_total} sequences. {num_matched_total} matched. {num_unmatched_total} unmatched matchrate={matchrate}')
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
+    
     
     if readtsvs:
         filelist = []
         for bch in bclist:
-            filelist.append(bch.filename)
+            if os.path.exists(bch.filename):
+                filelist.append(bch.filename)
+            else:
+                logging.warning(f'missing FASTA file!: {of}')
         logging.info(f'Making counts dfs/TSVs for {filelist} in {outdir}')
         make_read_counts_dfs(config, filelist, outdir)
 
@@ -1270,9 +1281,13 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
         countsfilelist = []
         for bch in bclist:
             base = get_mainbase(bch.filename)   
-            of = os.path.join(dirname , f'{base}.read.counts.tsv')
-            countsfilelist.append(of)
+            of = os.path.join(outdir , f'{base}.read.counts.tsv')
+            if os.path.exists(bch.filename):
+                countsfilelist.append(of)
+            else:
+                logging.warning(f'missing countsfile needed for plot!:  {of}')
         make_read_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
+
 
 def calc_thread_count(nthreads):
     '''
@@ -1361,7 +1376,7 @@ def make_read_countsplots(config, filelist ):
         
         bcdata = pd.read_csv(bcfile, sep='\t')
         plt.figure()
-        plt.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['read_counts']))
+        plt.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['read_count']))
         plt.title(base)
         plt.xlabel("log10(BC index)")
         plt.ylabel("log10(BC counts)")
