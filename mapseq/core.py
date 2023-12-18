@@ -1839,7 +1839,25 @@ def process_mapseq_dir(exp_id, loglevel, force):
     except Exception as ex:
         logging.error(f'error while handling {d} ')
         logging.warning(traceback.format_exc(None))
+
+
+def read_strip_fasta(infile, seq_length):
+    pass
+    
+
         
 
+def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=None, datestr=None, ):
+    '''
+    take input FASTA
+    split off first seq_length part (viral barcode). 
+    calculate unique sequences and counts of each. 
+    align all to all bowtie, with max_mismatch
+    for each component, set all instances to most frequent element of component. 
+    write out new FASTA with same number of sequences, but now all collapsable VBC parts are
+    the same parent sequence. 
+    '''
+    
+    fdf = read_strip_fasta(infile, seq_length)
 
 

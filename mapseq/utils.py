@@ -27,6 +27,7 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
@@ -168,6 +169,17 @@ def remove_base_repeats(df, col='sequence', n=7):
     logging.debug(f'df without {n} repeats len={endlen}')
     df.reset_index(drop=True, inplace=True)
     return df
+
+def has_base_repeats(seqstring, n=7):
+    '''
+    if string repeats C,G,A, or T <n> times or more.    
+    '''
+    bases = ['C','G','A','T']
+    for b in bases:
+        pat = b*n
+        if pat in seqstring:
+            return True
+    return False
 
 
 def fix_columns_float(df, columns):
@@ -538,7 +550,7 @@ def write_tsv(df, outfile=None):
     logging.debug(f'writing {len(df)} lines output to {outfile}')      
     df.to_csv(outfile, sep='\t')
 
-def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None):
+def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None, max_repeats=7):
     '''
     parses paired-end fastq files. merges from r1 and r2 at selected positions. 
     outputs to single fasta file. 
@@ -551,6 +563,9 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
     r2end = 20
     # reporting intervals for verbose output, defines how often to log. 
     seqhandled_interval = 1000000
+    
+    QC drop all sequences with any N in them. 
+    Drop all sequences with homopolymer runs > max_homopolymers
     
     '''
     filepath = os.path.abspath(outfile)    
@@ -573,12 +588,14 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
         of = open(outfile, 'w')
         pairshandled = 0
         num_handled_total = 0
+        num_has_n = 0
+        num_has_repeats = 0
+        seq_id = 0
 
         # handle all pairs of readfiles from readfilelist
         for (read1file, read2file) in infilelist:
             pairshandled += 1
             num_handled = 0
-            
             logging.debug(f'handling file pair {pairshandled}')
             if read1file.endswith('.gz'):
                 r1f = gzip.open(read1file, "rt")
@@ -609,15 +626,29 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
                     sub1 = seq1[r1s:r1e]
                     sub2 = seq2[r2s:r2e]
                     fullread = sub1 + sub2
-                    of.write(f'>{num_handled_total}\n{fullread}\n')
                     
+                    has_n = 'N' in fullread
+                    if has_n:
+                        num_has_n += 1
+                        
+                    has_repeats = has_base_repeats(fullread, n=max_repeats)
+                    if has_repeats:
+                        num_has_repeats +=1
+                    
+                    if has_repeats or has_n:
+                        pass
+                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
+                    else:
+                        of.write(f'>{seq_id}\n{fullread}\n')
+                        seq_id += 1
+
                     num_handled += 1
                     num_handled_total += 1
 
                     # report progress...                    
                     if num_handled % seqhandled_interval == 0: 
                         logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
-                
+                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
                 except StopIteration as e:
                     logging.debug('iteration stopped')    
                     break
@@ -625,6 +656,7 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
             logging.debug(f'finished with pair {pairshandled} {num_handled} sequences.')
         of.close()              
         logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
+        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
 
