@@ -170,6 +170,19 @@ def remove_base_repeats(df, col='sequence', n=7):
     df.reset_index(drop=True, inplace=True)
     return df
 
+def remove_singletons(listoflists):
+    '''
+    Assumes input of a list of lists. 
+    Return only lists with more than one element.
+    '''
+    logging.debug(f'len before = {len(listoflists)}')
+    outlist = [ x for x in listoflists if len(x) > 1 ]
+    
+        
+    
+
+
+
 def has_base_repeats(seqstring, n=7):
     '''
     if string repeats C,G,A, or T <n> times or more.    
@@ -358,7 +371,7 @@ def get_mainbase(filepath):
     return base
 
 
-def write_fasta_from_df(config, df, outfile=None):
+def write_fasta_from_df(df, outfile=None):
     '''
     Assumes df has 'sequence' column
     
@@ -371,6 +384,30 @@ def write_fasta_from_df(config, df, outfile=None):
     else:
         logging.error('outfile is None, not implemented.')
     return outfile
+
+def read_fasta_to_df(infile, seqlen=None):
+    '''
+    input fasta 
+    optionally trim sequence to seqlen
+    None means keep all. 
+    '''   
+    slist = []
+    rcs = SeqIO.parse(infile, "fasta")
+    handled = 0
+    if seqlen is None:
+        for sr in rcs:
+            s = sr.seq
+            slist.append(str(s))
+            handled += 1    
+    else:
+        seqlen = int(seqlen)
+        for sr in rcs:
+            s = sr.seq[:seqlen]
+            slist.append(str(s))
+            handled += 1
+    logging.debug(f"handled {handled}  sequences.")    
+    df = pd.DataFrame(slist, columns=['sequence'] )
+    return df
 
 
 def dataframe_to_seqlist(df, seqcol='sequence',idcol=None, desccols=None, sep=':'):

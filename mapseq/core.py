@@ -344,7 +344,7 @@ def align_and_collapse(config, countsdf, outdir, base, label):
     
     of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
-    seqfasta = write_fasta_from_df(config, countsdf, outfile=of)
+    seqfasta = write_fasta_from_df(countsdf, outfile=of)
     of = os.path.join(outdir , f'{base}.{label}.{aligner}')
     logging.debug(f'running {aligner}...')
     try:
@@ -1839,25 +1839,90 @@ def process_mapseq_dir(exp_id, loglevel, force):
     except Exception as ex:
         logging.error(f'error while handling {d} ')
         logging.warning(traceback.format_exc(None))
-
-
-def read_strip_fasta(infile, seq_length):
-    pass
-    
-
         
 
 def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=None, datestr=None, ):
     '''
-    take input FASTA
-    split off first seq_length part (viral barcode). 
-    calculate unique sequences and counts of each. 
-    align all to all bowtie, with max_mismatch
-    for each component, set all instances to most frequent element of component. 
-    write out new FASTA with same number of sequences, but now all collapsable VBC parts are
-    the same parent sequence. 
-    '''
     
-    fdf = read_strip_fasta(infile, seq_length)
+    Algorithm:
+    
+    take input FASTA to FULL dataframe. ( already removed Ns and homopolymer runs ) 
+    split first seq_length part (VBC) and remainder to 2 columns. 
+    
+    get UNIQUE VBC dataframe, with count, *save one to many mappings of indices to FULL*     
+    save VBCs to fasta
+    align all to all bowtie
+    make bowtie DF
+    drop mismatch > max_mismatch
+    for each (multi-sequence) component:
+        retrieve full mapping of all indices from component indices.  
+        determine which unique sequence represents largest number in FULL dataframe (using count)
+        set all sequence instances in FULL to most frequent element of component. 
+    re-assemble VBC + remainder sequence
+    output to adjusted FULL FASTA file ready for input to SSI splitting.  
+   
+    can use iloc and range of indices to set value for all elements of components:
+    
+    testdf = pd.DataFrame([[0, 2, 3], [0, 4, 1], [10, 20, 30]],columns=['A', 'B', 'C'])
+    testdf
+            A   B   C
+        0   0   2   3
+        1   0   4   1
+        2  10  20  30
+    testdf.iloc[[0,2],[0]] = 15
+            A   B   C
+        0  15   2   3
+        1   0   4   1
+        2  15  20  30
+
+    
+    
+    
+    '''
+    aligner = config.get('ssifasta','tool')
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    head = base.split('.')[0]
+    
+    if outdir is None:
+        outdir = dirname
+    
+    os.makedirs(outdir, exist_ok=True)
+    
+    # need to strip to seq_length
+    logging.info(f'reading {infile} to df...')
+    fdf = read_fasta_to_df(infile, seq_length)
+    logging.debug(f'fdf=\n{fdf}')
+    
+    # get reduced dataframe of unique sequences
+    udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    logging.debug(f'udf = \n{udf}')
+    of = os.path.join( outdir , f'{base}.udf.tsv')
+    udf.to_csv(of, sep='\t') 
+    
+    of = os.path.join( outdir , f'{base}.seq.fasta')
+    seqfasta = write_fasta_from_df(udf, outfile=of)
+    
+    # run allXall bowtie
+    of = os.path.join( outdir , f'{base}.bt2.sam')
+    afile = run_bowtie(config, seqfasta, of, tool=aligner)
+    logging.debug(f'produced {afile}')
+    
+    btdf = make_bowtie_df(afile)
+    logging.debug(f'btdf before max_mismatch =< {max_mismatch}')
+    btdf = btdf[btdf['n_mismatch'] <= max_mismatch]
+    logging.debug(f'btdf =\n{btdf}')
+    of = os.path.join( outdir , f'{base}.btdf')
+    btdf.to_csv(of, sep='\t') 
+          
+    edgelist = edges_from_btdf(btdf)
+    logging.debug(f'edgelist len={len(edgelist)}')
+    components = get_components(edgelist)
+    logging.debug(f'components len={len(components)}')
+    components = remove_singletons(components)
+    
+    
 
 

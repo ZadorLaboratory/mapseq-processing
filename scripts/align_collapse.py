@@ -43,6 +43,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-a','--aligner', 
+                    metavar='aligner',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='aligner tool  [bowtie | bowtie2]')
+
     parser.add_argument('-m','--max_mismatch', 
                         metavar='max_mismatch',
                         required=False,
@@ -66,7 +73,6 @@ if __name__ == '__main__':
    
     parser.add_argument('infile',
                         metavar='infile',
-                        nargs ="?",
                         type=str,
                         help='Single FASTA file collapsed.')
         
@@ -79,6 +85,10 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
+    if args.aligner is not None:
+        cp.set('ssifasta','tool', args.aligner)
+    
+    
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
@@ -90,8 +100,7 @@ if __name__ == '__main__':
         logging.debug(f'making missing outdir: {outdir} ')
         os.makedirs(outdir, exist_ok=True)
     else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
+        filepath = os.path.abspath(args.infile)    
         dirname = os.path.dirname(filepath)
         outdir = dirname
 
