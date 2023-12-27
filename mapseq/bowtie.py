@@ -36,6 +36,9 @@ BOWTIE_1_COLS=['name_read', 'strand','name_align','offset','seq','quals','ceil',
 #   second row are optional expected fields. 
 BOWTIE_2_COLS=['name_read', 'flagsum', 'name_align','offset','qual', 'cigar', 'mate', 'mate_offset', 'fraglen', 'seq', 'quals', 
                   'score', 'next', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', 'md', 'yt' ]
+BOWTIE_2_INT_COLS= ['flagsum', 'offset', 'qual', 'mate_offset', 'fraglen', 'score', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', ]
+
+
 BOWTIE_OPT_COLS= ['score', 'next', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', 'md', 'yt' ]
 OPT_MAP = { 'score'     : 'AS',
             'next'      : 'XS',
@@ -186,7 +189,7 @@ def make_bowtie2_df(infile):
     
     current = 0
     sumreport = 1
-    suminterval = 10000
+    suminterval = 100000
     repthresh = sumreport * suminterval
     
     # list of lists to hold data
@@ -243,6 +246,7 @@ def make_bowtie2_df(infile):
         filehandle.close()          
 
     df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS )
+    df = fix_columns_int(df, BOWTIE_2_INT_COLS)
     return df
 
 

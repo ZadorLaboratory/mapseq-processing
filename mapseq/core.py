@@ -34,6 +34,7 @@ from mapseq.barcode import *
 from mapseq.stats import *
 
 
+
 def fix_columns_int(df, columns):
     '''
     forces column in dataframe to be an integer. NaNs become '0'
@@ -446,16 +447,26 @@ def edges_from_btdf(btdf):
     edgelist = [ list(t) for t in zip(readlist, alignlist)]
     return edgelist
 
-def get_components(edgelist):
+def get_components(edgelist, integers=True):
+    '''
+    returns strongly connected components from list of edges via Tarjan's algorithm. 
+    assumes labels are integers (for later use as indices in dataframes. 
+    '''
     complist = []
     logging.debug(f'getting connected components from edgelist len={len(edgelist)}')
     if len(edgelist) < 100:
         logging.debug(f'{edgelist}')
     for g in tarjan(from_edges(edgelist)):
+        #logging.debug(f'g={g}')
         complist.append(g)
     logging.debug(f'{len(complist)} components.')
     if len(edgelist) < 100:
         logging.debug(f'{complist}')
+    if integers:
+        outlist = []
+        for g in complist:
+            outlist.append( [int(x) for x in g])
+        complist = outlist    
     return complist
 
 #
@@ -1875,6 +1886,7 @@ def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=N
         1   0   4   1
         2  15  20  30
 
+https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-column-along-with-lists-of-row-indices-where-the
     
     
     
@@ -1898,6 +1910,7 @@ def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=N
     
     # get reduced dataframe of unique sequences
     udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    
     logging.debug(f'udf = \n{udf}')
     of = os.path.join( outdir , f'{base}.udf.tsv')
     udf.to_csv(of, sep='\t') 
@@ -1913,16 +1926,111 @@ def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=N
     btdf = make_bowtie_df(afile)
     logging.debug(f'btdf before max_mismatch =< {max_mismatch}')
     btdf = btdf[btdf['n_mismatch'] <= max_mismatch]
-    logging.debug(f'btdf =\n{btdf}')
+    logging.debug(f'btdf after max_mismatch < {max_mismatch} =\n{btdf}')
+    # we only need alignemnts to *other* sequences. Everything aligns to itself...
+    logging.debug(f'btdf before max_mismatch > 0=\n{btdf}')
+    btdf = btdf[btdf['n_mismatch'] > 0]
+    logging.debug(f'btdf after max_mismatch > 0 =\n{btdf}')
     of = os.path.join( outdir , f'{base}.btdf')
     btdf.to_csv(of, sep='\t') 
-          
+    
+    # perform collapse...      
     edgelist = edges_from_btdf(btdf)
     logging.debug(f'edgelist len={len(edgelist)}')
     components = get_components(edgelist)
-    logging.debug(f'components len={len(components)}')
+    logging.debug(f'all components len={len(components)}')
     components = remove_singletons(components)
-    
-    
+    logging.debug(f'multi-element components len={len(components)}')
 
+    newdf = collapse_by_components(fdf, udf, components)
+    logging.debug(f'new collapsed df = {newdf}')
+    of = os.path.join( outdir , f'{base}.collapsed.tsv')
+    newdf.to_csv(of, sep='\t')     
+
+    of = os.path.join( outdir , f'{base}.collapsed.fasta')
+    cdf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
+    write_fasta_from_df(cdf, of)
+    logging.debug(f'wrote re-joined sequences to {of}')
+
+
+            
+def collapse_by_components(fulldf, uniqdf, components):
+    #
+    #
+    # components consist of indices within the uniqdf. 
+    # assumes component elements are integers, as they are used as dataframe indices. 
+    # create map of indices in original full DF that correspond to all members of a (multi-)component
+    # from alignment
+    # hash key is index of first appearance of sequence in full DF (i.e. its index in uniqdf.) 
+    # 
+    # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
+    #
+    #  SETUP
+    #   infile is all reads...
+    #  fdf = read_fasta_to_df(infile, seq_length=32)
+    #  udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    #  components are *uniqdf* indices from bowtie alignemnt.  
+    #
+    logging.debug(f'all components len={len(components)}')
+    components = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(fulldf)} {len(components)} components.')
+    glist = fulldf.groupby('sequence').groups
+    glist_len = len(glist)
+    logging.debug(f'grouplist by seq len={glist_len}. e.g. {glist[list(glist.keys())[1]]}')
+    
+    # Make new full df:
+    newdf = fulldf.copy()
+    
+    #comphandled_interval = int(config.get('fasta','comphandled_interval')) 
+    comphandled = 0
+    comphandled_interval = 1000
+    
+    for comp in components:
+        compidx =  pd.Index([], dtype='int64')
+        max_seq = None 
+        n_max = 0
+        for uniqidx in comp:
+            seq = uniqdf.sequence.iloc[uniqidx]
+            #logging.debug(f'uniqidx = {uniqidx} seq={seq}')
+            fullidx = glist[seq]
+            idxlen = len(fullidx)
+            if idxlen > n_max:
+                n_max = idxlen
+                max_seq = seq
+            #logging.debug(f'seq {seq} -> {fullidx}')
+            compidx = compidx.union(fullidx)
+            
+        #logging.debug(f'fullidx len={len(compidx)}: {compidx}')
+        #logging.debug(f'setting seq to {max_seq}')
+        newdf.sequence.iloc[compidx] = max_seq
+        
+        comphandled += 1
+        if comphandled % comphandled_interval == 0:
+            logging.info(f'handled {comphandled}/{glist_len} components.')
+    logging.info(f'new collapsed df = \n{newdf}')
+    return newdf
+        
+
+        
+    #
+    #for component in components:
+    #    logging.debug(f'component={component} comp length={len(component)}')
+        #fidxlist = []
+        # each component is a udf sequence to be collapsed. need all fulldf indexes.
+        # and a number of fulldf copies (which would be UMIs? UMIs with dupes?         
+    #    fidxlist = []
+    #    for c in component:
+            #logging.debug(f'c={c})')
+            #logging.debug(f'sequence={uniqdf.iloc[c].sequence}')
+    #        cdf = fulldf[ fulldf['sequence'] == uniqdf.iloc[c].sequence ]            
+    #        for i in list(cdf.index):
+    #            fidxlist.append(i)
+            #logging.debug(f'cdf=\n{cdf}')
+    #    logging.debug(f'fillfids for component: {fidxlist}')
+    #    logging.debug(f'fillfids length for component: {len(fidxlist)}')
+    #    fulldfids.append(fidxlist)
+    #logging.debug(f'created list of {len(fulldfids)} component full indices.')
+    #return fulldfids
+    
 

@@ -174,13 +174,15 @@ def remove_singletons(listoflists):
     '''
     Assumes input of a list of lists. 
     Return only lists with more than one element.
+    
+    E.g. used to remove single-element components from align_and_collapse
+    
     '''
     logging.debug(f'len before = {len(listoflists)}')
     outlist = [ x for x in listoflists if len(x) > 1 ]
-    
+    logging.debug(f'len after = {len(outlist)}')
+    return outlist
         
-    
-
 
 
 def has_base_repeats(seqstring, n=7):
@@ -388,25 +390,29 @@ def write_fasta_from_df(df, outfile=None):
 def read_fasta_to_df(infile, seqlen=None):
     '''
     input fasta 
-    optionally trim sequence to seqlen
+    Optionally trim sequence to seqlen, returning a two-column dataframe 'sequence' 'tail'
     None means keep all. 
     '''   
     slist = []
+    tlist = []
     rcs = SeqIO.parse(infile, "fasta")
     handled = 0
+    df = None
     if seqlen is None:
         for sr in rcs:
             s = sr.seq
             slist.append(str(s))
             handled += 1    
+        df = pd.DataFrame(slist, columns=['sequence'] )
     else:
         seqlen = int(seqlen)
         for sr in rcs:
             s = sr.seq[:seqlen]
-            slist.append(str(s))
+            t = sr.seq[seqlen:]
+            slist.append( [str(s),str(t)] )
             handled += 1
-    logging.debug(f"handled {handled}  sequences.")    
-    df = pd.DataFrame(slist, columns=['sequence'] )
+        df = pd.DataFrame(slist, columns=['sequence','tail'] )
+    logging.debug(f"handled {handled}  sequences. df=\n{df}")    
     return df
 
 
