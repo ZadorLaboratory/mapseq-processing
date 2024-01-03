@@ -36,6 +36,12 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
+
+    parser.add_argument('-n', '--nocollapse',
+                        default=True , 
+                        action="store_false", 
+                        dest='nocollapse', 
+                        help='assume input already aligned/collapsed')
     
     parser.add_argument('-c','--config', 
                         metavar='config',
@@ -109,8 +115,11 @@ if __name__ == '__main__':
     sampdf = load_sample_info(cp, args.sampleinfo)
     (rtprimer, site, brain, region) = guess_site(args.infile, sampdf)
     logging.info(f'guessed rtprimer={rtprimer} site={site} brain={brain} region={region}')
-    logging.info(f'outdir={outdir} outfile={args.outfile}')
-    outdf = process_ssifasta(cp, args.infile, outdir=outdir, site=site, datestr=None)
+    logging.info(f'outdir={outdir} outfile={args.outfile} nocollapse={args.nocollapse}')
+    if args.nocollapse:
+        outdf = process_ssifasta_nocollapse(cp, args.infile, outdir=outdir, site=site, datestr=None)
+    else:
+        outdf = process_ssifasta_withcollapse(cp, args.infile, outdir=outdir, site=site, datestr=None)
     outdf['site'] = site
     outdf['brain'] = brain
     outdf['region'] = region

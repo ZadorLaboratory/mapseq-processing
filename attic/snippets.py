@@ -134,3 +134,90 @@ def process_fastq_pairs_single(config, readfilelist, bclist, outdir, force=False
         logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {unmatched} unmatched')
     else:
         logging.warn('all output exists and force=False. Not recalculating.')
+
+
+
+
+def collapse_by_components_faster(fulldf, uniqdf, components):
+    #
+    # faster than naive, but still slow
+    logging.debug(f'all components len={len(components)}')
+    components = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(fulldf)} {len(components)} components.')
+    
+    groups = fulldf.groupby('sequence').groups
+    # convert to python dict for speed
+    gldict = {}   
+    for k in groups.keys():
+        gldict[k] = list(groups[k])
+    gldict_len = len(gldict)
+    logging.debug(f'grouplist by seq len={gldict_len}')
+      
+    # Make new full df:
+    logging.debug('copying fulldf')
+    newdf = fulldf.copy()
+    
+    #comphandled_interval = int(config.get('fasta','comphandled_interval')) 
+    comphandled = 0
+    comphandled_interval = 100
+    for comp in components:
+        ilist = []
+        cslist = list(uniqdf['sequence'].iloc[comp])
+        s = None
+        for s in cslist:
+            for i in gldict[s]:
+                ilist.append(i)
+        newdf['sequence'].iloc[ilist] = s
+        
+        comphandled += 1
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'setting all component seqs to {s}')
+            logging.info(f'handled {comphandled}/{gldict_len} components.')
+    logging.info(f'new collapsed df = \n{newdf}')
+    return newdf
+
+            
+def collapse_by_components_naive(fulldf, uniqdf, components):
+    #
+    # initial version, slow iteration 
+    #
+    logging.debug(f'all components len={len(components)}')
+    components = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(fulldf)} {len(components)} components.')
+    glist = fulldf.groupby('sequence').groups
+    glist_len = len(glist)
+    logging.debug(f'grouplist by seq len={glist_len}. e.g. {glist[list(glist.keys())[1]]}')
+    
+    # Make new full df:
+    newdf = fulldf.copy()
+    
+    #comphandled_interval = int(config.get('fasta','comphandled_interval')) 
+    comphandled = 0
+    comphandled_interval = 1000
+    
+    for comp in components:
+        compidx =  pd.Index([], dtype='int64')
+        max_seq = None 
+        n_max = 0
+        for uniqidx in comp:
+            seq = uniqdf.sequence.iloc[uniqidx]
+            #logging.debug(f'uniqidx = {uniqidx} seq={seq}')
+            fullidx = glist[seq]
+            idxlen = len(fullidx)
+            if idxlen > n_max:
+                n_max = idxlen
+                max_seq = seq
+            #logging.debug(f'seq {seq} -> {fullidx}')
+            compidx = compidx.union(fullidx)
+            
+        #logging.debug(f'fullidx len={len(compidx)}: {compidx}')
+        #logging.debug(f'setting seq to {max_seq}')
+        newdf.sequence.iloc[compidx] = max_seq
+        
+        comphandled += 1
+        if comphandled % comphandled_interval == 0:
+            logging.info(f'handled {comphandled}/{glist_len} components.')
+    logging.info(f'new collapsed df = \n{newdf}')
+    return newdf

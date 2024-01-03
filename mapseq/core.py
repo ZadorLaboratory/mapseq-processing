@@ -170,7 +170,7 @@ def guess_site(infile, sampdf):
     return (rtprimer_num, site, brain, region )
     
 
-def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=None):
+def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=None, nocollapse=False):
     '''
     Process each infile in separate process.
     Produce {outdir}/<BASE>.all.tsv 
@@ -194,6 +194,11 @@ def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=
     elif logging.getLogger().level == logging.DEBUG:
         proglog = '-d'
     
+    if nocollapse is True:
+        nc = '-n'
+    else:
+        nc = ' '
+    
     cfilename =  f'{outdir}/process_ssifasta.config.txt'
     configfile = write_config(config, cfilename, timestamp=True)
     
@@ -208,6 +213,7 @@ def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=
         outfilelist.append(outfile)
         cmd = [ prog, 
                proglog,
+               nc,
                '-c', configfile , 
                '-L', logfile ,
                '-s', sampleinfo ,  
@@ -223,9 +229,9 @@ def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=
     outdf = merge_tsvs(outfilelist)
     logging.info(f'made final DF len={len(outdf)}')
     return outdf
-           
-    
-def process_ssifasta(config, infile, outdir=None, site=None, datestr=None):
+
+
+def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=None):
     '''
     by default, outdir will be same dir as infile
     assumes infile fasta has already been trimmed to remove SSI
@@ -234,8 +240,105 @@ def process_ssifasta(config, infile, outdir=None, site=None, datestr=None):
     Will use relevant threshold. If None, will use default threshold
     
     '''
-
+   
+    aligner = config.get('ssifasta','tool')
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
     
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(config, outdir=outdir, datestr=datestr)
+    #sh = get_default_stats()
+    
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    logging.debug(f'handling {filepath} base={base}')
+    
+    # make raw fasta TSV of barcode-splitter output for one barcode. 
+    # trim to 44 nt since we know last 8 are SSI  
+    logging.debug('calc counts...')
+    seqdf = make_fasta_df(config, infile)
+    of = os.path.join(dirname , f'{base}.read.seq.tsv')
+    seqdf.to_csv(of, sep='\t')
+    
+    # to calculate threshold we need counts calculated. 
+    cdf = make_read_counts_df(config, seqdf, label=base)  
+    logging.debug(f'initial counts df {len(cdf)} all reads.')
+    
+    # these are ***READ*** counts
+    of = os.path.join(dirname , f'{base}.read.counts.tsv')
+    cdf.to_csv(of, sep='\t') 
+        
+    threshold = get_read_count_threshold(config, cdf, site)
+    logging.debug(f'got threshold={threshold} for site {site}')
+    tdf = threshold_read_counts(config, cdf, threshold=threshold)
+    logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
+    
+    # thresholded raw counts. duplicates are all one UMI, so set counts to 1. 
+    # each row (should be) a distinct UMI, so trim to 32. 
+    #tdf['counts'] = 1          
+    tdf['sequence'] = tdf['sequence'].str[:32]
+    tdf['umi_count'] = 1
+    
+    # this contains duplicate VBCs with *different* UMIs
+    of = os.path.join(dirname , f'{base}.umi.seq.tsv')
+    tdf.to_csv(of, sep='\t') 
+    
+    # now we have actual viral barcode df with *unique molecule counts.*
+    vbcdf = make_umi_counts_df(config, tdf)
+    of = os.path.join(dirname , f'{base}.umi.counts.tsv')
+    vbcdf.to_csv(of, sep='\t')     
+    
+    # split out spike, real, lone, otherwise same as 32.counts.tsv    
+    #spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    
+    # write out this step...
+    realdf.to_csv(os.path.join(outdir , f'{base}.real.counts.tsv'), sep='\t')
+    lonedf.to_csv(os.path.join(outdir , f'{base}.lone.counts.tsv'), sep='\t')
+    spikedf.to_csv(os.path.join(outdir , f'{base}.spike.counts.tsv'), sep='\t')
+
+    # remove homopolymers in real sequences.
+    max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
+    realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
+     
+    # align and collapse all.         
+    acrealdf = align_and_collapse(config, realdf, outdir, base, 'real')
+    acspikedf = align_and_collapse(config, spikedf, outdir, base, 'spike')
+    aclonedf = align_and_collapse(config, lonedf, outdir, base, 'lone')
+    acrealdf.to_csv(os.path.join(outdir , f'{base}.real.tsv'), sep='\t')
+    acspikedf.to_csv(os.path.join(outdir , f'{base}.spike.tsv'), sep='\t')
+    aclonedf.to_csv(os.path.join(outdir , f'{base}.lone.tsv'), sep='\t')
+
+    # add labels for merging...
+    acrealdf['type'] = 'real'
+    acspikedf['type'] = 'spike'
+    aclonedf['type'] = 'lone'
+
+    outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
+    outdf['label'] = base
+    outdf.sort_values(by = ['type', 'umi_count'], ascending = [True, False], inplace=True)
+    outdf.reset_index(drop=True, inplace=True)
+    return outdf
+
+           
+    
+def process_ssifasta_withcollapse(config, infile, outdir=None, site=None, datestr=None):
+    '''
+    by default, outdir will be same dir as infile
+    assumes infile fasta has already been trimmed to remove SSI
+    
+    site = ['target-control','injection-control','target','target-negative',target-lone']   
+    Will use relevant threshold. If None, will use default threshold
+    
+    '''
     aligner = config.get('ssifasta','tool')
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
@@ -1854,21 +1957,20 @@ def process_mapseq_dir(exp_id, loglevel, force):
 
 def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=None, datestr=None, ):
     '''
-    
     Algorithm:
     
     take input FASTA to FULL dataframe. ( already removed Ns and homopolymer runs ) 
     split first seq_length part (VBC) and remainder to 2 columns. 
     
-    get UNIQUE VBC dataframe, with count, *save one to many mappings of indices to FULL*     
+    get UNIQUE DF dataframe on (VBC) sequence      
     save VBCs to fasta
     align all to all bowtie
     make bowtie DF
     drop mismatch > max_mismatch
-    for each (multi-sequence) component:
-        retrieve full mapping of all indices from component indices.  
-        determine which unique sequence represents largest number in FULL dataframe (using count)
-        set all sequence instances in FULL to most frequent element of component. 
+        for each component, create map from all variants back to a single virtual parent sequence
+        (this is not necessarily the true biological parent sequence, but it doesn't matter. they just need to all
+        be the same).
+    in FULL DF, set all variant sequences to virtual parent sequence
     re-assemble VBC + remainder sequence
     output to adjusted FULL FASTA file ready for input to SSI splitting.  
    
@@ -1888,8 +1990,6 @@ def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=N
 
 https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-column-along-with-lists-of-row-indices-where-the
     
-    
-    
     '''
     aligner = config.get('ssifasta','tool')
     filepath = os.path.abspath(infile)    
@@ -1904,24 +2004,31 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     os.makedirs(outdir, exist_ok=True)
     
     # need to strip to seq_length
-    logging.info(f'reading {infile} to df...')
+    logging.info(f'Reading {infile} to df...')
     fdf = read_fasta_to_df(infile, seq_length)
     logging.debug(f'fdf=\n{fdf}')
-    
+    of = os.path.join( outdir , f'{base}.fulldf.tsv')
+    logging.info(f'Writing full DF to {of}')
+    fdf.to_csv(of, sep='\t')
+
     # get reduced dataframe of unique sequences
+    logging.info('Getting unique DF...')    
     udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
     
     logging.debug(f'udf = \n{udf}')
     of = os.path.join( outdir , f'{base}.udf.tsv')
+    logging.info(f'Writing unique DF to {of}')
     udf.to_csv(of, sep='\t') 
     
-    of = os.path.join( outdir , f'{base}.seq.fasta')
+    of = os.path.join( outdir , f'{base}.udf.fasta')
+    logging.info(f'Writing uniques as FASTA to {of}')
     seqfasta = write_fasta_from_df(udf, outfile=of)
     
     # run allXall bowtie
     of = os.path.join( outdir , f'{base}.bt2.sam')
+    logging.info(f'Running bowtie...')
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
-    logging.debug(f'produced {afile}')
+    logging.info(f'Bowtie done. Produced {afile}')
     
     btdf = make_bowtie_df(afile)
     logging.debug(f'btdf before max_mismatch =< {max_mismatch}')
@@ -1935,13 +2042,14 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     btdf.to_csv(of, sep='\t') 
     
     # perform collapse...      
+    logging.info('Calculating Hamming components...')
     edgelist = edges_from_btdf(btdf)
     logging.debug(f'edgelist len={len(edgelist)}')
     components = get_components(edgelist)
     logging.debug(f'all components len={len(components)}')
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
-
+    logging.info(f'Collapsing {len(components)} components...')
     newdf = collapse_by_components(fdf, udf, components)
     logging.debug(f'new collapsed df = {newdf}')
     of = os.path.join( outdir , f'{base}.collapsed.tsv')
@@ -1950,12 +2058,52 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     of = os.path.join( outdir , f'{base}.collapsed.fasta')
     cdf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
     write_fasta_from_df(cdf, of)
-    logging.debug(f'wrote re-joined sequences to {of}')
+    logging.info(f'Wrote re-joined sequences to {of}')
 
 
-            
+
+def apply_setcompseq(row, seqmapdict ):
+    ''' 
+      Set Component Sequence
+      Applies mapping from old to new sequence from dict. 
+      
+      seqmapdict = { oldseq : newseq }
+      
+      Usage example:
+            df['sequence'] = df.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+      
+    '''
+    try:
+        #logging.debug(f"getting mapping for {row['sequence']}")
+        a = seqmapdict[row['sequence']]
+    except KeyError:
+        # A KeyError means we don't want to remap, just use original value
+        a = row['sequence']
+    return a
+
+
+def build_seqmapdict(udf, components):
+    '''
+    Create mappings from all unique sequence to component sequence
+    
+    '''
+    seqmapdict = {}
+    comphandled = 0
+    comphandled_interval = 100
+    comp_len = len(components)
+    
+    for comp in components:
+        ser = list(udf['sequence'].iloc[comp])
+        t = ser[0]
+        for s in ser: 
+            seqmapdict[s]= t    
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'[{comphandled}/{comp_len}] t = {t}')
+        comphandled += 1
+    return seqmapdict
+
+
 def collapse_by_components(fulldf, uniqdf, components):
-    #
     #
     # components consist of indices within the uniqdf. 
     # assumes component elements are integers, as they are used as dataframe indices. 
@@ -1966,7 +2114,7 @@ def collapse_by_components(fulldf, uniqdf, components):
     # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
     #
     #  SETUP
-    #   infile is all reads...
+    #  infile is all reads...
     #  fdf = read_fasta_to_df(infile, seq_length=32)
     #  udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
     #  components are *uniqdf* indices from bowtie alignemnt.  
@@ -1975,62 +2123,14 @@ def collapse_by_components(fulldf, uniqdf, components):
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
     logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(fulldf)} {len(components)} components.')
-    glist = fulldf.groupby('sequence').groups
-    glist_len = len(glist)
-    logging.debug(f'grouplist by seq len={glist_len}. e.g. {glist[list(glist.keys())[1]]}')
-    
+    logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
+    seqmapdict = build_seqmapdict(uniqdf, components)
+      
     # Make new full df:
+    logging.debug('copying fulldf')
     newdf = fulldf.copy()
-    
-    #comphandled_interval = int(config.get('fasta','comphandled_interval')) 
-    comphandled = 0
-    comphandled_interval = 1000
-    
-    for comp in components:
-        compidx =  pd.Index([], dtype='int64')
-        max_seq = None 
-        n_max = 0
-        for uniqidx in comp:
-            seq = uniqdf.sequence.iloc[uniqidx]
-            #logging.debug(f'uniqidx = {uniqidx} seq={seq}')
-            fullidx = glist[seq]
-            idxlen = len(fullidx)
-            if idxlen > n_max:
-                n_max = idxlen
-                max_seq = seq
-            #logging.debug(f'seq {seq} -> {fullidx}')
-            compidx = compidx.union(fullidx)
-            
-        #logging.debug(f'fullidx len={len(compidx)}: {compidx}')
-        #logging.debug(f'setting seq to {max_seq}')
-        newdf.sequence.iloc[compidx] = max_seq
-        
-        comphandled += 1
-        if comphandled % comphandled_interval == 0:
-            logging.info(f'handled {comphandled}/{glist_len} components.')
-    logging.info(f'new collapsed df = \n{newdf}')
+    newdf['sequence'] = newdf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+    logging.info(f'New collapsed df = \n{newdf}')
     return newdf
-        
 
-        
-    #
-    #for component in components:
-    #    logging.debug(f'component={component} comp length={len(component)}')
-        #fidxlist = []
-        # each component is a udf sequence to be collapsed. need all fulldf indexes.
-        # and a number of fulldf copies (which would be UMIs? UMIs with dupes?         
-    #    fidxlist = []
-    #    for c in component:
-            #logging.debug(f'c={c})')
-            #logging.debug(f'sequence={uniqdf.iloc[c].sequence}')
-    #        cdf = fulldf[ fulldf['sequence'] == uniqdf.iloc[c].sequence ]            
-    #        for i in list(cdf.index):
-    #            fidxlist.append(i)
-            #logging.debug(f'cdf=\n{cdf}')
-    #    logging.debug(f'fillfids for component: {fidxlist}')
-    #    logging.debug(f'fillfids length for component: {len(fidxlist)}')
-    #    fulldfids.append(fidxlist)
-    #logging.debug(f'created list of {len(fulldfids)} component full indices.')
-    #return fulldfids
-    
 

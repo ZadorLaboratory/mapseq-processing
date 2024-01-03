@@ -378,7 +378,22 @@ def write_fasta_from_df(df, outfile=None):
     Assumes df has 'sequence' column
     
     '''
-    logging.debug(f'creating bowtie input')
+    logging.debug(f'writing {len(df)} sequence as fasta from DF...')
+    if outfile is not None:
+        with open(outfile, 'w') as of:
+            for s in df['sequence']:
+                of.write(s)
+                of.write("\n")  
+    else:
+        logging.error('outfile is None, not implemented.')
+    return outfile
+
+def write_fasta_from_df_bioconda(df, outfile=None):
+    '''
+    Assumes df has 'sequence' column
+    
+    '''
+    logging.debug(f'writing fasta from DF..')
     srlist = dataframe_to_seqlist(df)
     logging.debug(f'len srlist={len(srlist)}')
     if outfile is not None:
@@ -387,7 +402,8 @@ def write_fasta_from_df(df, outfile=None):
         logging.error('outfile is None, not implemented.')
     return outfile
 
-def read_fasta_to_df(infile, seqlen=None):
+
+def read_fasta_to_df_bioconda(infile, seqlen=None):
     '''
     input fasta 
     Optionally trim sequence to seqlen, returning a two-column dataframe 'sequence' 'tail'
@@ -412,6 +428,52 @@ def read_fasta_to_df(infile, seqlen=None):
             slist.append( [str(s),str(t)] )
             handled += 1
         df = pd.DataFrame(slist, columns=['sequence','tail'] )
+    logging.debug(f"handled {handled}  sequences. df=\n{df}")    
+    return df
+
+
+def read_fasta_to_df(infile, seqlen=None):
+    '''
+    input fasta 
+    Optionally trim sequence to seqlen, returning a two-column dataframe 'sequence' 'tail'
+    None means keep all. 
+    '''
+    handled_interval = 10000000   
+    slist = []
+    tlist = []
+    handled = 0
+    df = None
+    if seqlen is None:
+        # whole sequence goes in sequence, no tail
+        with open(infile) as fa:
+            for line in fa:
+                if line.startswith(">"):
+                    pass
+                else:
+                    slist.append(line[:-1])
+                    handled += 1 
+                    if handled % handled_interval == 0:
+                        logging.info(f'handled={handled}')  
+            logging.info(f'making df from {len(slist)} sequences...')    
+            df = pd.DataFrame(slist, columns=['sequence'] )
+            
+    else:
+        with open(infile) as fa:
+            for line in fa:
+                if line.startswith(">"):
+                    pass
+                else:
+                    slist.append(line[:seqlen])
+                    tlist.append(line[seqlen:-1])
+                    handled += 1 
+                    if handled % handled_interval == 0:
+                        logging.info(f'handled={handled}') 
+            logging.info(f'making df from {len(slist)} sequences and tails...')    
+            ss = pd.Series(slist)
+            ts = pd.Series(tlist)
+            df = pd.DataFrame(columns=['sequence','tail'] )     
+            df['sequence'] = ss
+            df['tail'] = ts
     logging.debug(f"handled {handled}  sequences. df=\n{df}")    
     return df
 

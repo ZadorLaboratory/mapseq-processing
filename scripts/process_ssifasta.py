@@ -47,6 +47,12 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
+
+    parser.add_argument('-n', '--nocollapse',
+                        default=True, 
+                        action="store_false", 
+                        dest='nocollapse', 
+                        help='assume input already aligned/collapsed')
     
     parser.add_argument('-c','--config', 
                         metavar='config',
@@ -161,6 +167,6 @@ if __name__ == '__main__':
     #sampdf = load_sample_info(cp, args.sampleinfo)
     #logging.debug(f'\n{sampdf}')
     
-    outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir)
+    outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir, nocollapse=args.nocollapse)
     logging.info(f'saving output to {outfile}')
     outdf.to_csv(outfile, sep='\t')

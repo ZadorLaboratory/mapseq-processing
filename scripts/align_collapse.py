@@ -74,7 +74,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single FASTA file collapsed.')
+                        help='Single raw FASTA file.')
         
     args= parser.parse_args()
     
