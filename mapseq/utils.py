@@ -379,14 +379,16 @@ def write_fasta_from_df(df, outfile=None):
     
     '''
     logging.debug(f'writing {len(df)} sequence as fasta from DF...')
+    idx = 1
     if outfile is not None:
         with open(outfile, 'w') as of:
             for s in df['sequence']:
-                of.write(s)
-                of.write("\n")  
+                of.write(f'{idx}\n{s}\n')
+                idx += 1  
     else:
         logging.error('outfile is None, not implemented.')
     return outfile
+
 
 def write_fasta_from_df_bioconda(df, outfile=None):
     '''
