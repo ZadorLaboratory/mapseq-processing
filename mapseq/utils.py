@@ -383,7 +383,7 @@ def write_fasta_from_df(df, outfile=None):
     if outfile is not None:
         with open(outfile, 'w') as of:
             for s in df['sequence']:
-                of.write(f'{idx}\n{s}\n')
+                of.write(f'>{idx}\n{s}\n')
                 idx += 1  
     else:
         logging.error('outfile is None, not implemented.')
