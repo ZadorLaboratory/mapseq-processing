@@ -2027,7 +2027,7 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     
     # run allXall bowtie
     of = os.path.join( outdir , f'{base}.bt2.sam')
-    logging.info(f'Running bowtie...')
+    logging.info(f'Running {aligner}...')
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
     logging.info(f'Bowtie done. Produced {afile}. Creating btdf dataframe...')
     btdf = make_bowtie_df(afile, max_mismatch=max_mismatch)

@@ -57,6 +57,13 @@ if __name__ == '__main__':
                         type=int, 
                         help='Max mismatch for barcode/SSI matching.')
 
+    parser.add_argument('-r','--recursion', 
+                        metavar='recursion',
+                        required=False,
+                        default=10000,
+                        type=int, 
+                        help='Max recursion. Handle larger input to collapse() System default ~3000.')
+
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -92,6 +99,13 @@ if __name__ == '__main__':
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
+    
+    # set recursion
+    logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
+    if args.recursion is not None:
+        rlimit = int(args.recursion)
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)
        
     # set outdir
     outdir = None
