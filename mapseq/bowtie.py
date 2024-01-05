@@ -140,13 +140,21 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
     logging.debug(f'bowtie done.')
     return outfile
 
-def make_bowtie_df(infile):
+def make_bowtie_df(infile, max_mismatch=3):
     with open(infile) as f:
         line=f.readline()
     if line.startswith('@HD'):
+        logging.debug('Detected bowtie2 input.')
         df = make_bowtie2_df(infile)
+        logging.debug(f'df before max_mismatch =< {max_mismatch}')
+        df = df[df['n_mismatch'] <= max_mismatch]
+        # alignments to *other* sequences only
+        df = df[df['n_mismatch'] > 0]
+        logging.debug(f'df after max_mismatch < {max_mismatch} =\n{df}')
     else:
+        logging.debug('Detected bowtie1 input.')
         df = make_bowtie1_df(infile)
+        df['n_mismatch'] = max_mismatch
     return df
 
 

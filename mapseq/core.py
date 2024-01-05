@@ -1992,6 +1992,7 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     
     '''
     aligner = config.get('ssifasta','tool')
+    
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
@@ -2028,16 +2029,8 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     of = os.path.join( outdir , f'{base}.bt2.sam')
     logging.info(f'Running bowtie...')
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
-    logging.info(f'Bowtie done. Produced {afile}')
-    
-    btdf = make_bowtie_df(afile)
-    logging.debug(f'btdf before max_mismatch =< {max_mismatch}')
-    btdf = btdf[btdf['n_mismatch'] <= max_mismatch]
-    logging.debug(f'btdf after max_mismatch < {max_mismatch} =\n{btdf}')
-    # we only need alignemnts to *other* sequences. Everything aligns to itself...
-    logging.debug(f'btdf before max_mismatch > 0=\n{btdf}')
-    btdf = btdf[btdf['n_mismatch'] > 0]
-    logging.debug(f'btdf after max_mismatch > 0 =\n{btdf}')
+    logging.info(f'Bowtie done. Produced {afile}. Creating btdf dataframe...')
+    btdf = make_bowtie_df(afile, max_mismatch=max_mismatch)
     of = os.path.join( outdir , f'{base}.btdf')
     btdf.to_csv(of, sep='\t') 
     
