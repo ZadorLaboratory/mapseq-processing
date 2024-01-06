@@ -34,7 +34,6 @@ from mapseq.barcode import *
 from mapseq.stats import *
 
 
-
 def fix_columns_int(df, columns):
     '''
     forces column in dataframe to be an integer. NaNs become '0'
@@ -2031,25 +2030,34 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
     logging.info(f'Bowtie done. Produced {afile}. Creating btdf dataframe...')
     btdf = make_bowtie_df(afile, max_mismatch=max_mismatch)
-    of = os.path.join( outdir , f'{base}.btdf')
+    of = os.path.join( outdir , f'{base}.btdf.tsv')
     btdf.to_csv(of, sep='\t') 
     
     # perform collapse...      
     logging.info('Calculating Hamming components...')
     edgelist = edges_from_btdf(btdf)
+    btdf = None  # help memory usage
+    
     logging.debug(f'edgelist len={len(edgelist)}')
     components = get_components(edgelist)
     logging.debug(f'all components len={len(components)}')
+    edgelist = None  # help memory usage
+    
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
     logging.info(f'Collapsing {len(components)} components...')
     newdf = collapse_by_components(fdf, udf, components)
-    logging.debug(f'new collapsed df = {newdf}')
+    fdf = None
+    udf = None
+    components = None
+        
     of = os.path.join( outdir , f'{base}.collapsed.tsv')
+    logging.info(f'Got collapsed DF. Writing to {of}')
     newdf.to_csv(of, sep='\t')     
-
+    logging.info('Done. Calculating fasta.')
     of = os.path.join( outdir , f'{base}.collapsed.fasta')
     cdf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
+    logging.info(f'Writing fasta to {of}')
     write_fasta_from_df(cdf, of)
     logging.info(f'Wrote re-joined sequences to {of}')
 
@@ -2082,7 +2090,7 @@ def build_seqmapdict(udf, components):
     '''
     seqmapdict = {}
     comphandled = 0
-    comphandled_interval = 100
+    comphandled_interval = 10000
     comp_len = len(components)
     
     for comp in components:
@@ -2120,10 +2128,11 @@ def collapse_by_components(fulldf, uniqdf, components):
     seqmapdict = build_seqmapdict(uniqdf, components)
       
     # Make new full df:
-    logging.debug('copying fulldf')
-    newdf = fulldf.copy()
-    newdf['sequence'] = newdf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
-    logging.info(f'New collapsed df = \n{newdf}')
-    return newdf
+    logging.debug('seqmapdict built. Applying.')
+    fulldf['sequence'] =fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+    logging.info(f'New collapsed df = \n{fulldf}')
+    return fulldf
+
+
 
 

@@ -197,7 +197,7 @@ def make_bowtie2_df(infile):
     
     current = 0
     sumreport = 1
-    suminterval = 100000
+    suminterval = 1000000
     repthresh = sumreport * suminterval
     
     # list of lists to hold data
