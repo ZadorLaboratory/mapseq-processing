@@ -57,13 +57,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='XLS sampleinfo file. ')
 
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=0,
-                        type=int, 
-                        help='Max mismatch for barcode/SSI matching.')
-
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -137,7 +130,7 @@ if __name__ == '__main__':
                             labels=rtlist, 
                             outdir=outdir, 
                             eol=True, 
-                            max_mismatch=args.max_mismatch)
+                            max_mismatch=0)
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
     logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots} readtsvs={args.readtsvs}')    

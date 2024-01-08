@@ -169,7 +169,7 @@ def guess_site(infile, sampdf):
     return (rtprimer_num, site, brain, region )
     
 
-def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=None, nocollapse=False):
+def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=None, nocollapse=True):
     '''
     Process each infile in separate process.
     Produce {outdir}/<BASE>.all.tsv 
