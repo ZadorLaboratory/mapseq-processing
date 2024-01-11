@@ -57,6 +57,13 @@ if __name__ == '__main__':
                         type=int, 
                         help='Max mismatch for barcode/SSI matching.')
 
+    parser.add_argument('-b','--seq_length', 
+                        metavar='seq_length',
+                        required=False,
+                        default=30,
+                        type=int, 
+                        help='Length of viral barcode to collapse')
+
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
@@ -120,6 +127,6 @@ if __name__ == '__main__':
 
     logging.info(f'handling {args.infile} to outdir {args.outdir}')    
     logging.debug(f'infile = {args.infile}')
-    align_collapse_fasta(cp, args.infile, seq_length=32, max_mismatch=3, outdir=args.outdir, datestr=args.datestr )
+    align_collapse_fasta(cp, args.infile, seq_length=args.seq_length, max_mismatch=3, outdir=args.outdir, datestr=args.datestr )
     
     

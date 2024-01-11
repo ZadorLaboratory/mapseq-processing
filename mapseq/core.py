@@ -239,7 +239,6 @@ def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=
     Will use relevant threshold. If None, will use default threshold
     
     '''
-   
     aligner = config.get('ssifasta','tool')
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
@@ -309,19 +308,13 @@ def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=
     realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
      
     # align and collapse all.         
-    acrealdf = align_and_collapse(config, realdf, outdir, base, 'real')
-    acspikedf = align_and_collapse(config, spikedf, outdir, base, 'spike')
-    aclonedf = align_and_collapse(config, lonedf, outdir, base, 'lone')
-    acrealdf.to_csv(os.path.join(outdir , f'{base}.real.tsv'), sep='\t')
-    acspikedf.to_csv(os.path.join(outdir , f'{base}.spike.tsv'), sep='\t')
-    aclonedf.to_csv(os.path.join(outdir , f'{base}.lone.tsv'), sep='\t')
 
     # add labels for merging...
-    acrealdf['type'] = 'real'
-    acspikedf['type'] = 'spike'
-    aclonedf['type'] = 'lone'
+    realdf['type'] = 'real'
+    spikedf['type'] = 'spike'
+    lonedf['type'] = 'lone'
 
-    outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
+    outdf = merge_dfs([ realdf, spikedf, lonedf ])
     outdf['label'] = base
     outdf.sort_values(by = ['type', 'umi_count'], ascending = [True, False], inplace=True)
     outdf.reset_index(drop=True, inplace=True)
@@ -1954,7 +1947,7 @@ def process_mapseq_dir(exp_id, loglevel, force):
         logging.warning(traceback.format_exc(None))
         
 
-def align_collapse_fasta(config, infile, seq_length=32, max_mismatch=3, outdir=None, datestr=None, ):
+def align_collapse_fasta(config, infile, seq_length=30, max_mismatch=3, outdir=None, datestr=None, ):
     '''
     Algorithm:
     
