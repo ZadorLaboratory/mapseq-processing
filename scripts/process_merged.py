@@ -46,12 +46,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='config file.')    
 
-    parser.add_argument('--combined', 
-                        action=argparse.BooleanOptionalAction,
-                        default=True,
-                        help='Create single-document PDF that combines plots'
-                        )
-
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
@@ -71,7 +65,7 @@ if __name__ == '__main__':
                     required=False,
                     default='label', 
                     type=str, 
-                    help='column to use to label plots label | region [label] ')   
+                    help='iniput column to use to label matrix columns | region [label] ')   
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -127,7 +121,7 @@ if __name__ == '__main__':
     logging.debug(f'\n{sampdf}')
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    process_merged(cp, args.infile, outdir, expid=args.expid, recursion = args.recursion, combined_pdf=args.combined, label_column=args.label )
+    process_merged(cp, args.infile, outdir, expid=args.expid, recursion = args.recursion, label_column=args.label )
     
     
     

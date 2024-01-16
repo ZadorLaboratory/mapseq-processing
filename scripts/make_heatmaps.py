@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  creates read counts plot/plots to determine thresholds.   
+#  
 #
 
 import argparse

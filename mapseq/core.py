@@ -933,6 +933,7 @@ def calculate_threshold_kneed(config, cdf, site=None, inflect=None ):
 def calc_min_target(config, braindf):
     '''
     how many molecules (unique UMIs) are in supposedly target-negative area?
+    
     '''
     countlist = []
     min_target = 0
@@ -1728,7 +1729,7 @@ def filter_min_target(df, min_target=1):
     return mdf    
 
 
-def process_merged(config, infile, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
+def process_merged(config, infile, outdir=None, expid=None, recursion=200000, label_column='region' ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
@@ -1745,7 +1746,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, co
     require_injection = config.getboolean('analysis','require_injection')
     min_injection = int(config.get('analysis','min_injection'))
     min_target = int(config.get('analysis','min_target'))   
-    use_target_negative=bool(config.get('analysis','use_target_negative'))
+    use_target_negative=config.getboolean('analysis','use_target_negative')
     clustermap_scale = config.get('analysis','clustermap_scale')
       
     if expid is None:
@@ -1772,6 +1773,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, co
         # if use_target_negative is true, but no target negative site 
         # defined, use min_target and throw warning. 
         if use_target_negative:
+            logging.warning(f'use_target_negative is {use_target_negative}')
             min_target = calc_min_target(config, bdf)
             if min_target != 0:
                 logging.debug(f'non-zero target-negative UMI count = {min_target}')
@@ -1786,6 +1788,8 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, co
                 logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
             else:
                 logging.debug(f'min_target={min_target} no filtering.')
+        else:
+            logging.info('not using target-negative.')
         
         if require_injection:
             # extract and filter injection areas.
