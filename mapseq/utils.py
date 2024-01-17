@@ -379,7 +379,7 @@ def write_fasta_from_df(df, outfile=None):
     
     '''
     logging.debug(f'writing {len(df)} sequence as fasta from DF...')
-    idx = 1
+    idx = 0
     if outfile is not None:
         with open(outfile, 'w') as of:
             for s in df['sequence']:

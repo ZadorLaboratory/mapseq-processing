@@ -2120,7 +2120,7 @@ def collapse_by_components(fulldf, uniqdf, components):
     logging.debug(f'all components len={len(components)}')
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
-    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(fulldf)} {len(components)} components.')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
     logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
     seqmapdict = build_seqmapdict(uniqdf, components)
       

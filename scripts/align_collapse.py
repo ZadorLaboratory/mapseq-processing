@@ -99,6 +99,7 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
+    
     if args.aligner is not None:
         cp.set('ssifasta','tool', args.aligner)
     
