@@ -13,19 +13,25 @@ You may need to restart your shell to enable the conda command.
 Update base:
 	conda update -n base -c defaults conda
 
+Enable additional Conda repositories:
+	conda config --add channels conda-forge
+	conda config --add channels bioconda
+
 Create an environment for the MAPseq pipeline:
 	conda create -n mapseq python==3.9 
 
 Activate the environment:
 	conda activate mapseq
 
-Enable additional Conda repositories:
-	conda config --add channels conda-forge
-	conda config --add channels bioconda
 
 Install dependencies, useful tools:
-	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort kneed git fastx_toolkit  
+	For Linux and Intel MacOS
+	conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort git fastx_toolkit  
 	conda install cmake?
+    
+    For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )
+    conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl natsort
+
 Clone the mapseq-processing software from the repository to the standard location:
 
 	mkdir -p ~/git ; cd ~/git

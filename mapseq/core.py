@@ -23,8 +23,6 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-from kneed import KneeLocator
-
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
@@ -756,23 +754,6 @@ def cumulative_fract_idx(ser, fract):
     logging.debug(f'val={val} idx={idx} ')
     return val    
 
-def calc_kneed_idx(x, y , inflect, poly=2, sense=4):
-    '''
-    assumes convex, then concave, decreasing curve.
-    inflect = 'knee'|'elbow'
-    
-    '''
-    if inflect == 'knee':
-        kl = KneeLocator(x=x, y=y, S=sense, curve='convex',direction='decreasing',interp_method='polynomial',polynomial_degree=poly)
-        val = kl.knee
-        logging.debug(f'got value {val} for knee from kneed...')
-    elif inflect == 'elbow':
-        # not validated!
-        kl = KneeLocator(x=x, y=y, S=sense, curve='convex',direction='decreasing',interp_method='polynomial',polynomial_degree=poly)        
-        val = kl.elbow
-        logging.debug(f'got value {val} for knee from kneed...')
-    return val
-
 
 
 def calc_final_thresholds(config, threshdf):
@@ -883,51 +864,7 @@ def calculate_threshold(config, cdf, site=None):
 
 
 
-def calculate_threshold_kneed(config, cdf, site=None, inflect=None ):
-    '''
-    takes counts dataframe (with 'counts' column) 
-    if 'label', use that. 
-    and calculates 'knee' or 'elbow' threshold
-    site = ['control','injection','target']   
-        Will use relevant threshold. If None, will use default threshold
-    
-    target_threshold=100
-    target_ctrl_threshold=1000
-    inj_threshold=2
-    inj_ctrl_threshold=2
-    
-    '''
-    if inflect is None:
-        inflect = config.get('ssifasta','threshold_heuristic')
-    min_threshold = int(config.get('ssifasta','count_threshold_min'))
-    label = 'BCXXX'
-    
-    try:
-        label = cdf['label'].unique()[0]
-    except:
-        logging.warn(f'no SSI label in DF')
-        
-    # assess distribution.
-    counts = cdf['counts']
-    clength = len(counts)
-    counts_max = counts.max()
-    counts_min = counts.min()
-    counts_mean = counts.mean()
-    logging.info(f'handling {label} length={clength} max={counts_max} min={counts_min} ')
-    
-    val = calc_kneed_idx(cdf.index, cdf.counts, inflect='knee'  )
-    if val < min_threshold:
-        logging.warning(f'kneed calc threshold < min...')
-    else:
-        logging.debug(f'calculated count threshold={val} for SSI={label}')
-    count_threshold=max(val, min_threshold)
-        
-    #if site is None:
-    #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
-    #else:
-    #    count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
-    #logging.debug(f'count threshold for {site} = {count_threshold}')
-    return (count_threshold, label, clength, counts_max, counts_min)
+
 
 
 def calc_min_target(config, braindf):

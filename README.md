@@ -31,9 +31,15 @@ conda config --add channels bioconda
 * Install dependencies, useful tools, confirm update
 
 ```
-conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort kneed git
-conda update scipy 
+# For Linux and Intel MacOS
+	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort git fastx_toolkit  
+	conda install cmake?  
+# For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )
+    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl natsort
+ 
 ```
+
+
 * Clone the mapseq-processing software from the repository to the standard location. (This assumes you already have git installed. If not, install it first). 
 
 ```
@@ -81,7 +87,8 @@ For each command, there are typical arguments. Additional arguments may be suppo
 ```
 process_fastq_pairs.py pulls out sequences lines from both read files, trims, and combines them. Some QC filtering is done at this step, with removal of long stretches of homo-polymers and removal of any sequences with low-confidence base calls ('N' bases).
 
-For a standard ~400M read experiment, this takes about 45 minutes.  
+For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minutes on a new Mac M3). 
+  
 
 ### align_collapse.py
 
