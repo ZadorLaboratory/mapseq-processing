@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#  creates read counts plot/plots to determine thresholds.   
+#  
 #
 
 import argparse
@@ -19,9 +19,8 @@ import seaborn as sns
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.utils import *
 from mapseq.core import *
-from mapseq.barcode import *
+from mapseq.utils import *
     
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -47,27 +46,26 @@ if __name__ == '__main__':
                         type=str, 
                         help='config file.')    
 
-    parser.add_argument('-b','--barcodes', 
-                        metavar='barcodes',
-                        required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
-                        type=str, 
-                        help='barcode file space separated.')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max mismatch for aligner read collapse.')
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
+                    required=False,
+                    default='M001',
+                    type=str, 
+                    help='explicitly provided experiment id')
 
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',
                         required=True,
                         default=None,
                         type=str, 
-                        help='XLS sampleinfo file. ')
-     
+                        help='XLS sampleinfo file or sampleinfo.tsv. ') 
+    
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='PDF plot out file. "heatmaps.pdf" if not given')  
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -80,7 +78,7 @@ if __name__ == '__main__':
                         metavar='infiles',
                         nargs ="+",
                         type=str,
-                        help='SSI-specific .fasta files')
+                        help='All per-brain scaled/normalized barcodes TSVs: BRAINXXX.scbcm.tsv')
        
     args= parser.parse_args()
     
@@ -95,10 +93,6 @@ if __name__ == '__main__':
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
-
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{args.outdir}/sampleinfo.tsv', sep='\t')
       
    
     outdir = None
@@ -111,8 +105,6 @@ if __name__ == '__main__':
         filepath = os.path.abspath(afile)    
         dirname = os.path.dirname(filepath)
         outdir = dirname
-
-    dflist = make_reads_counts_dfs(cp, args.infiles, args.outdir)
-    logging.info(f'got list of {len(dflist)} counts DFs...')
-    
-      
+        
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    make_heatmaps_combined_sns(cp, sampdf, args.infiles, outfile=args.outfile, outdir=outdir, expid=args.expid )

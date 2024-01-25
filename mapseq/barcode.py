@@ -3,7 +3,7 @@
 #  Module for generic barcode/SSI handling, not specific to MAPseq or BARseq. 
 #
 #
-
+import atexit
 import logging
 import os
 import pprint 
@@ -37,12 +37,21 @@ def build_bcmatcher(bclist):
                   'CGGT': []
                  }
                  
-    unmached  list      
+    unmatched  list      
     '''
     matchdict = {}
     seqdict = {}
-    unmatched = []
-    
+
+    #unmatched = []    
+    # calculate directory
+    afile = bclist[0].filename
+    filepath = os.path.abspath(afile)    
+    dirname = os.path.dirname(filepath)
+    unmatchedfile = f'{dirname}/unmatched.fasta'
+    unmatched = open(unmatchedfile,'w')
+    logging.debug(f'opened {unmatchedfile} for writing...')
+
+
     for bco in bclist:
         seq = bco.barcode
         seqlen = len(seq)
@@ -60,7 +69,8 @@ def build_bcmatcher(bclist):
                     subdict = subdict[nt]
             else:
                 logging.debug(f'end condition reached')
-                subdict[nt] = [ ]
+                #subdict[nt] = [ ]
+                subdict[nt] = bco
                 seqdict[seq] = subdict[nt]
             
         #print(matchdict)
@@ -85,20 +95,24 @@ def do_match(id, seq, matchdict, fullseq, unmatched):
             try:
                 subdict = subdict[nt]
             except KeyError:
-                unmatched.append((id, fullseq))
+                #unmatched.append((id, fullseq))
+                unmatched.write(f'>{id}\n{fullseq}\n')
                 return False
         else:
             try:
-                seqlist = subdict[nt]
-                seqlist.append((id, fullseq[:-seqlen]))
+                #seqlist = subdict[nt]
+                # seqlist.append((id, fullseq[:-seqlen]))
+                bco = subdict[nt]
+                bco.writeseq(id, fullseq[:-seqlen] )
+                #bco.of.write(f'>{id}\n{fullseq[:-seqlen]}\n')
                 return True
+            
             except KeyError:
-                unmatched.append((id, fullseq))
+                #unmatched.append((id, fullseq))
+                # unmatched is a file object. 
+                unmatched.write(f'>{id}\n{fullseq}\n')
                 return False
         
-
-
-
 def match_strings(a, b, max_mismatch=0):
     '''
     attempt at efficient comparison of two same-length strings. 
@@ -127,21 +141,25 @@ class BarcodeHandler(object):
     Basically implements fastx_barcode_handler.pl. 
     Matches against given barcode/SSI sequence, and
     writes out target fasta (minus SSI) to SSI-specific file.
-    
     check end of line of sequence, length of barcode only.   
     
-        
     '''
     def __init__(self, label, barcode, outdir, eol=True, max_mismatch=0):
         self.barcode = barcode
         self.label = label
         self.filename = os.path.abspath(f'{outdir}/{label}.fasta')
         self.eol = True
-        self.max_mismatch = max_mismatch
-        self.of = None
+        self.max_mismatch = int(max_mismatch)
+        self.of = None  # do not open file until necessary. 
         self.dataframe = None
         if outdir is None:
             outdir = "."
+        atexit.register(self.cleanup)
+
+    def cleanup(self):
+        logging.debug(f'running cleanup(). Closing outfile {self.filename} ')
+        if self.of is not None:
+            self.of.close()
 
     def do_match(self, id, seq ):
         '''
@@ -152,9 +170,9 @@ class BarcodeHandler(object):
          
         '''
         if self.of is None:
-            logging.debug(f'open file for {self.label}')
+            logging.debug(f'opening new file for {self.label}')
             self.of = open(self.filename, 'w')
-            self.of.write(f';sequences for  barcode {self.label}\n')
+            self.of.write(f'sequences for  barcode {self.label}\n')
         
         r = False
         if self.max_mismatch == 0:
@@ -180,6 +198,13 @@ class BarcodeHandler(object):
                     logging.warning(traceback.format_exc(None))            
                 r = True
         return r
+    
+    
+    def writeseq(self, header, sequence ):
+        if self.of is None:
+            logging.debug(f'opening new file for {self.label}')
+            self.of = open(self.filename, 'w')
+        self.of.write(f'>{header}\n{sequence}\n')        
         
     def finalize(self):
         logging.debug(f'closing file for {self.label}')
@@ -266,14 +291,22 @@ def check_output(bclist):
     missing = []
     for bch in bclist:
         logging.debug(f'checking path {bch.filename}...')
-        if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
-            logging.debug(f'Non-empty BC{bch.label}.fasta exists.')
+        #if os.path.exists(bch.filename) and ( os.path.getsize(bch.filename) >= 1 ):
+        nonzero = False
+        pathexists = False
+        pathexists = os.path.exists(bch.filename)
+        if pathexists:
+            nonzero = os.path.getsize(bch.filename) >= 1
+        
+        logging.info(f'file={bch.filename} pathexists={pathexists} nonzero={nonzero}')
+        if pathexists and nonzero : 
+            logging.info(f'Non-empty BC{bch.label}.fasta exists.')
         else:
             logging.info(f"{bch.filename} doesn't exist. output_exists=False")
             missing.append(bch.label)
             output_exists = False
     
-    if output_exists == False:
+    if not output_exists:
         logging.debug(f'missing BC labels: {missing}')
     else:
         logging.info('all output exists.')

@@ -7,6 +7,8 @@ import subprocess
 import sys
 import traceback
 
+import datetime as dt
+
 from configparser import ConfigParser
 from collections import defaultdict
 
@@ -26,14 +28,11 @@ from kneed import KneeLocator
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from mapseq.utils import dataframe_to_seqlist, write_fasta_from_df, remove_base_repeats
-from mapseq.utils import run_command_shell, NonZeroReturnException, merge_dfs 
-from mapseq.utils import merge_tsvs, setup_logging
-from mapseq.utils import JobRunner, JobStack, JobSet
-
-from mapseq.bowtie import run_bowtie, make_bowtie_df
-
+from mapseq.utils import *
+from mapseq.bowtie import *
 from mapseq.barcode import *
+from mapseq.stats import *
+
 
 def fix_columns_int(df, columns):
     '''
@@ -46,7 +45,8 @@ def fix_columns_int(df, columns):
             fixed = np.array(df[col], np.int16)
             logging.debug(f'fixed=\n{fixed}')
             df[col] = fixed
-                
+        except KeyError:
+            logging.warning(f'no column {col}')
         except ValueError:
             logging.debug(f'invalid literal in {col}')
     return df
@@ -58,9 +58,12 @@ def fix_columns_str(df, columns):
     for col in columns:
         try:
             logging.debug(f'trying to fix col {col}')
-            df[col].replace(0,'',inplace=True)
+            df[col].replace(0,'0',inplace=True)
             df[col].replace(np.nan,'', inplace=True)
-                 
+            df[col] = df[col].astype('string')
+            df[col] = df[col].str.strip()     
+        except KeyError:
+            pass
         except Exception as ex:
             logging.error(f'error while handling {col} ')
             logging.warning(traceback.format_exc(None))
@@ -129,28 +132,34 @@ def guess_site(infile, sampdf):
     (base, ext) = os.path.splitext(filename)   
     head = base.split('.')[0]
     rtprimer_num = ''.join(i for i in head if i.isdigit())
-    rtprimer_num = int(rtprimer_num)
+    rtprimer_num = str(rtprimer_num)
     logging.debug(f'base={base} head={head} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
-    
+    logging.debug(f'sampdf.dtypes = {sampdf.dtypes}')
     df = sampdf[sampdf['rtprimer'] == rtprimer_num]
     df.reset_index(inplace=True, drop=True)
+    logging.debug(f'rtprimer specific df = \n{df}')
     site = None
+    brain = None
+    region = None
     if len(df)> 0:
         try:
-            site = df['siteinfo'][0]
-        except:
+            site = str(df['siteinfo'][0])
+            logging.debug(f'got site={site} successfully')
+        except Exception as e:
             logging.warning(f'unable to get siteinfo for {infile}')
             site = 'target'  # default to target. 
         
         try:        
-            brain = df['brain'][0]
-        except:
+            brain = str(df['brain'][0])
+            logging.debug(f'got brain={brain} successfully')
+        except Exception as e:
             logging.warning(f'unable to get brain info for {infile}')
-            brain = '1'
-
+            brain = '0'
+            
         try:        
-            region = df['region'][0]
-        except:
+            region = str(df['region'][0])
+            logging.debug(f'got region={region} successfully')
+        except Exception as e:
             logging.warning(f'unable to get region info for {infile}')
             region = str(rtprimer_num) # default to SSI label      
             
@@ -159,9 +168,69 @@ def guess_site(infile, sampdf):
     logging.debug(f'got site={site} for rtprimer guessed from {infile}')
     return (rtprimer_num, site, brain, region )
     
+
+def process_ssifasta_files(config, sampleinfo, infilelist, numthreads=1, outdir=None, nocollapse=True):
+    '''
+    Process each infile in separate process.
+    Produce {outdir}/<BASE>.all.tsv 
+    These are then combined to product outfile.   
     
+    '''
+    if outdir is None:
+        afile = infilelist[0]
+        filepath = os.path.abspath(afile)    
+        dirname = os.path.dirname(filepath)
+        outdir = dirname
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        logging.debug(f'made outdir={outdir}')
+
+    ncpus, threads = calc_thread_count(numthreads)   
+    logging.info(f'using {threads} of {ncpus} CPUs in parallel...')
+    proglog = '-v'
+    if logging.getLogger().level == logging.INFO:
+        proglog = '-v'
+    elif logging.getLogger().level == logging.DEBUG:
+        proglog = '-d'
     
-def process_ssifasta(config, infile, outdir=None, site=None):
+    if nocollapse is True:
+        nc = '-n'
+    else:
+        nc = ' '
+    
+    cfilename =  f'{outdir}/process_ssifasta.config.txt'
+    configfile = write_config(config, cfilename, timestamp=True)
+    
+    prog = os.path.expanduser('~/git/mapseq-processing/scripts/process_ssifasta_single.py')
+
+    jstack = JobStack()
+    outfilelist = []
+    for infile in infilelist:
+        base = get_mainbase(infile)
+        logfile = f'{outdir}/{base}.log'
+        outfile = f'{outdir}/{base}.all.tsv'
+        outfilelist.append(outfile)
+        cmd = [ prog, 
+               proglog,
+               nc,
+               '-c', configfile , 
+               '-L', logfile ,
+               '-s', sampleinfo ,  
+               '-O' , outdir ,
+               '-o' , outfile,
+               infile
+               ]
+        jstack.addjob(cmd)
+    jset = JobSet(max_processes = threads, jobstack = jstack)
+    jset.runjobs()
+
+    logging.info(f'finished jobs. merging output files:{outfilelist} ')    
+    outdf = merge_tsvs(outfilelist)
+    logging.info(f'made final DF len={len(outdf)}')
+    return outdf
+
+
+def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=None):
     '''
     by default, outdir will be same dir as infile
     assumes infile fasta has already been trimmed to remove SSI
@@ -171,11 +240,20 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     
     '''
     aligner = config.get('ssifasta','tool')
-    
     filepath = os.path.abspath(infile)    
     dirname = os.path.dirname(filepath)
-    if outdir is not None:
-        dirname = outdir
+    
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(config, outdir=outdir, datestr=datestr)
+    #sh = get_default_stats()
     
     filename = os.path.basename(filepath)
     (base, ext) = os.path.splitext(filename)   
@@ -185,33 +263,35 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     # trim to 44 nt since we know last 8 are SSI  
     logging.debug('calc counts...')
     seqdf = make_fasta_df(config, infile)
-    of = os.path.join(dirname , f'{base}.44.seq.tsv')
+    of = os.path.join(dirname , f'{base}.read.seq.tsv')
     seqdf.to_csv(of, sep='\t')
     
     # to calculate threshold we need counts calculated. 
-    cdf = make_counts_df(config, seqdf, label=base)  
+    cdf = make_read_counts_df(config, seqdf, label=base)  
     logging.debug(f'initial counts df {len(cdf)} all reads.')
+    
     # these are ***READ*** counts
-    of = os.path.join(dirname , f'{base}.44.counts.tsv')
+    of = os.path.join(dirname , f'{base}.read.counts.tsv')
     cdf.to_csv(of, sep='\t') 
         
-    threshold = get_threshold(config, cdf, site)
+    threshold = get_read_count_threshold(config, cdf, site)
     logging.debug(f'got threshold={threshold} for site {site}')
-    tdf = threshold_counts(config, cdf, threshold=threshold)
+    tdf = threshold_read_counts(config, cdf, threshold=threshold)
     logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
     
     # thresholded raw counts. duplicates are all one UMI, so set counts to 1. 
     # each row (should be) a distinct UMI, so trim to 32. 
-    tdf['counts'] = 1          
+    #tdf['counts'] = 1          
     tdf['sequence'] = tdf['sequence'].str[:32]
+    tdf['umi_count'] = 1
     
     # this contains duplicate VBCs with *different* UMIs
-    of = os.path.join(dirname , f'{base}.32.seq.tsv')
+    of = os.path.join(dirname , f'{base}.umi.seq.tsv')
     tdf.to_csv(of, sep='\t') 
     
-    # now have actual viral barcode df with *unique molecule counts.*
-    vbcdf = make_counts_df(config, tdf)
-    of = os.path.join(dirname , f'{base}.32.counts.tsv')
+    # now we have actual viral barcode df with *unique molecule counts.*
+    vbcdf = make_umi_counts_df(config, tdf)
+    of = os.path.join(dirname , f'{base}.umi.counts.tsv')
     vbcdf.to_csv(of, sep='\t')     
     
     # split out spike, real, lone, otherwise same as 32.counts.tsv    
@@ -219,22 +299,113 @@ def process_ssifasta(config, infile, outdir=None, site=None):
     spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
     
     # write out this step...
-    realdf.to_csv(os.path.join(dirname , f'{base}.real.counts.tsv'), sep='\t')
-    lonedf.to_csv(os.path.join(dirname , f'{base}.lone.counts.tsv'), sep='\t')
-    spikedf.to_csv(os.path.join(dirname , f'{base}.spike.counts.tsv'), sep='\t')
+    realdf.to_csv(os.path.join(outdir , f'{base}.real.counts.tsv'), sep='\t')
+    lonedf.to_csv(os.path.join(outdir , f'{base}.lone.counts.tsv'), sep='\t')
+    spikedf.to_csv(os.path.join(outdir , f'{base}.spike.counts.tsv'), sep='\t')
 
     # remove homopolymers in real sequences.
     max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
     realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
      
     # align and collapse all.         
-    acrealdf = align_and_collapse(config, realdf, dirname, base, 'real')
-    acspikedf = align_and_collapse(config, spikedf, dirname, base, 'spike')
-    aclonedf = align_and_collapse(config, lonedf, dirname, base, 'lone')
+
+    # add labels for merging...
+    realdf['type'] = 'real'
+    spikedf['type'] = 'spike'
+    lonedf['type'] = 'lone'
+
+    outdf = merge_dfs([ realdf, spikedf, lonedf ])
+    outdf['label'] = base
+    outdf.sort_values(by = ['type', 'umi_count'], ascending = [True, False], inplace=True)
+    outdf.reset_index(drop=True, inplace=True)
+    return outdf
+
+           
     
-    acrealdf.to_csv(os.path.join(dirname , f'{base}.real.tsv'), sep='\t')
-    acspikedf.to_csv(os.path.join(dirname , f'{base}.spike.tsv'), sep='\t')
-    aclonedf.to_csv(os.path.join(dirname , f'{base}.lone.tsv'), sep='\t')
+def process_ssifasta_withcollapse(config, infile, outdir=None, site=None, datestr=None):
+    '''
+    by default, outdir will be same dir as infile
+    assumes infile fasta has already been trimmed to remove SSI
+    
+    site = ['target-control','injection-control','target','target-negative',target-lone']   
+    Will use relevant threshold. If None, will use default threshold
+    
+    '''
+    aligner = config.get('ssifasta','tool')
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(config, outdir=outdir, datestr=datestr)
+    #sh = get_default_stats()
+    
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    logging.debug(f'handling {filepath} base={base}')
+    
+    # make raw fasta TSV of barcode-splitter output for one barcode. 
+    # trim to 44 nt since we know last 8 are SSI  
+    logging.debug('calc counts...')
+    seqdf = make_fasta_df(config, infile)
+    of = os.path.join(dirname , f'{base}.read.seq.tsv')
+    seqdf.to_csv(of, sep='\t')
+    
+    # to calculate threshold we need counts calculated. 
+    cdf = make_read_counts_df(config, seqdf, label=base)  
+    logging.debug(f'initial counts df {len(cdf)} all reads.')
+    
+    # these are ***READ*** counts
+    of = os.path.join(dirname , f'{base}.read.counts.tsv')
+    cdf.to_csv(of, sep='\t') 
+        
+    threshold = get_read_count_threshold(config, cdf, site)
+    logging.debug(f'got threshold={threshold} for site {site}')
+    tdf = threshold_read_counts(config, cdf, threshold=threshold)
+    logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
+    
+    # thresholded raw counts. duplicates are all one UMI, so set counts to 1. 
+    # each row (should be) a distinct UMI, so trim to 32. 
+    #tdf['counts'] = 1          
+    tdf['sequence'] = tdf['sequence'].str[:32]
+    tdf['umi_count'] = 1
+    
+    # this contains duplicate VBCs with *different* UMIs
+    of = os.path.join(dirname , f'{base}.umi.seq.tsv')
+    tdf.to_csv(of, sep='\t') 
+    
+    # now we have actual viral barcode df with *unique molecule counts.*
+    vbcdf = make_umi_counts_df(config, tdf)
+    of = os.path.join(dirname , f'{base}.umi.counts.tsv')
+    vbcdf.to_csv(of, sep='\t')     
+    
+    # split out spike, real, lone, otherwise same as 32.counts.tsv    
+    #spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    
+    # write out this step...
+    realdf.to_csv(os.path.join(outdir , f'{base}.real.counts.tsv'), sep='\t')
+    lonedf.to_csv(os.path.join(outdir , f'{base}.lone.counts.tsv'), sep='\t')
+    spikedf.to_csv(os.path.join(outdir , f'{base}.spike.counts.tsv'), sep='\t')
+
+    # remove homopolymers in real sequences.
+    max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
+    realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
+     
+    # align and collapse all.         
+    acrealdf = align_and_collapse(config, realdf, outdir, base, 'real')
+    acspikedf = align_and_collapse(config, spikedf, outdir, base, 'spike')
+    aclonedf = align_and_collapse(config, lonedf, outdir, base, 'lone')
+    acrealdf.to_csv(os.path.join(outdir , f'{base}.real.tsv'), sep='\t')
+    acspikedf.to_csv(os.path.join(outdir , f'{base}.spike.tsv'), sep='\t')
+    aclonedf.to_csv(os.path.join(outdir , f'{base}.lone.tsv'), sep='\t')
 
     # add labels for merging...
     acrealdf['type'] = 'real'
@@ -243,26 +414,33 @@ def process_ssifasta(config, infile, outdir=None, site=None):
 
     outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
     outdf['label'] = base
-    outdf.sort_values(by = ['type', 'counts'], ascending = [True, False], inplace=True)
+    outdf.sort_values(by = ['type', 'umi_count'], ascending = [True, False], inplace=True)
     outdf.reset_index(drop=True, inplace=True)
     return outdf
 
 
 def align_and_collapse(config, countsdf, outdir, base, label):
     '''
-    countsdf  'sequence' and 'counts' columns
+    countsdf  'sequence' 'read_count' 'umi_count' columns
     outdir    working dir or temp dir. 
     base      leading file name, e.g. barcode label, e.g. 'SSI4'
     label     type of sequence, e.g. real, spike, L1 (lone)
     
     '''
+    sh = get_default_stats()
     newdf = None
     logging.debug(f'handling {base} {label}s...')
     aligner = config.get('ssifasta','tool')
-    logging.info(f'{label} {len(countsdf)} sequences, representing {countsdf.counts.sum()} reads.')      
+    num_sequences = len(countsdf)
+    num_reads = countsdf.read_count.sum()
+    logging.info(f'{base} {label} {num_sequences} sequences, representing {num_reads} reads.')      
+    # sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
+    sh.add_value(f'/ssifasta/{base}/{label}','num_sequences',len(countsdf))
+    sh.add_value(f'/ssifasta/{base}/{label}','num_reads',len(countsdf))
+    
     of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
     logging.debug(f'make fasta for {aligner} = {of}') 
-    seqfasta = write_fasta_from_df(config, countsdf, outfile=of)
+    seqfasta = write_fasta_from_df(countsdf, outfile=of)
     of = os.path.join(outdir , f'{base}.{label}.{aligner}')
     logging.debug(f'running {aligner}...')
     try:
@@ -274,8 +452,9 @@ def align_and_collapse(config, countsdf, outdir, base, label):
         edgelist = edges_from_btdf(btdf)
         components = get_components(edgelist)
         logging.debug(f'countdf columns are {countsdf.columns}')
-        newdf = collapse_counts_df(countsdf, components)
-        logging.debug(f'orig len={len(countsdf)}, {len(components)} components, collapsed len={len(newdf)}')
+        newdf = collapse_umi_counts_df(countsdf, components)
+        logging.debug(f'orig len={num_sequences}, {len(components)} components, collapsed len={len(newdf)}')
+        sh.add_value(f'/ssifasta/{base}/{label}','num_collapsed', len(newdf) )
 
     except NonZeroReturnException:
         logging.warning(f'NonZeroReturn Exception. Probably no {label}s found. ')
@@ -310,13 +489,16 @@ def unique_df(seqdf):
 
 
 
-def collapse_counts_df(countsdf, components):
+def collapse_umi_counts_df(countsdf, components):
     '''
     takes components consisting of indices
-    determines sequence with largest count columns: 'sequence', 'counts'
+    determines sequence with largest count columns: 'sequence', 'umi_counts'
     collapses all other member components to the sequence of the largest.
     adds their counts to that of that sequence.
     retain columns and values for highest counts row. 
+    
+    *** need to *sum*  read_counts column as well... 
+    
      
     '''
     # list of lists to collect values..
@@ -329,11 +511,12 @@ def collapse_counts_df(countsdf, components):
         cdf = countsdf.iloc[component].reset_index(drop=True)
         logging.debug(f'cdf=\n{cdf}')
         # which sequence has highest count?
-        maxid = cdf.counts.idxmax()
+        maxid = cdf['umi_count'].idxmax()
         # extract sequence and count as python list
         row = list(cdf.iloc[maxid])
         # set counts as sum of all collapse sequences. 
-        row[1] = cdf.counts.sum()
+        row[1] = cdf['read_count'].sum()
+        row[2] = cdf['umi_count'].sum()
         lol.append(row)
     
         if logging.getLogger().level <= logging.DEBUG:
@@ -348,7 +531,7 @@ def collapse_counts_df(countsdf, components):
         
     newdf = pd.DataFrame(data=lol, columns=colnames)
     logging.debug(f'original len={len(countsdf)} collapsed len={len(newdf)}')
-    newdf.sort_values('counts',ascending=False, inplace=True)
+    newdf.sort_values('umi_count',ascending=False, inplace=True)
     newdf.reset_index(drop=True, inplace=True)
     return newdf
 
@@ -359,16 +542,26 @@ def edges_from_btdf(btdf):
     edgelist = [ list(t) for t in zip(readlist, alignlist)]
     return edgelist
 
-def get_components(edgelist):
+def get_components(edgelist, integers=True):
+    '''
+    returns strongly connected components from list of edges via Tarjan's algorithm. 
+    assumes labels are integers (for later use as indices in dataframes. 
+    '''
     complist = []
     logging.debug(f'getting connected components from edgelist len={len(edgelist)}')
     if len(edgelist) < 100:
         logging.debug(f'{edgelist}')
     for g in tarjan(from_edges(edgelist)):
+        #logging.debug(f'g={g}')
         complist.append(g)
     logging.debug(f'{len(complist)} components.')
     if len(edgelist) < 100:
         logging.debug(f'{complist}')
+    if integers:
+        outlist = []
+        for g in complist:
+            outlist.append( [int(x) for x in g])
+        complist = outlist    
     return complist
 
 #
@@ -407,25 +600,24 @@ def tarjan(V):
     def strongconnect(v, S):
         v.root = pos = len(S)
         S.append(v)
-
         for w in v.succ:
             if w.root is None:  # not yet visited
                 yield from strongconnect(w, S)
 
             if w.root >= 0:  # still on stack
                 v.root = min(v.root, w.root)
-
         if v.root == pos:  # v is the root, return everything above
             res, S[pos:] = S[pos:], []
             for w in res:
                 w.root = -1
             yield [r.id for r in res]
-
+    
     for v in V:
         if v.root is None:
             yield from strongconnect(v, [])
 
-def make_counts_df(config, seqdf, label=None):
+
+def make_read_counts_df(config, seqdf, label=None):
     '''
     input dataframe with 'sequence' column
     make counts column for identical sequences.  
@@ -434,13 +626,48 @@ def make_counts_df(config, seqdf, label=None):
     '''
     logging.debug(f'seqdf=\n{seqdf}')
     ser = seqdf['sequence'].value_counts()
-    df = pd.DataFrame(columns=['sequence','counts'])
+    df = pd.DataFrame(columns=['sequence','read_count'])
     df['sequence'] = ser.index
-    df['counts'] = ser.values
+    df['read_count'] = ser.values
     logging.debug(f'counts df = \n{df}')
     if label is not None:
         df['label'] = label
     return df
+
+def make_umi_counts_df(config, seqdf, label=None):
+    '''
+    input dataframe with 'sequence' column
+    make counts column for identical sequences.  
+    optionally assign a label to set in new column
+    combine values from collapsed read_counts 
+    sequence   read_count  label     
+    AAA        23           A
+    AAA        5            A
+    BBB        7            A
+    BBB        6            A
+    CCC        5            A
+    
+    ->
+    AAA    read_count  umi_count label
+    BBB    13           2          A
+    CCC    28           2          A
+    CCC    5            1          A
+    
+    https://stackoverflow.com/questions/73874908/value-counts-then-sum-of-a-different-column
+    https://stackoverflow.com/questions/46431243/how-to-get-groupby-sum-of-multiple-columns
+     
+    '''
+    logging.debug(f'seqdf=\n{seqdf}')
+    # keep original label
+    label = seqdf['label'].unique()[0]
+    vdf = seqdf.drop('label',axis=1).groupby('sequence').agg({'read_count':'sum','umi_count':'sum'}).reset_index()
+    #vdf = seqdf.groupby('sequence')['read_counts'].agg(count='count',sum='sum').reset_index()
+    #vdf.rename(columns={'count': 'umi_counts','sum': 'read_counts'}, inplace=True)
+    vdf.sort_values(by=['umi_count'], ascending=False, inplace=True)
+    vdf.reset_index(inplace=True, drop=True)
+    vdf['label'] = label
+    logging.debug(f'counts df = \n{vdf}')
+    return vdf
 
 
 def make_fasta_df(config, infile, ignore_n=True):
@@ -632,7 +859,7 @@ def calculate_threshold(config, cdf, site=None):
         logging.warn(f'no SSI label in DF')
         
     # assess distribution.
-    counts = cdf['counts']
+    counts = cdf['read_count']
     clength = len(counts)
     counts_max = counts.max()
     counts_min = counts.min()
@@ -706,26 +933,27 @@ def calculate_threshold_kneed(config, cdf, site=None, inflect=None ):
 def calc_min_target(config, braindf):
     '''
     how many molecules (unique UMIs) are in supposedly target-negative area?
+    
     '''
     countlist = []
     min_target = 0
-    braindf['counts'] = braindf['counts'].astype(int)
+    braindf['umi_count'] = braindf['umi_count'].astype(int)
     tndf = braindf[ braindf['site'] == 'target-negative']
     tndf = tndf[ tndf['type'] == 'real']
     lablist = list(tndf['label'].dropna().unique())
     for label in lablist:
         ldf = tndf[tndf['label'] == label]
         if len(ldf) > 0:
-            countslist.append( ldf['counts'].sum())
-    if len(countslist) > 0:
-        min_target = max(countslist)
+            countlist.append( ldf['umi_count'].sum())
+    if len(countlist) > 0:
+        min_target = max(countlist)
         logging.debug(f'calculated min_target={min_target}')
     return min_target
 
 
-def get_threshold(config, cdf, site=None):
+def get_read_count_threshold(config, cdf, site=None):
     '''
-    site = ['control','injection','target']   
+    site = ['target-X','injection-X'] where X is '', lone, control, negative  
         Will use relevant threshold. If None, will use default threshold
     
     target_threshold=100
@@ -734,7 +962,8 @@ def get_threshold(config, cdf, site=None):
     inj_ctrl_threshold=2
     
     '''
-    count_threshold=2
+    logging.debug(f'getting info for site={site}')
+    count_threshold=1
     if site is None:
         count_threshold = int(config.get('ssifasta', 'default_threshold'))
     else:
@@ -754,13 +983,13 @@ def calc_freq_threshold(df, fraction, column):
     return 122
 
 
-def threshold_counts(config, df, threshold=None):
+def threshold_read_counts(config, df, threshold=1):
     '''
     
     '''
     logging.debug(f'threshold counts threshold={threshold}')
     threshold= int(threshold)   
-    df = df[df['counts'] >= threshold].copy()
+    df = df[df['read_count'] >= threshold].copy()
     return df
 
 
@@ -827,7 +1056,7 @@ def load_sample_info(config, file_name):
         }
     
     sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region'] 
-    int_sample_col = ['usertube', 'ourtube', 'rtprimer']     # brain is often not a number. 
+    int_sample_col = ['usertube', 'ourtube', 'rtprimer','region']     # brain is often not a number. 
     str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
 
     if file_name.endswith('.xlsx'):
@@ -853,7 +1082,6 @@ def load_sample_info(config, file_name):
                 logging.error(f'error while handling {ecol} ')
                 logging.warning(traceback.format_exc(None))
 
-            #sdf[sample_columns[i]] = pd.Series(np.nan, np.arange(len(edf))) 
         for scol in sample_columns:
             try:
                 ser = sdf[scol]
@@ -861,7 +1089,9 @@ def load_sample_info(config, file_name):
                 logging.warn(f'no column {scol}, required. Creating...')
                 if scol == 'samplename':
                     sdf[scol] = sdf['ourtube']
-                
+                elif scol == 'region':
+                    sdf[scol] = sdf['rtprimer']
+                    
         sdf.replace(r'^s*$', float('NaN'), regex = True, inplace=True)
         sdf.dropna(how='all', axis=0, inplace=True)        
         sdf = fix_columns_int(sdf, columns=int_sample_col)
@@ -895,118 +1125,7 @@ def merge_fastq_pairs(config, readfilelist, outdir):
         pairshandled += 1    
 
 
-   
-
-def process_fastq_pairs_old(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
-
-    # if all the output files for bclist exist, don't recalc unless force=True. 
-    if outdir is None:
-        outdir = "."
-    else:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-            logging.debug(f'made outdir={outdir}')
-    output_exists = check_output(bclist)
-    logging.debug(f'output_exists={output_exists} force={force}')
-    
-    if ( not output_exists ) or force:
-        outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
-        pairedfile = os.path.abspath(f'{outdir}/paired.txt')
-        umf = open(outfile, 'w')
-        pf = open(pairedfile, 'w')
-        r1s = int(config.get('fastq','r1start'))
-        r1e = int(config.get('fastq','r1end'))
-        r2s = int(config.get('fastq','r2start'))
-        r2e = int(config.get('fastq','r2end'))
-        
-        seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
-        matched_interval = int(config.get('fastq','matched_interval'))
-        unmatched_interval = int(config.get('fastq','unmatched_interval'))
-
-        seqshandled = 0
-        pairshandled = 0
-        unmatched = 0
-        didmatch = 0
-    
-        #
-        # handle pairs of readfiles from readfilelist
-        #
-        for (read1file, read2file) in readfilelist:
-            pairshandled += 1
-            logging.debug(f'handling file pair {pairshandled}')
-            if read1file.endswith('.gz'):
-                 read1file = gzip.open(read1file, "rt")
-            if read2file.endswith('.gz'):
-                 read2file = gzip.open(read2file, "rt")         
-                
-            recs1 = SeqIO.parse(read1file, "fastq")
-            recs2 = SeqIO.parse(read2file, "fastq")
-        
-            while True:
-                try:
-                    r1 = next(recs1)
-                    r2 = next(recs2)
-                    sub1 = r1.seq[r1s:r1e]
-                    sub2 = r2.seq[r2s:r2e]
-                    fullread = sub1 + sub2
-                    pf.write(f'{fullread}\n')
-                    
-                    matched = False
-                    for bch in bclist:
-                        r = bch.do_match(seqshandled, fullread)
-                        if r:
-                            didmatch += 1
-                            if didmatch % matched_interval == 0:
-                                logging.debug(f'match {didmatch}: found SSI {bch.label} in {fullread}!')
-                            matched = True
-                            break
-                    if not matched:
-                        unmatched += 1
-                        if unmatched % unmatched_interval == 0:
-                            logging.debug(f'{unmatched} unmatched so far.')
-                        id = str(seqshandled)
-                        sr = SeqRecord( fullread, id=id, name=id, description=id)
-                        SeqIO.write([sr], umf, 'fasta')
-                    
-                    seqshandled += 1
-                    if seqshandled % seqhandled_interval == 0: 
-                        logging.info(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
-                
-                except StopIteration as e:
-                    logging.debug(f'iteration stopped')
-                    break
-                
-        
-        umf.close()
-        pf.close()
-        for bch in bclist:
-            bch.finalize()    
-        # close possible gzip filehandles??
-        #max_mismatch = bclist[0].max_mismatch
-        logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {unmatched} unmatched')
-    else:
-        logging.warn('all output exists and force=False. Not recalculating.')
-    
-    filelist = []
-    for bch in bclist:
-        filelist.append(bch.filename)
-    logging.info(f'Making counts df for {filelist} in {outdir}')
-    make_counts_dfs(config, filelist, outdir)
-
-    # by default make countsplots 
-    if countsplots:
-        logging.info('Making combined countsplots PDF...')
-        countsfilelist = []
-        for bch in bclist:
-            dirname = os.path.dirname(bch.filename)
-            filename = os.path.basename(bch.filename)
-            (base, ext) = os.path.splitext(filename)   
-            of = os.path.join(dirname , f'{base}.44.counts.tsv')
-            countsfilelist.append(of)
-        make_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
-
-
-def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=True):
+def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=False, readtsvs=False, datestr=None):
     '''
     Do not use BioConda data structures. 
     Use combined barcode sorter structure to minimize character comparisons. 
@@ -1018,45 +1137,53 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
         if not os.path.exists(outdir):
             os.makedirs(outdir, exist_ok=True)
             logging.debug(f'made outdir={outdir}')
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+
+    if countsplots:
+        readtsvs = True
+    
     output_exists = check_output(bclist)
     logging.debug(f'output_exists={output_exists} force={force}')
+
+    cfilename = f'{outdir}/process_fastq.config.txt'
+    bc_length=len(bclist[0].barcode)
+    outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
+    pairedfile = os.path.abspath(f'{outdir}/paired.txt')    
+    r1s = int(config.get('fastq','r1start'))
+    r1e = int(config.get('fastq','r1end'))
+    r2s = int(config.get('fastq','r2start'))
+    r2e = int(config.get('fastq','r2end'))    
+
+    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
+    matched_interval = int(config.get('fastq','matched_interval'))
+    unmatched_interval = int(config.get('fastq','unmatched_interval'))
+    #seqhandled_interval = 1000000 
+    #matched_interval = 1000000
+    #unmatched_interval = 1000000
     
     if ( not output_exists ) or force:
-        
+        write_config(config, cfilename, timestamp=True, datestring=datestr)
+        sh = StatsHandler(config, outdir=outdir, datestr=datestr)        
         # create structure to search for all barcode simultaneously
         labeldict = {}
         for bco in bclist:
             labeldict[bco.barcode] = bco.label
-        matchdict, seqdict, unmatched_list = build_bcmatcher(bclist) 
-        bc_length=len(bclist[0].barcode)
-        
-               
-        outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
-        pairedfile = os.path.abspath(f'{outdir}/paired.txt')
-        #umf = open(outfile, 'w')
-        pf = open(pairedfile, 'w')
-        r1s = int(config.get('fastq','r1start'))
-        r1e = int(config.get('fastq','r1end'))
-        r2s = int(config.get('fastq','r2start'))
-        r2e = int(config.get('fastq','r2end'))
-        
-        #seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
-        #matched_interval = int(config.get('fastq','matched_interval'))
-        #unmatched_interval = int(config.get('fastq','unmatched_interval'))
-        seqhandled_interval = 1000000 
-        matched_interval = 1000000
-        unmatched_interval = 1000000
+        matchdict, seqdict, unmatched_file = build_bcmatcher(bclist) 
 
-        seqshandled = 0
+        pf = open(pairedfile, 'w')
         pairshandled = 0
-        num_unmatched = 0
-        didmatch = 0
-    
-        #
-        # handle pairs of readfiles from readfilelist
-        #
+        num_handled_total = 0
+        num_matched_total = 0
+        num_unmatched_total = 0
+
+        # handle all pairs of readfiles from readfilelist
         for (read1file, read2file) in readfilelist:
             pairshandled += 1
+            num_handled = 0
+            num_matched = 0
+            num_unmatched = 0
+            
             logging.debug(f'handling file pair {pairshandled}')
             if read1file.endswith('.gz'):
                 r1f = gzip.open(read1file, "rt")
@@ -1072,7 +1199,7 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
                 try:
                     meta1 = r1f.readline()
                     if len(meta1) == 0:
-                        break
+                        raise StopIteration
                     seq1 = r1f.readline().strip()
                     sep1 = r1f.readline()
                     qual1 = r1f.readline().strip()
@@ -1092,70 +1219,193 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
                     matched = False
                     seq = fullread[-bc_length:]
                     # id, seq, matchdict, fullseq, unmatched
-                    matched = do_match(seqshandled, seq, matchdict, fullread, unmatched_list)
+                    matched = do_match(num_handled, seq, matchdict, fullread, unmatched_file)
                     
+                    num_handled += 1
+                    num_handled_total += 1
+
+                    # report progress...                    
                     if not matched:
                         num_unmatched += 1
+                        num_unmatched_total += 1                        
                         if num_unmatched % unmatched_interval == 0:
                             logging.debug(f'{num_unmatched} unmatched so far.')
                     else:
-                        didmatch += 1
-                        if didmatch % matched_interval == 0:
-                            logging.debug(f'match {didmatch}: found SSI in {fullread}!')                        
-                                        
-                    seqshandled += 1
-                    if seqshandled % seqhandled_interval == 0: 
-                        logging.info(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={num_unmatched}')
+                        num_matched += 1
+                        num_matched_total += 1
+                        if num_matched % matched_interval == 0:
+                            logging.debug(f'match {num_matched}: found SSI in {fullread}!')                        
+
+                    if num_handled % seqhandled_interval == 0: 
+                        logging.info(f'handled {num_handled} reads from pair {pairshandled}. matched={num_matched} unmatched={num_unmatched}')
                 
                 except StopIteration as e:
-                    logging.debug(f'iteration stopped')
+                    logging.debug('iteration stopped')    
                     break
             
-        #matchdict, seqdict, unmatched_list    
-        logging.info(f'{unmatched_list[0]}\n {unmatched_list[1]}\n')
-        logging.info(f'writing {len(unmatched_list)} sequences to {outfile}')
-        umf = open(outfile, 'w')
-        for id, s in unmatched_list:
-            umf.write(f'>{id}\n{s}\n')
-        umf.close()
-        
-        for sk in seqdict.keys():
-            label = labeldict[sk]
-            logging.debug(f'handling sequence {sk} label={label}')            
-            outfile = os.path.abspath(f'{outdir}/{label}.fasta')
-            with open(outfile, 'w') as faf:
-                logging.debug(f'writing {len(seqdict)} sequences to {outfile}')
-                for id, s in seqdict[sk]:
-                    faf.write(f'>{id}\n{s}\n')
-
+            logging.debug(f'finished with pair {pairshandled} saving pair info.')
+            sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
+            sh.add_value(f'/fastq/pair{pairshandled}','reads_matched', num_matched) 
+            sh.add_value(f'/fastq/pair{pairshandled}','reads_unmatched', num_unmatched)
+            num_unmatched_total += num_unmatched
+   
+        sh.add_value('/fastq','reads_handled', num_handled_total )
+        sh.add_value('/fastq','reads_unmatched', num_unmatched_total )
+               
         pf.close()              
-        # close possible gzip filehandles??
-        #max_mismatch = bclist[0].max_mismatch
-        logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {num_unmatched} unmatched')
+        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs. {num_matched_total} matched. {num_unmatched_total} unmatched')
     else:
-        logging.warn('all output exists and force=False. Not recalculating.')
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
     
-    filelist = []
-    for bch in bclist:
-        filelist.append(bch.filename)
-    logging.info(f'Making counts df for {filelist} in {outdir}')
-    make_counts_dfs(config, filelist, outdir)
+    if readtsvs:
+        filelist = []
+        for bch in bclist:
+            filelist.append(bch.filename)
+        logging.info(f'Making counts dfs/TSVs for {filelist} in {outdir}')
+        make_read_counts_dfs(config, filelist, outdir)
 
-    # by default make countsplots 
+    
     if countsplots:
-        logging.info('Making combined countsplots PDF...')
+        logging.info('Making combined counts plots PDF...')
         countsfilelist = []
         for bch in bclist:
-            dirname = os.path.dirname(bch.filename)
-            filename = os.path.basename(bch.filename)
-            (base, ext) = os.path.splitext(filename)   
-            of = os.path.join(dirname , f'{base}.44.counts.tsv')
+            base = get_mainbase(bch.filename)   
+            of = os.path.join(dirname , f'{base}.read.counts.tsv')
             countsfilelist.append(of)
-        make_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
+        make_read_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
 
+
+
+def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplots=False, readtsvs=False, datestr=None):
+    '''
+    Take paired FASTA file as input rather than raw FASTQ
+    Use combined barcode sorter structure to minimize character comparisons. 
+
+    '''
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    
+    output_exists = check_output(bclist)
+    cfilename = f'{outdir}/process_fasta.config.txt'
+    bc_length=len(bclist[0].barcode)
+    unmatched = os.path.abspath(f'{outdir}/unmatched.fasta')
+    
+    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
+    matched_interval = int(config.get('fastq','matched_interval'))
+    unmatched_interval = int(config.get('fastq','unmatched_interval'))
+    
+    logging.info(f'performing split. outdir={outdir} output_exists={output_exists} force={force} countsplots={countsplots} readtsvs={readtsvs}')
+    
+    
+    if ( not output_exists ) or force:
+        write_config(config, cfilename, timestamp=True, datestring=datestr)
+        sh = StatsHandler(config, outdir=outdir, datestr=datestr)        
+        # create structure to search for all barcode simultaneously
+        labeldict = {}
+        for bco in bclist:
+            labeldict[bco.barcode] = bco.label
+        matchdict, seqdict, unmatched_file = build_bcmatcher(bclist) 
+
+        pairshandled = 0
+        num_handled_total = 0
+        num_matched_total = 0
+        num_unmatched_total = 0
+
+        # handle all sequences in input 
+        with open(infile) as f:
+            num_handled = 0
+            num_matched = 0
+            num_unmatched = 0
+            
+            logging.debug(f'handling file {infile}')
+            while True:
+                try:
+                    line = f.readline()
+                    if line.startswith('>'):
+                        pass
+                    else:
+                        if len(line) == 0:
+                            raise StopIteration
+                        
+                        fullread = line.strip()
+                        # handle sequence
+                        matched = False
+                        seq = fullread[-bc_length:]
+                        # id, seq, matchdict, fullseq, unmatched
+                        matched = do_match(num_handled, seq, matchdict, fullread, unmatched_file)
+                        num_handled += 1
+                        num_handled_total += 1
+    
+                        # report progress...                    
+                        if not matched:
+                            num_unmatched += 1
+                            num_unmatched_total += 1                        
+                            if num_unmatched % unmatched_interval == 0:
+                                logging.debug(f'{num_unmatched} unmatched so far.')
+                        else:
+                            num_matched += 1
+                            num_matched_total += 1
+                            if num_matched % matched_interval == 0:
+                                logging.debug(f'match {num_matched}: found SSI in {fullread}!')                        
+    
+                        if num_handled % seqhandled_interval == 0: 
+                            logging.info(f'handled {num_handled} matched={num_matched} unmatched={num_unmatched}')
+                    
+                except StopIteration as e:
+                    logging.debug('iteration stopped')    
+                    break
+            
+        logging.debug(f'finished with {infile}')
+        sh.add_value('/fasta','reads_handled', num_handled_total )
+        sh.add_value('/fasta','reads_unmatched', num_unmatched_total )
+        f.close()
+        
+        matchrate = 0.0
+        if num_matched_total > 0: 
+            matchrate = num_unmatched_total / num_matched_total              
+                  
+        logging.info(f'handled {num_handled_total} sequences. {num_matched_total} matched. {num_unmatched_total} unmatched matchrate={matchrate}')
+    else:
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
+    
+    
+    if readtsvs:
+        filelist = []
+        for bch in bclist:
+            if os.path.exists(bch.filename):
+                filelist.append(bch.filename)
+            else:
+                logging.warning(f'missing FASTA file!: {of}')
+        logging.info(f'Making counts dfs/TSVs for {filelist} in {outdir}')
+        make_read_counts_dfs(config, filelist, outdir)
+
+    if countsplots:
+        logging.info('Making combined counts plots PDF...')
+        countsfilelist = []
+        for bch in bclist:
+            base = get_mainbase(bch.filename)   
+            of = os.path.join(outdir , f'{base}.read.counts.tsv')
+            if os.path.exists(bch.filename):
+                countsfilelist.append(of)
+            else:
+                logging.warning(f'missing countsfile needed for plot!:  {of}')
+        make_read_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
 
 
 def calc_thread_count(nthreads):
+    '''
+    check number of threads requested against real CPU count. 
+    allow negative numbers to refer to "use all but X" CPUs
+    ensure value returned is sane. 
+    allow "0" to refer to "all CPUs"
+    
+    '''
     ncpus = os.cpu_count()
     threads = 1 # safe default
     if nthreads > 1:
@@ -1174,145 +1424,13 @@ def calc_thread_count(nthreads):
     return (ncpus, threads)
 
 
-def process_fastq_pairs_parallel(config, readfilelist, bclist, outdir, nthreads, force=False):
-    '''
-    
-    nthreads:    use this number of CPUs. 0 means all. -1 means all but 1. 3 means 3. 
-    
-    '''
-    ncpus, threads = calc_thread_count(nthreads)   
-    logging.info(f'using {threads} of {ncpus} CPUs in parallel...')
-
-    prog = os.path.expanduser('~/git/mapseq-processing/scripts/process_fastq_thread.py')
-    readfilestr = ""
-    for (a,b) in readfilelist:
-        readfilestr += f" {a} {b} "
-    
-    logging.debug(f'readfilestr = {readfilestr}')
-    
-    # from cshlwork.utils import JobRunner, JobStack, JobSet
-    
-    jstack = JobStack()
-    
-    for bco in bclist:
-        cmd = [ prog, 
-               '-d',
-               '-B', bco.label , 
-               '-O' , outdir ,
-               readfilestr 
-               ]
-        jstack.addjob(cmd)
-    jset = JobSet(max_processes = threads, jobstack = jstack)
-    jset.runjobs()
-    
-    
-    filelist = []
-    for bco in bclist:
-        filelist.append(bco.filename)
-    logging.info(f'Making counts df for {filelist} in {outdir}')
-    make_counts_dfs(config, filelist, outdir)
-
-
-def process_fastq_pairs_single(config, readfilelist, bclist, outdir, force=False):
-
-    # if all the output files for bclist exist, don't recalc unless force=True. 
-    if outdir is None:
-        outdir = "."
-    else:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-            logging.debug(f'made outdir={outdir}')
-    output_exists = check_output(bclist)
-    logging.debug(f'output_exists={output_exists} force={force}')
-    
-    # list should have only one...
-    bcho = bclist[0]
-    
-    if ( not output_exists ) or force:
-        #outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
-        #pairedfile = os.path.abspath(f'{outdir}/paired.txt')
-        #umf = open(outfile, 'w')
-        #pf = open(pairedfile, 'w')
-        r1s = int(config.get('fastq','r1start'))
-        r1e = int(config.get('fastq','r1end'))
-        r2s = int(config.get('fastq','r2start'))
-        r2e = int(config.get('fastq','r2end'))
-        
-        seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
-        matched_interval = int(config.get('fastq','matched_interval'))
-        unmatched_interval = int(config.get('fastq','unmatched_interval'))
-
-        seqshandled = 0
-        pairshandled = 0
-        unmatched = 0
-        didmatch = 0
-    
-        #
-        # handle pairs of readfiles from readfilelist
-        #
-        for (read1file, read2file) in readfilelist:
-            pairshandled += 1
-            logging.debug(f'handling file pair {pairshandled}')
-            if read1file.endswith('.gz'):
-                 read1file = gzip.open(read1file, "rt")
-            if read2file.endswith('.gz'):
-                 read2file = gzip.open(read2file, "rt")         
-                
-            recs1 = SeqIO.parse(read1file, "fastq")
-            recs2 = SeqIO.parse(read2file, "fastq")
-        
-            while True:
-                try:
-                    r1 = next(recs1)
-                    r2 = next(recs2)
-                    sub1 = r1.seq[r1s:r1e]
-                    sub2 = r2.seq[r2s:r2e]
-                    fullread = sub1 + sub2
-                    #pf.write(f'{fullread}\n')
-                    
-                    matched = False
-                    r = bcho.do_match(seqshandled, fullread)
-                    if r:
-                        didmatch += 1
-                        if didmatch % matched_interval == 0:
-                            logging.debug(f'match {didmatch}: found SSI {bcho.label} in {fullread}!')
-                        matched = True
-                    else:
-                        unmatched += 1
-                        # when processing single, unmatched number not useful. 
-                        #if unmatched % unmatched_interval == 0:
-                        #    logging.debug(f'{unmatched} unmatched so far.')
-                        #id = str(seqshandled)
-                        #sr = SeqRecord( fullread, id=id, name=id, description=id)
-                        #SeqIO.write([sr], umf, 'fasta')
-                    
-                    seqshandled += 1
-                    if seqshandled % seqhandled_interval == 0: 
-                        logging.debug(f'handled {seqshandled} reads from pair {pairshandled}. matched={didmatch} unmatched={unmatched}')
-                
-                except StopIteration as e:
-                    logging.debug(f'iteration stopped?')
-                    logging.warning(traceback.format_exc(None))
-                    break
-                
-        #umf.close()
-        #pf.close()
-        #for bch in bclist:
-        bcho.finalize()    
-        # close possible gzip filehandles??
-        #max_mismatch = bclist[0].max_mismatch
-        logging.info(f'handled {seqshandled} sequences. {pairshandled} pairs. {didmatch} matched. {unmatched} unmatched')
-    else:
-        logging.warn('all output exists and force=False. Not recalculating.')
-     
-
-def make_counts_dfs(config, filelist, outdir):
+def make_read_counts_dfs(config, filelist, outdir):
     '''
     
     '''
     dflist = []
     for filepath in filelist:
-        logging.debug(f'calculating counts for  file {filepath} ...')    
+        logging.info(f'calculating counts for file {filepath} ...')    
         dirname = os.path.dirname(filepath)
         
         if outdir is not None:
@@ -1325,13 +1443,13 @@ def make_counts_dfs(config, filelist, outdir):
         # make raw fasta TSV of barcode-splitter output for one barcode. 
         # trim to 44 unique w/ counts. 
         seqdf = make_fasta_df(config, filepath)
-        of = os.path.join(dirname , f'{base}.44.seq.tsv')
+        of = os.path.join(dirname , f'{base}.read.seq.tsv')
         seqdf.to_csv(of, sep='\t')
         
         # to calculate threshold we need counts calculated. 
-        cdf = make_counts_df(config, seqdf, label=base)  
-        logging.debug(f'initial counts df {len(cdf)} all reads.')
-        of = os.path.join(dirname , f'{base}.44.counts.tsv')
+        cdf = make_read_counts_df(config, seqdf, label=base)  
+        logging.debug(f'made counts df: {len(cdf)} reads.')
+        of = os.path.join(dirname , f'{base}.read.counts.tsv')
         cdf.to_csv(of, sep='\t')
         dflist.append(cdf)
     logging.debug(f'returning list of {len(dflist)} counts DFs...')
@@ -1352,9 +1470,9 @@ def make_clustered_heatmap(df, outprefix, columns=None ):
     logging.info(f'done making {outprefix}.heatmap.pdf ')
     
 
-def make_countsplots(config, filelist ): 
+def make_read_countsplots(config, filelist ): 
     '''
-    makes individual read counts plots from 44.counts.tsv files. 
+    makes individual read counts plots from reads.counts.tsv files. 
     
     '''   
     for bcfile in filelist:
@@ -1367,7 +1485,7 @@ def make_countsplots(config, filelist ):
         
         bcdata = pd.read_csv(bcfile, sep='\t')
         plt.figure()
-        plt.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['counts']))
+        plt.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['read_count']))
         plt.title(base)
         plt.xlabel("log10(BC index)")
         plt.ylabel("log10(BC counts)")
@@ -1380,35 +1498,31 @@ def counts_axis_plot_sns(ax, bcdata, labels):
     
     '''
     bcdata['log10index'] = np.log10(bcdata.index)
-    bcdata['log10counts'] = np.log10(bcdata['counts'])
+    bcdata['log10counts'] = np.log10(bcdata['read_count'])
     sns.lineplot(ax=ax, x=bcdata['log10index'], y=bcdata['log10counts'] )
-    s = bcdata.counts.sum()
+    s = bcdata['read_count'].sum()
     n = len(bcdata)
-    t = bcdata.counts.max()
-    
+    t = bcdata['read_count'].max()
 
     title = f"{bcdata['label'][0]}"      
     ax.set_title(title, fontsize=10)
     ax.text(0.15, 0.2, f"site={labels['site']}\nn={n}\ntop={t}\nsum={s}\nthreshold={labels['threshold']}", fontsize=9) #add text
     
-    #sns.move_legend(ax, "lower left")
-    #ax.set_xlabel("log10(BC index)", fontsize=5)
-    #ax.set_ylabel("log10(BC counts)",fontsize=5)
 
-
-def make_countsplot_combined_sns(config, sampdf, filelist, outdir, expid=None ):    
+def make_read_countsplot_combined_sns(config, sampdf, filelist, outdir, expid=None ):    
     '''
      makes combined figure with all plots. 
      assumes column 'label' for title. 
      
     '''
     min_ssi_count = int(config.get('analysis','min_ssi_count')) 
-    
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     
-    outfile = 'countsplots.pdf'
+    datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    
+    outfile = f'countsplots.{datestr}.pdf'
     if expid is not None:
-        outfile = f'{expid}_{outfile}'
+        outfile = f'{expid}.{outfile}'
     outfile = os.path.join(outdir, outfile)
     
     # do nine per figure...
@@ -1460,7 +1574,6 @@ def make_countsplot_combined_sns(config, sampdf, filelist, outdir, expid=None ):
             else:
                 ax = axlist[i]
                 # make empty axis?
-    
         for f in figlist:
             pdfpages.savefig(f)
     logging.info(f'saved plot PDF to {outfile}')
@@ -1618,179 +1731,37 @@ def filter_min_target(df, min_target=1):
     return mdf    
 
 
-def process_merged(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
+def process_merged(config, infile, outdir=None, expid=None, recursion=200000, label_column='region' ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
      outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
      writes all output to outdir (or current dir). 
      
     '''
-    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    sys.setrecursionlimit(recursion)    
-    
-    logging.debug(f'{filelist}')
-    
-    alldf = merge_tsvs(filelist)
-    logging.debug(f'alldf len={len(alldf)}')
-    
-    cmap = config.get('plots','heatmap_cmap')
-    require_injection = config.getboolean('analysis','require_injection')
-    min_injection = int(config.get('analysis','min_injection'))
-    min_target = int(config.get('analysis','min_target'))   
-    clustermap_scale = config.get('plots','clustermap_scale') # log10 | log2
-         
-    if expid is None:
-        expid = 'MAPseq'
-    
-    if outdir is None:
-        outdir = './'
-            
-    outfile = os.path.join(outdir, f'{expid}.all.heatmap.pdf')
-    if require_injection:
-        outfile = os.path.join(outdir, f'{expid}.all.{min_injection}.{min_target}.{clustermap_scale}.pdf')
-    else:
-        outfile = os.path.join(outdir, f'{expid}.all.noinj.{min_target}.{clustermap_scale}.pdf')
-    logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} cmap={cmap} clustermap_scale={clustermap_scale} ')
-    
-    # list to handle return information. 
-    #  {
-    #     B1  : [rbcm, sbcm, nbcm],
-    #     B2  : [rbcm, sbcm, nbcm]
-    #  }
-    brainlist = {}
-    
-    
-    page_dims = (11.7, 8.27)
-    with pdfpages(outfile) as pdfpages:
-        bidlist = list(alldf['brain'].dropna().unique())
-        bidlist = [ x for x in bidlist if len(x) > 0 ]
-        bidlist.sort()
-        logging.debug(f'handling brain list: {bidlist}')
-        for brain_id in bidlist:
-            valid = True
-            logging.debug(f'handling brain_id={brain_id}')
-            bdf = alldf[alldf['brain'] == brain_id]
-                        
-            # handle target areas...
-            tdf = bdf[bdf['site'].str.startswith('target')]
-            rtdf = tdf[tdf['type'] == 'real'] 
-
-            # threshold by min_target ...
-            # or threshold by target-negative
-            if min_target > 1:
-                before = len(rtdf)
-                rtdf = rtdf[rtdf['counts'] >= min_target]
-                rtdf.reset_index(inplace=True, drop=True)
-                logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
-            else:
-                logging.debug(f'min_target={min_target} no filtering.')
-            
-            if require_injection:
-                # extract and filter injection areas.
-                logging.debug(f'require_injection={require_injection} min_injection={min_injection}') 
-                idf = bdf[bdf['site'].str.startswith('injection')]
-                ridf = idf[idf['type'] == 'real']  
-                if len(ridf) == 0:
-                    logging.warning('require_injection=True but no real VBCs from any injection site.')
-                logging.debug(f'{len(rtdf)} real target VBCs before filtering.')      
-                frtdf = filter_non_injection(rtdf, ridf, min_injection=min_injection)
-                logging.debug(f'{len(rtdf)} real target VBCs after injection filtering.')
-                if not len(rtdf) > 0:
-                    logging.warning(f'No VBCs passed injection filtering! Skip brain.')
-                    valid = False
-            else:
-                logging.debug(f'require_injection={require_injection} proceeding...')
-                frtdf = rtdf
-           
-            # make 
-            if valid:       
-                rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='counts')
-                scol = natsorted(list(rbcmdf.columns))
-                rbcmdf = rbcmdf[scol]
-                rbcmdf.fillna(value=0, inplace=True)
-                logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
-                                
-                # spikes
-                sdf = tdf[tdf['type'] == 'spike']
-                sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='counts')
-                spcol = natsorted(list(sbcmdf.columns))
-                sbcmdf = sbcmdf[spcol]
-                sbcmdf.fillna(value=0, inplace=True)    
-                logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
-        
-                (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
-                
-                nbcmdf = normalize_weight(rbcmdf, sbcmdf)
-                logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
-                
-                # store output. 
-                brainlist[brain_id] = [rbcmdf, sbcmdf, nbcmdf]
-                    
-                scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
-                scbcmdf.fillna(value=0, inplace=True)
-                logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
-                
-                rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
-                sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
-                nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
-                scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
-                
-                # check to ensure no columns are missing barcodes.
-                droplist = []
-                for c in scbcmdf.columns:
-                    if not scbcmdf[c].sum() > 0:
-                        logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
-                        droplist.append(c)
-                logging.debug(f'dropping columns {droplist}')
-                scbcmdf.drop(droplist,inplace=True, axis=1 )    
-                
-                
-                try:
-                    kws = dict(cbar_kws=dict(orientation='horizontal'))  
-                    g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
-                    #g.ax_cbar.set_title('scaled log10(cts)')
-                    x0, _y0, _w, _h = g.cbar_pos
-                    #g.ax_cbar.set_position((0.8, .2, .03, .4))
-                    g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
-                    g.fig.suptitle(f'{expid} {brain_id}')
-                    g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
-                    plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
-                    if combined_pdf:
-                        logging.info(f'saving plot to {outfile} ...')
-                        pdfpages.savefig(g.fig)
-                except Exception as ee:
-                    logging.warning(f'Unable to clustermap plot for {brain_id}. Message: {ee}')
-                    
-            logging.info(f'done with brain={brain_id}')
-    return brainlist
-
-def process_merged_new(config, filelist, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
-    '''
-     takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
-     outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
-     writes all output to outdir (or current dir). 
-     
-    '''
-    logging.debug(f'{filelist}')    
-    alldf = merge_tsvs(filelist)
-    logging.debug(f'alldf len={len(alldf)}')
+    #sh = get_default_stats()
+    logging.debug(f'infile={infile}')
+    alldf = load_df(infile)
+    logging.debug(f'alldf=\n{alldf}')
     if outdir is None:
         outdir = './'
 
     require_injection = config.getboolean('analysis','require_injection')
     min_injection = int(config.get('analysis','min_injection'))
     min_target = int(config.get('analysis','min_target'))   
-    use_target_negative=bool(config.get('analysis','use_target_negative'))
+    use_target_negative=config.getboolean('analysis','use_target_negative')
+    clustermap_scale = config.get('analysis','clustermap_scale')
       
     if expid is None:
         expid = 'MAPseq'
     
     logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} use_target_negative={use_target_negative} ')
 
+    alldf['brain'] = alldf['brain'].astype('string')
     bidlist = list(alldf['brain'].dropna().unique())
     bidlist = [ x for x in bidlist if len(x) > 0 ]
     bidlist.sort()
     logging.debug(f'handling brain list: {bidlist}')
+    
     for brain_id in bidlist:
         valid = True
         logging.debug(f'handling brain_id={brain_id}')
@@ -1804,17 +1775,23 @@ def process_merged_new(config, filelist, outdir=None, expid=None, recursion=2000
         # if use_target_negative is true, but no target negative site 
         # defined, use min_target and throw warning. 
         if use_target_negative:
+            logging.warning(f'use_target_negative is {use_target_negative}')
             min_target = calc_min_target(config, bdf)
-            if tcount != 0:
-                logging.debug(f'non-zero target-negative UMI count = {tcount}')
+            if min_target != 0:
+                logging.debug(f'non-zero target-negative UMI count = {min_target}')
 
-        if min_target > 1:
-            before = len(rtdf)
-            rtdf = rtdf[rtdf['counts'] >= min_target]
-            rtdf.reset_index(inplace=True, drop=True)
-            logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
+            if min_target > 1:
+                before = len(rtdf)
+                rtdf = rtdf[rtdf['umi_count'] >= min_target]
+                rtdf.reset_index(inplace=True, drop=True)
+                if not len(rtdf) > 0:
+                    valid = False
+                    logging.warning(f'No VBCs passed min_target filtering! Skip brain.')
+                logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
+            else:
+                logging.debug(f'min_target={min_target} no filtering.')
         else:
-            logging.debug(f'min_target={min_target} no filtering.')
+            logging.info('not using target-negative.')
         
         if require_injection:
             # extract and filter injection areas.
@@ -1835,14 +1812,16 @@ def process_merged_new(config, filelist, outdir=None, expid=None, recursion=2000
        
         # make 
         if valid:       
-            rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='counts')
+            # reals
+            rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='umi_count')
             scol = natsorted(list(rbcmdf.columns))
             rbcmdf = rbcmdf[scol]
             rbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
+            
             # spikes
             sdf = tdf[tdf['type'] == 'spike']
-            sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='counts')
+            sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='umi_count')
             spcol = natsorted(list(sbcmdf.columns))
             sbcmdf = sbcmdf[spcol]
             sbcmdf.fillna(value=0, inplace=True)    
@@ -1856,21 +1835,60 @@ def process_merged_new(config, filelist, outdir=None, expid=None, recursion=2000
             scbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
             
+            # create binarized matrix
+            
             rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
             sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
             nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
             scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
             
-            # check to ensure no columns are missing barcodes.
+        logging.info(f'done with brain={brain_id}')
+        
+        
+        
+def make_heatmaps_combined_sns(config, sampdf, infiles, outfile=None, outdir=None, expid=None, 
+                               recursion=200000, combined_pdf=True ):
+    # def make_merged_plots_new(config, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
+    '''
+    consume barcode matrices and create heatmap plots.
+    Will label plots with leading portion of filename, assuming it is a brain id. 
+    
+    '''
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    sys.setrecursionlimit(recursion)  
+    
+    clustermap_scale = config.get('plots','clustermap_scale') # log10 | log2
+    cmap = config.get('plots','heatmap_cmap')
+
+
+    if outfile is None:
+        outfile = 'heatmaps.pdf'
+    if outdir is None:
+        outdir = os.path.dirname(infiles[0])
+
+    page_dims = (11.7, 8.27)
+    with pdfpages(outfile) as pdfpages:
+        for filepath in infiles:
+            filepath = os.path.abspath(filepath)    
+            dirname = os.path.dirname(filepath)
+            filename = os.path.basename(filepath)
+            (base, ext) = os.path.splitext(filename) 
+            brain_id = base.split('.')[0]
+            logging.debug(f'handling file base/brain: {brain_id}')
+            scbcmdf = load_df(filepath)          
+            logging.info(f'plotting file: {filename}')    
+
+            # check to ensure no columns are missing barcodes, since that messes up
+            # clustermaps
             droplist = []
             for c in scbcmdf.columns:
                 if not scbcmdf[c].sum() > 0:
                     logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
                     droplist.append(c)
             logging.debug(f'dropping columns {droplist}')
-            scbcmdf.drop(droplist,inplace=True, axis=1 )    
-            
-            
+            scbcmdf.drop(droplist,inplace=True, axis=1 )             
+            num_vbcs = len(scbcmdf.index)
+
             try:
                 kws = dict(cbar_kws=dict(orientation='horizontal'))  
                 g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
@@ -1878,39 +1896,25 @@ def process_merged_new(config, filelist, outdir=None, expid=None, recursion=2000
                 x0, _y0, _w, _h = g.cbar_pos
                 #g.ax_cbar.set_position((0.8, .2, .03, .4))
                 g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
-                g.fig.suptitle(f'{expid} {brain_id}')
-                g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(counts)')
+                g.fig.suptitle(f'{expid} brain={brain_id}\n{num_vbcs} VBCs total')
+                g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(umi_count)')
                 plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
                 if combined_pdf:
                     logging.info(f'saving plot to {outfile} ...')
                     pdfpages.savefig(g.fig)
             except Exception as ee:
                 logging.warning(f'Unable to clustermap plot for {brain_id}. Message: {ee}')
-                
-        logging.info(f'done with brain={brain_id}')
-
-def make_merged_plots_new(config, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
-    '''
-    consume barcode matrices and create heatmap plots.
-    '''
-
-
-
-def process_qc(config, exp_dir ):
-    '''
-    consume files in standard directories and generate qc stats and analysis report..
-    
-    '''
-    pass
 
 
 def process_mapseq_dir(exp_id, loglevel, force):
     '''
+    E.g. 
     
-    process_fastq.py -d/-v -force -b barcode_v2.<dir>.txt -s <dir>_sampleinfo.jrh.xlsx -O fastq.out fastq/*.fastq*  
-    process_ssifasta.py -d/-v -s <dir>_sampleinfo.jrh.xlsx -o <dir>.all.tsv -O ssi.out 
-    process_merged.py -d/-v  -e <dir> --combined -s <dir>_sampleinfo.jrh.xlsx -O merged.out 
-           
+    process_fastq.py -v -b barcode_v2.txt -s M205_sampleinfo.xlsx -O fastq.20231204.1213.out fastq/M205_HZ_S1_R1_002.fastq.gz fastq/M205_HZ_S1_R2_002.fastq.gz
+    process_ssifasta.py -v -a bowtie2 -s M205_sampleinfo.xlsx -O ssifasta.20231204.1213.out -o M205.all.20231204.1213.tsv fastq.20231204.1213.out/BC*.fasta
+    process_merged.py -v -s M205_sampleinfo.xlsx -e M205_20231204.1213 -l label -O merged.20231204.1213.out M205.all.20231204.1213.tsv 
+    make_heatmaps.py -v -s M205_sampleinfo.xlsx -e M205_20231204.1213 -O merged.20231204.1213.out   merged.20231204.1213.out/*.nbcm.tsv  
+    
     '''   
     d = os.path.abspath(exp_id)
     if not os.path.exists(d):
@@ -1948,6 +1952,186 @@ def process_mapseq_dir(exp_id, loglevel, force):
         logging.error(f'error while handling {d} ')
         logging.warning(traceback.format_exc(None))
         
+
+def align_collapse_fasta(config, infile, seq_length=30, max_mismatch=3, outdir=None, datestr=None, ):
+    '''
+    Algorithm:
+    
+    take input FASTA to FULL dataframe. ( already removed Ns and homopolymer runs ) 
+    split first seq_length part (VBC) and remainder to 2 columns. 
+    
+    get UNIQUE DF dataframe on (VBC) sequence      
+    save VBCs to fasta
+    align all to all bowtie
+    make bowtie DF
+    drop mismatch > max_mismatch
+        for each component, create map from all variants back to a single virtual parent sequence
+        (this is not necessarily the true biological parent sequence, but it doesn't matter. they just need to all
+        be the same).
+    in FULL DF, set all variant sequences to virtual parent sequence
+    re-assemble VBC + remainder sequence
+    output to adjusted FULL FASTA file ready for input to SSI splitting.  
+   
+    can use iloc and range of indices to set value for all elements of components:
+    
+    testdf = pd.DataFrame([[0, 2, 3], [0, 4, 1], [10, 20, 30]],columns=['A', 'B', 'C'])
+    testdf
+            A   B   C
+        0   0   2   3
+        1   0   4   1
+        2  10  20  30
+    testdf.iloc[[0,2],[0]] = 15
+            A   B   C
+        0  15   2   3
+        1   0   4   1
+        2  15  20  30
+
+https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-column-along-with-lists-of-row-indices-where-the
+    
+    '''
+    aligner = config.get('ssifasta','tool')
+    
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    head = base.split('.')[0]
+    
+    if outdir is None:
+        outdir = dirname
+    
+    os.makedirs(outdir, exist_ok=True)
+    
+    # need to strip to seq_length
+    logging.info(f'Reading {infile} to df...')
+    fdf = read_fasta_to_df(infile, seq_length)
+    logging.debug(f'fdf=\n{fdf}')
+    of = os.path.join( outdir , f'{base}.fulldf.tsv')
+    logging.info(f'Writing full DF to {of}')
+    fdf.to_csv(of, sep='\t')
+
+    # get reduced dataframe of unique sequences
+    logging.info('Getting unique DF...')    
+    udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    
+    logging.debug(f'udf = \n{udf}')
+    of = os.path.join( outdir , f'{base}.udf.tsv')
+    logging.info(f'Writing unique DF to {of}')
+    udf.to_csv(of, sep='\t') 
+    
+    of = os.path.join( outdir , f'{base}.udf.fasta')
+    logging.info(f'Writing uniques as FASTA to {of}')
+    seqfasta = write_fasta_from_df(udf, outfile=of)
+    
+    # run allXall bowtie
+    of = os.path.join( outdir , f'{base}.bt2.sam')
+    logging.info(f'Running {aligner}...')
+    afile = run_bowtie(config, seqfasta, of, tool=aligner)
+    logging.info(f'Bowtie done. Produced {afile}. Creating btdf dataframe...')
+    btdf = make_bowtie_df(afile, max_mismatch=max_mismatch)
+    of = os.path.join( outdir , f'{base}.btdf.tsv')
+    btdf.to_csv(of, sep='\t') 
+    
+    # perform collapse...      
+    logging.info('Calculating Hamming components...')
+    edgelist = edges_from_btdf(btdf)
+    btdf = None  # help memory usage
+    
+    logging.debug(f'edgelist len={len(edgelist)}')
+    components = get_components(edgelist)
+    logging.debug(f'all components len={len(components)}')
+    edgelist = None  # help memory usage
+    
+    components = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.info(f'Collapsing {len(components)} components...')
+    newdf = collapse_by_components(fdf, udf, components)
+    fdf = None
+    udf = None
+    components = None
+        
+    of = os.path.join( outdir , f'{base}.collapsed.tsv')
+    logging.info(f'Got collapsed DF. Writing to {of}')
+    newdf.to_csv(of, sep='\t')     
+    logging.info('Done. Calculating fasta.')
+    of = os.path.join( outdir , f'{base}.collapsed.fasta')
+    cdf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
+    logging.info(f'Writing fasta to {of}')
+    write_fasta_from_df(cdf, of)
+    logging.info(f'Wrote re-joined sequences to {of}')
+
+
+
+def apply_setcompseq(row, seqmapdict ):
+    ''' 
+      Set Component Sequence
+      Applies mapping from old to new sequence from dict. 
+      
+      seqmapdict = { oldseq : newseq }
+      
+      Usage example:
+            df['sequence'] = df.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+      
+    '''
+    try:
+        #logging.debug(f"getting mapping for {row['sequence']}")
+        a = seqmapdict[row['sequence']]
+    except KeyError:
+        # A KeyError means we don't want to remap, just use original value
+        a = row['sequence']
+    return a
+
+
+def build_seqmapdict(udf, components):
+    '''
+    Create mappings from all unique sequence to component sequence
+    
+    '''
+    seqmapdict = {}
+    comphandled = 0
+    comphandled_interval = 10000
+    comp_len = len(components)
+    
+    for comp in components:
+        ser = list(udf['sequence'].iloc[comp])
+        t = ser[0]
+        for s in ser: 
+            seqmapdict[s]= t    
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'[{comphandled}/{comp_len}] t = {t}')
+        comphandled += 1
+    return seqmapdict
+
+
+def collapse_by_components(fulldf, uniqdf, components):
+    #
+    # components consist of indices within the uniqdf. 
+    # assumes component elements are integers, as they are used as dataframe indices. 
+    # create map of indices in original full DF that correspond to all members of a (multi-)component
+    # from alignment
+    # hash key is index of first appearance of sequence in full DF (i.e. its index in uniqdf.) 
+    # 
+    # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
+    #
+    #  SETUP
+    #  infile is all reads...
+    #  fdf = read_fasta_to_df(infile, seq_length=32)
+    #  udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    #  components are *uniqdf* indices from bowtie alignemnt.  
+    #
+    logging.debug(f'all components len={len(components)}')
+    components = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
+    logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
+    seqmapdict = build_seqmapdict(uniqdf, components)
+      
+    # Make new full df:
+    logging.debug('seqmapdict built. Applying.')
+    fulldf['sequence'] =fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+    logging.info(f'New collapsed df = \n{fulldf}')
+    return fulldf
+
 
 
 

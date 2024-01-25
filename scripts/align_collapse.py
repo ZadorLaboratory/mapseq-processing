@@ -1,15 +1,8 @@
 #!/usr/bin/env python
-#
-#   merges and analyzes per-barcode dataframe files. 
-#   outputs normalized barcode matrix. 
-#
-#
-
 import argparse
 import logging
 import os
 import sys
-import traceback
 
 from configparser import ConfigParser
 
@@ -19,9 +12,13 @@ gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import *
+from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
-    
+
+
+
+
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -44,50 +41,55 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='config file.')    
+                        help='out file.')    
+
+    parser.add_argument('-a','--aligner', 
+                    metavar='aligner',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='aligner tool  [bowtie | bowtie2]')
+
+    parser.add_argument('-m','--max_mismatch', 
+                        metavar='max_mismatch',
+                        required=False,
+                        default=0,
+                        type=int, 
+                        help='Max mismatch for barcode/SSI matching.')
+
+    parser.add_argument('-b','--seq_length', 
+                        metavar='seq_length',
+                        required=False,
+                        default=30,
+                        type=int, 
+                        help='Length of viral barcode to collapse')
 
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
-                        default=200000,
+                        default=10000,
                         type=int, 
-                        help='Max recursion. Handle larger input to collapse() Default is ~3000.')
-
-    parser.add_argument('-e','--expid', 
-                    metavar='expid',
-                    required=False,
-                    default='MAPSeq Experiment',
-                    type=str, 
-                    help='Explicitly provided experiment id, e.g. M205')
-
-    parser.add_argument('-l','--label', 
-                    metavar='label',
-                    required=False,
-                    default='label', 
-                    type=str, 
-                    help='iniput column to use to label matrix columns | region [label] ')   
+                        help='Max recursion. Handle larger input to collapse() System default ~3000.')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. input file base dir if not given.')     
+                    help='outdir. input file base dir if not given.')   
 
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=True,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
-
+    parser.add_argument('-D','--datestr', 
+                    metavar='datestr',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Include datestr in relevant files.')
+   
     parser.add_argument('infile',
                         metavar='infile',
-                        nargs ="?",
                         type=str,
-                        help='Single "all" TSV from process_ssifasta. columns=(sequence, counts, type, label, brain)')
-       
-
+                        help='Single raw FASTA file.')
+        
     args= parser.parse_args()
     
     if args.debug:
@@ -97,33 +99,35 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = format_config(cp)    
+    
+    if args.aligner is not None:
+        cp.set('ssifasta','tool', args.aligner)
+    
+    
+    cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
     
+    # set recursion
+    logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
     if args.recursion is not None:
-        sys.setrecursionlimit(int(args.recursion))
-    
+        rlimit = int(args.recursion)
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)
+       
+    # set outdir
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
         logging.debug(f'making missing outdir: {outdir} ')
         os.makedirs(outdir, exist_ok=True)
     else:
-        afile = args.infiles[0]
-        filepath = os.path.abspath(afile)    
+        filepath = os.path.abspath(args.infile)    
         dirname = os.path.dirname(filepath)
         outdir = dirname
-    cfilename = f'{outdir}/process_merged.config.txt'
-    write_config(cp, cfilename, timestamp=True)        
+
+    logging.info(f'handling {args.infile} to outdir {args.outdir}')    
+    logging.debug(f'infile = {args.infile}')
+    align_collapse_fasta(cp, args.infile, seq_length=args.seq_length, max_mismatch=3, outdir=args.outdir, datestr=args.datestr )
     
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-        
-    # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    process_merged(cp, args.infile, outdir, expid=args.expid, recursion = args.recursion, label_column=args.label )
-    
-    
-    
-              
     

@@ -28,7 +28,7 @@ import pandas as pd
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import load_sample_info, process_ssifasta, fix_columns_int, guess_site
+from mapseq.core import *
 from mapseq.utils import *
     
 if __name__ == '__main__':
@@ -47,6 +47,12 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
+
+    parser.add_argument('-n', '--nocollapse',
+                        default=True, 
+                        action="store_false", 
+                        dest='nocollapse', 
+                        help='assume input already aligned/collapsed')
     
     parser.add_argument('-c','--config', 
                         metavar='config',
@@ -58,7 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('-a','--aligner', 
                     metavar='aligner',
                     required=False,
-                    default='bowtie', 
+                    default=None, 
                     type=str, 
                     help='aligner tool  [bowtie | bowtie2]')
 
@@ -76,12 +82,26 @@ if __name__ == '__main__':
                         type=int, 
                         help='Max recursion. Handle larger input to collapse() Default is ~5000.')
 
+    parser.add_argument('-t','--threads', 
+                        metavar='threads',
+                        required=False,
+                        default=1,
+                        type=int, 
+                        help='Handle each input file concurrently in a separate process.')
+
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',
                         required=True,
                         default=None,
                         type=str, 
                         help='XLS sampleinfo file. ')
+
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
+                    required=False,
+                    default='M001',
+                    type=str, 
+                    help='explicitly provided experiment id')
 
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
@@ -112,11 +132,15 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
+    
+    if args.aligner is not None:
+        cp.set('ssifasta','tool', args.aligner)
+    
+    cdict = format_config(cp)
     
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
     
+    logging.debug(f'infiles={args.infiles}')
     logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
     if args.recursion is not None:
         rlimit = int(args.recursion)
@@ -124,6 +148,7 @@ if __name__ == '__main__':
         sys.setrecursionlimit(rlimit)
     
     outdir = None
+    outfile = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
         logging.debug(f'making missing outdir: {outdir} ')
@@ -134,49 +159,14 @@ if __name__ == '__main__':
         dirname = os.path.dirname(filepath)
         outdir = dirname
     
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    if args.outfile is not None:
+        outfile = args.outfile
+    else:
+        outfile = f'{outdir}/{args.expid}.all.tsv'
     
-    if args.aligner is not None:
-        logging.info(f'setting aligner to {args.aligner}')
-        cp.set('ssifasta', 'tool', args.aligner )  
-
-    if args.max_mismatch is not None:
-        tool = cp.get('ssifasta','tool')
-        mm= str(args.max_mismatch)
-        logging.info(f'setting max_mismatch to {mm} tool={tool}')
-        cp.set(tool, 'max_mismatch', mm )
-        #logging.debug(f"after set. max_mismatch={cp.get('bowtie', 'max_mismatch')} ")   
-
-    cfilename = f'{outdir}/process_ssifasta.config.txt'
+    #sampdf = load_sample_info(cp, args.sampleinfo)
+    #logging.debug(f'\n{sampdf}')
     
-    write_config(cp, cfilename, timestamp=True)        
-
-    outdflist = []    
-    for infile in args.infiles:
-        # rtprimer will be guessed from filename. "BC<rtprimer>.fasta"
-        (rtprimer, site, brain, region) = guess_site(infile, sampdf)
-        logging.info(f'guessed rtprimer={rtprimer} site={site} brain={brain} region={region}')
-        try:
-            outdf = process_ssifasta(cp, infile, outdir=outdir, site=site)
-            logging.debug(f'initial outdf\n{outdf}')
-            outdf['site'] = site
-            outdf['brain'] = brain
-            outdf['region'] = region
-            logging.info(f'got outdf:\n{outdf}')
-            outdflist.append(outdf)
-    
-        except Exception as ex:
-            logging.warning(f'Possible problem with {infile}. ')
-            logging.warning(traceback.format_exc(None))
-
-    if len(outdflist) > 0:                     
-        logging.debug(f'merging dfs in outdflist len={len(outdflist)}')
-        outdf = merge_dfs(outdflist)
-        if args.outfile is None:
-            outfile = os.path.join(outdir, 'experiment.all.tsv')
-        else:
-            outfile = args.outfile
-        outdf.to_csv(outfile, sep='\t')          
-    
+    outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir, nocollapse=args.nocollapse)
+    logging.info(f'saving output to {outfile}')
+    outdf.to_csv(outfile, sep='\t')

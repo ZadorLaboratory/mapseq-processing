@@ -1,28 +1,22 @@
 #!/usr/bin/env python
-#
-#  creates read counts plot/plots to determine thresholds.   
-#
-
 import argparse
 import logging
 import os
 import sys
-import traceback
 
 from configparser import ConfigParser
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.utils import *
 from mapseq.core import *
 from mapseq.barcode import *
-    
+from mapseq.utils import *
+from mapseq.stats import *
+
+
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -45,21 +39,14 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='config file.')    
+                        help='out file.')    
 
     parser.add_argument('-b','--barcodes', 
                         metavar='barcodes',
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
                         type=str, 
-                        help='barcode file space separated.')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max mismatch for aligner read collapse.')
+                        help='barcode file space separated: label   sequence')
 
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',
@@ -67,21 +54,44 @@ if __name__ == '__main__':
                         default=None,
                         type=str, 
                         help='XLS sampleinfo file. ')
-     
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. input file base dir if not given.')     
+                    help='outdir. input file base dir if not given.')   
 
-    parser.add_argument('infiles',
-                        metavar='infiles',
-                        nargs ="+",
+    parser.add_argument('-D','--datestr', 
+                    metavar='datestr',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Include datestr in relevant files.')
+
+    parser.add_argument('-f','--force', 
+                    action="store_true", 
+                    default=False, 
+                    help='Recalculate even if output exists.') 
+
+    parser.add_argument('-p', '--countsplots', 
+                        action="store_true", 
+                        dest='countsplots',
+                        default=False, 
+                        help='create countsplots for all barcodes.' )
+
+    parser.add_argument('-r', '--readtsvs', 
+                        action="store_true", 
+                        dest='readtsvs',
+                        default=False, 
+                        help='create read tsvs.' )   
+   
+    parser.add_argument('infile',
+                        metavar='infile',
+                        nargs ="?",
                         type=str,
-                        help='SSI-specific .fasta files')
-       
+                        help='Single FASTA file to be split by SSI')
+        
     args= parser.parse_args()
     
     if args.debug:
@@ -91,20 +101,15 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
-    
+    cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
-
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{args.outdir}/sampleinfo.tsv', sep='\t')
-      
-   
+    logging.debug(f'infiles={args.infile}')
+       
+    # set outdir
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making outdir: {outdir} ')
+        logging.debug(f'making missing outdir: {outdir} ')
         os.makedirs(outdir, exist_ok=True)
     else:
         afile = args.infiles[0]
@@ -112,7 +117,23 @@ if __name__ == '__main__':
         dirname = os.path.dirname(filepath)
         outdir = dirname
 
-    dflist = make_reads_counts_dfs(cp, args.infiles, args.outdir)
-    logging.info(f'got list of {len(dflist)} counts DFs...')
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    rtlist = get_rtlist(sampdf)
+
+    logging.debug(f'making barcodes with label list={rtlist}')
+    bcolist = load_barcodes(cp, 
+                            args.barcodes, 
+                            labels=rtlist, 
+                            outdir=outdir, 
+                            eol=True, 
+                            max_mismatch=0)
+    logging.info(f'made list of barcode handlers, length={len(bcolist)}')
+    logging.debug(bcolist)
+    logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots} readtsvs={args.readtsvs}')    
+    logging.debug(f'infile = {args.infile}')
+    process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, 
+                  countsplots=args.countsplots, readtsvs=args.readtsvs, datestr=args.datestr)
     
-      
+    

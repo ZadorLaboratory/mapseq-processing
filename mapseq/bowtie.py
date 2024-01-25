@@ -36,6 +36,9 @@ BOWTIE_1_COLS=['name_read', 'strand','name_align','offset','seq','quals','ceil',
 #   second row are optional expected fields. 
 BOWTIE_2_COLS=['name_read', 'flagsum', 'name_align','offset','qual', 'cigar', 'mate', 'mate_offset', 'fraglen', 'seq', 'quals', 
                   'score', 'next', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', 'md', 'yt' ]
+BOWTIE_2_INT_COLS= ['flagsum', 'offset', 'qual', 'mate_offset', 'fraglen', 'score', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', ]
+
+
 BOWTIE_OPT_COLS= ['score', 'next', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', 'md', 'yt' ]
 OPT_MAP = { 'score'     : 'AS',
             'next'      : 'XS',
@@ -137,13 +140,21 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
     logging.debug(f'bowtie done.')
     return outfile
 
-def make_bowtie_df(infile):
+def make_bowtie_df(infile, max_mismatch=3):
     with open(infile) as f:
         line=f.readline()
     if line.startswith('@HD'):
+        logging.debug('Detected bowtie2 input.')
         df = make_bowtie2_df(infile)
+        logging.debug(f'df before max_mismatch =< {max_mismatch}')
+        df = df[df['n_mismatch'] <= max_mismatch]
+        # alignments to *other* sequences only
+        df = df[df['n_mismatch'] > 0]
+        logging.debug(f'df after max_mismatch < {max_mismatch} =\n{df}')
     else:
+        logging.debug('Detected bowtie1 input.')
         df = make_bowtie1_df(infile)
+        df['n_mismatch'] = max_mismatch
     return df
 
 
@@ -186,7 +197,7 @@ def make_bowtie2_df(infile):
     
     current = 0
     sumreport = 1
-    suminterval = 5000
+    suminterval = 1000000
     repthresh = sumreport * suminterval
     
     # list of lists to hold data
@@ -214,7 +225,7 @@ def make_bowtie2_df(infile):
                 mands = allfields[0:11]
                 flist = mands
                 optfields = allfields[11:]
-                logging.debug(f'allfields length={len(allfields)} mands len={len(mands)} opts len={len(optfields)}')
+                #logging.debug(f'allfields length={len(allfields)} mands len={len(mands)} opts len={len(optfields)}')
                 #logging.debug(f'mands=\n{mands}')
                 #logging.debug(f'opts=\n{optfields}')
                 optdict = defaultdict(def_value)
@@ -243,11 +254,8 @@ def make_bowtie2_df(infile):
         filehandle.close()          
 
     df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS )
+    df = fix_columns_int(df, BOWTIE_2_INT_COLS)
     return df
-
-    
-    
-     
 
 
 def make_adjacency_df(bowtiedf):

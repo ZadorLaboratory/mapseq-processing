@@ -1,8 +1,10 @@
 import glob
 import gzip
+import io
 import itertools
 import os
 import logging
+import pprint
 import shutil
 import subprocess
 import sys
@@ -12,9 +14,9 @@ import traceback
 import urllib
 
 from configparser import ConfigParser
+
 import datetime as dt
 
-import io
 import numpy as np
 import pandas as pd
 
@@ -25,9 +27,21 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
+#
+# Multiprocessing  using explicity command running. 
+#            jstack = JobStack()
+#            cmd = ['program','-a','arg1','-b','arg2','arg3']
+#            jstack.addjob(cmd)
+#            jset = JobSet(max_processes = threads, jobstack = jstack)
+#            jset.runjobs()
+#
+#            will block until all jobs in jobstack are done, using <max_processes> jobrunners that
+#            pull from the stack.
+#
 
 class JobSet(object):
     def __init__(self, max_processes, jobstack):
@@ -35,14 +49,14 @@ class JobSet(object):
         self.jobstack = jobstack
         self.threadlist = []
         
-        for x in range(0,self.max_processes):
-            jr = JobRunner(self.jobstack)
+        for x in range(0, self.max_processes):
+            jr = JobRunner(self.jobstack, label=f'{x}')
             self.threadlist.append(jr)
         logging.debug(f'made {len(self.threadlist)} jobrunners. ')
 
 
     def runjobs(self):
-        logging.debug(f'starting threads...')
+        logging.debug(f'starting {len(self.threadlist)} threads...')
         for th in self.threadlist:
             th.start()
             
@@ -67,24 +81,32 @@ class JobStack(object):
     def pop(self):
         return self.stack.pop()
 
+
 class JobRunner(threading.Thread):
 
-    def __init__(self, jobstack):
+    def __init__(self, jobstack, label=None):
         super(JobRunner, self).__init__()
         self.jobstack = jobstack
+        self.label = label
         
-
     def run(self):
         while True:
             try:
                 cmdlist = self.jobstack.pop()
-                logging.debug(f'got command: {cmdlist}')
+                cmdstr = ' '.join(cmdlist)
+                logging.info(f'[{self.label}] running {cmdstr}')
+                logging.debug(f'[{self.label}] got command: {cmdlist}')
                 run_command_shell(cmdlist)
-                logging.debug(f'completed command: {cmdlist}')
+                logging.debug(f'[{self.label}] completed command: {cmdlist}')
+                logging.info(f'[{self.label}] completed {cmdstr} ')
+            
             except NonZeroReturnException:
-                logging.warning(f'NonZeroReturn Exception job: {cmdlist}') 
-
-
+                logging.warning(f'[{self.label}] NonZeroReturn Exception job: {cmdlist}') 
+            
+            except IndexError:
+                logging.info(f'[{self.label}] Command list empty. Ending...')
+                break
+                
 
 class NonZeroReturnException(Exception):
     """
@@ -147,6 +169,32 @@ def remove_base_repeats(df, col='sequence', n=7):
     logging.debug(f'df without {n} repeats len={endlen}')
     df.reset_index(drop=True, inplace=True)
     return df
+
+def remove_singletons(listoflists):
+    '''
+    Assumes input of a list of lists. 
+    Return only lists with more than one element.
+    
+    E.g. used to remove single-element components from align_and_collapse
+    
+    '''
+    logging.debug(f'len before = {len(listoflists)}')
+    outlist = [ x for x in listoflists if len(x) > 1 ]
+    logging.debug(f'len after = {len(outlist)}')
+    return outlist
+        
+
+
+def has_base_repeats(seqstring, n=7):
+    '''
+    if string repeats C,G,A, or T <n> times or more.    
+    '''
+    bases = ['C','G','A','T']
+    for b in bases:
+        pat = b*n
+        if pat in seqstring:
+            return True
+    return False
 
 
 def fix_columns_float(df, columns):
@@ -307,14 +355,47 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
+def format_config(cp):
+    cdict = {section: dict(cp[section]) for section in cp.sections()}
+    s = pprint.pformat(cdict, indent=4)
+    return s
 
-def write_fasta_from_df(config, df, outfile=None):
+def get_mainbase(filepath):
+    '''
+    for any full or relative filename XXXXX.y.z.w.ext 
+    returns just XXXXX (first portion before dot). 
+    
+    '''
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)
+    base = base.split('.')[0]
+    return base
+
+
+def write_fasta_from_df(df, outfile=None):
     '''
     Assumes df has 'sequence' column
     
+    '''
+    logging.debug(f'writing {len(df)} sequence as fasta from DF...')
+    idx = 0
+    if outfile is not None:
+        with open(outfile, 'w') as of:
+            for s in df['sequence']:
+                of.write(f'>{idx}\n{s}\n')
+                idx += 1  
+    else:
+        logging.error('outfile is None, not implemented.')
+    return outfile
+
+
+def write_fasta_from_df_bioconda(df, outfile=None):
+    '''
+    Assumes df has 'sequence' column
     
     '''
-    logging.debug(f'creating bowtie input')
+    logging.debug(f'writing fasta from DF..')
     srlist = dataframe_to_seqlist(df)
     logging.debug(f'len srlist={len(srlist)}')
     if outfile is not None:
@@ -322,6 +403,81 @@ def write_fasta_from_df(config, df, outfile=None):
     else:
         logging.error('outfile is None, not implemented.')
     return outfile
+
+
+def read_fasta_to_df_bioconda(infile, seqlen=None):
+    '''
+    input fasta 
+    Optionally trim sequence to seqlen, returning a two-column dataframe 'sequence' 'tail'
+    None means keep all. 
+    '''   
+    slist = []
+    tlist = []
+    rcs = SeqIO.parse(infile, "fasta")
+    handled = 0
+    df = None
+    if seqlen is None:
+        for sr in rcs:
+            s = sr.seq
+            slist.append(str(s))
+            handled += 1    
+        df = pd.DataFrame(slist, columns=['sequence'] )
+    else:
+        seqlen = int(seqlen)
+        for sr in rcs:
+            s = sr.seq[:seqlen]
+            t = sr.seq[seqlen:]
+            slist.append( [str(s),str(t)] )
+            handled += 1
+        df = pd.DataFrame(slist, columns=['sequence','tail'] )
+    logging.debug(f"handled {handled}  sequences. df=\n{df}")    
+    return df
+
+
+def read_fasta_to_df(infile, seqlen=None):
+    '''
+    input fasta 
+    Optionally trim sequence to seqlen, returning a two-column dataframe 'sequence' 'tail'
+    None means keep all. 
+    '''
+    handled_interval = 10000000   
+    slist = []
+    tlist = []
+    handled = 0
+    df = None
+    if seqlen is None:
+        # whole sequence goes in sequence, no tail
+        with open(infile) as fa:
+            for line in fa:
+                if line.startswith(">"):
+                    pass
+                else:
+                    slist.append(line[:-1])
+                    handled += 1 
+                    if handled % handled_interval == 0:
+                        logging.info(f'handled={handled}')  
+            logging.info(f'making df from {len(slist)} sequences...')    
+            df = pd.DataFrame(slist, columns=['sequence'] )
+            
+    else:
+        with open(infile) as fa:
+            for line in fa:
+                if line.startswith(">"):
+                    pass
+                else:
+                    slist.append(line[:seqlen])
+                    tlist.append(line[seqlen:-1])
+                    handled += 1 
+                    if handled % handled_interval == 0:
+                        logging.info(f'handled={handled}') 
+            logging.info(f'making df from {len(slist)} sequences and tails...')    
+            ss = pd.Series(slist)
+            ts = pd.Series(tlist)
+            df = pd.DataFrame(columns=['sequence','tail'] )     
+            df['sequence'] = ss
+            df['tail'] = ts
+    logging.debug(f"handled {handled}  sequences. df=\n{df}")    
+    return df
 
 
 def dataframe_to_seqlist(df, seqcol='sequence',idcol=None, desccols=None, sep=':'):
@@ -375,13 +531,8 @@ def load_df(filepath):
     filepath = os.path.expanduser(filepath)
     df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
     df.fillna(value='', inplace=True)
+    df = df.astype('str', copy=False)
     df = df.apply(pd.to_numeric, errors='ignore')
-    #df = df.astype('str', copy=False)
-    #for col in df.columns:
-    #    try:
-    #        df[col] = df[col].astype(int, copy=False)
-    #    except:
-    #        pass 
     return df
 
 def merge_dfs( dflist):
@@ -394,15 +545,20 @@ def merge_dfs( dflist):
     logging.debug(f'merged {len(dflist)} dataframes newdf len={len(newdf)}')
     return newdf
 
+
 def merge_tsvs( filelist):
     logging.debug(f'merge list {filelist}')
     newdf = None  
     for f in filelist:
-        df = pd.read_csv(f, sep='\t', index_col=0)
-        if newdf is None:
-            newdf = df
-        else:
-            newdf = pd.concat([df, newdf], ignore_index=True, copy=False)
+        try:
+            df = pd.read_csv(f, sep='\t', index_col=0)
+        
+            if newdf is None:
+                newdf = df
+            else:
+                newdf = pd.concat([df, newdf], ignore_index=True, copy=False)
+        except FileNotFoundError as fnfe:
+            logging.warning(f'expected file {f} not found. Ignoring...')
     logging.debug(f'merged {len(filelist)} tsv files new df len={len(newdf)}')
     newdf.reset_index(drop=True, inplace=True)
     return newdf
@@ -448,12 +604,13 @@ def merge_write_df(newdf, filepath,  mode=0o644):
         raise ex
 
 
-def write_config(config, filename, timestamp=True):
+def write_config(config, filename, timestamp=True, datestring=None):
     '''
     writes config file to relevant name,
-    if adddate, puts date/time code dot-separated before extension. e.g.
+    if timestamp=True, puts date/time code dot-separated before extension. e.g.
     filename = /path/to/some.file.string.txt  ->  /path/to/some.file.string.202303081433.txt
     date is YEAR/MO/DY/HR/MI
+    if datestring is not None, uses that timestamp
     
     '''
     filepath = os.path.abspath(filename)    
@@ -462,7 +619,10 @@ def write_config(config, filename, timestamp=True):
     (base, ext) = os.path.splitext(basefilename) 
     
     if timestamp:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+        if datestring is None:
+            datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+        else:
+            datestr = datestring
         filename = f'{dirname}/{base}.{datestr}{ext}'
 
     os.makedirs(dirname, exist_ok=True)
@@ -470,7 +630,7 @@ def write_config(config, filename, timestamp=True):
     with open(filename, 'w') as configfile:
         config.write(configfile)
     logging.debug(f'wrote current config to {filename}')
-        
+    return os.path.abspath(filename)
     
 
 
@@ -491,14 +651,119 @@ def write_df(newdf, filepath,  mode=0o644):
         logging.error(traceback.format_exc(None))
         raise ex
 
-
 def write_tsv(df, outfile=None):
     if outfile is None:       
         outfile = sys.stdout
     logging.debug(f'writing {len(df)} lines output to {outfile}')      
     df.to_csv(outfile, sep='\t')
+
+def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None, max_repeats=7):
+    '''
+    parses paired-end fastq files. merges from r1 and r2 at selected positions. 
+    outputs to single fasta file. 
+
+    config expectation. 
+    [fastq]
+    r1start = 0
+    r1end = 32
+    r2start = 0
+    r2end = 20
+    # reporting intervals for verbose output, defines how often to log. 
+    seqhandled_interval = 1000000
     
+    QC drop all sequences with any N in them. 
+    Drop all sequences with homopolymer runs > max_homopolymers
+    
+    '''
+    filepath = os.path.abspath(outfile)    
+    outdir = os.path.dirname(outfile)
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        logging.debug(f'made outdir={outdir}')
+    
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
 
+    r1s = int(config.get('fastq','r1start'))
+    r1e = int(config.get('fastq','r1end'))
+    r2s = int(config.get('fastq','r2start'))
+    r2e = int(config.get('fastq','r2end'))    
 
+    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
+    
+    if ( not os.path.exists(outfile) ) or force:
+        of = open(outfile, 'w')
+        pairshandled = 0
+        num_handled_total = 0
+        num_has_n = 0
+        num_has_repeats = 0
+        seq_id = 0
 
+        # handle all pairs of readfiles from readfilelist
+        for (read1file, read2file) in infilelist:
+            pairshandled += 1
+            num_handled = 0
+            logging.debug(f'handling file pair {pairshandled}')
+            if read1file.endswith('.gz'):
+                r1f = gzip.open(read1file, "rt")
+            else:
+                r1f = open(read1file)
+            
+            if read2file.endswith('.gz'):
+                r2f = gzip.open(read2file, "rt")         
+            else:
+                r2f = open(read2file)
+        
+            while True:
+                try:
+                    meta1 = r1f.readline()
+                    if len(meta1) == 0:
+                        raise StopIteration
+                    seq1 = r1f.readline().strip()
+                    sep1 = r1f.readline()
+                    qual1 = r1f.readline().strip()
+
+                    meta2 = r2f.readline()
+                    if len(meta2) == 0:
+                        break
+                    seq2 = r2f.readline().strip()
+                    sep2 = r2f.readline()
+                    qual2 = r2f.readline().strip()                    
+
+                    sub1 = seq1[r1s:r1e]
+                    sub2 = seq2[r2s:r2e]
+                    fullread = sub1 + sub2
+                    
+                    has_n = 'N' in fullread
+                    if has_n:
+                        num_has_n += 1
+                        
+                    has_repeats = has_base_repeats(fullread, n=max_repeats)
+                    if has_repeats:
+                        num_has_repeats +=1
+                    
+                    if has_repeats or has_n:
+                        pass
+                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
+                    else:
+                        of.write(f'>{seq_id}\n{fullread}\n')
+                        seq_id += 1
+
+                    num_handled += 1
+                    num_handled_total += 1
+
+                    # report progress...                    
+                    if num_handled % seqhandled_interval == 0: 
+                        logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
+                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
+                except StopIteration as e:
+                    logging.debug('iteration stopped')    
+                    break
+            
+            logging.debug(f'finished with pair {pairshandled} {num_handled} sequences.')
+        of.close()              
+        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
+        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
+    else:
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
 

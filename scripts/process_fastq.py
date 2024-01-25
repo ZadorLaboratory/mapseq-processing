@@ -13,7 +13,8 @@ sys.path.append(gitpath)
 
 from mapseq.core import *
 from mapseq.barcode import *
-from mapseq.utils import *  
+from mapseq.utils import *
+from mapseq.stats import *
 
 
 if __name__ == '__main__':
@@ -68,18 +69,30 @@ if __name__ == '__main__':
                     type=str, 
                     help='outdir. input file base dir if not given.')   
 
+    parser.add_argument('-D','--datestr', 
+                    metavar='datestr',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Include datestr in relevant files.')
+
     parser.add_argument('-f','--force', 
                     action="store_true", 
                     default=False, 
                     help='Recalculate even if output exists.') 
-   
-    parser.add_argument('-t','--threads', 
-                        metavar='threads',
-                        required=False,
-                        default=1,
-                        type=int, 
-                        help='Perform SSI matching in separate processes, one per SSI. Default 1. Negative numbers mean use all but that number.')    
 
+    parser.add_argument('-p', '--countsplots', 
+                        action="store_true", 
+                        dest='countsplots',
+                        default=False, 
+                        help='create countsplots for all barcodes.' )
+
+    parser.add_argument('-r', '--readtsvs', 
+                        action="store_true", 
+                        dest='readtsvs',
+                        default=False, 
+                        help='create read tsvs.' )   
+   
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
@@ -96,7 +109,7 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
+    cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
 
@@ -124,9 +137,6 @@ if __name__ == '__main__':
         dirname = os.path.dirname(filepath)
         outdir = dirname
 
-    cfilename = f'{outdir}/process_fastq.config.txt'
-    write_config(cp, cfilename, timestamp=True)
-
     sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
     sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
@@ -141,16 +151,11 @@ if __name__ == '__main__':
                             max_mismatch=args.max_mismatch)
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
-    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir}')
+    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outdir} with countsplots={args.countsplots}')
            
     infilelist = package_pairfiles(args.infiles)
     
     logging.debug(f'infilelist = {infilelist}')
-    if args.threads == 1:
-        logging.info('Running in single process. ')
-        process_fastq_pairs(cp, sampdf, infilelist, bcolist, outdir=args.outdir, force=args.force)
-    else:
-        logging.info(f'Running in {args.threads} separate processes.')
-        process_fastq_pairs_parallel(cp, sampdf, infilelist, bcolist, outdir=outdir, nthreads = args.threads, force=args.force )
+    process_fastq_pairs(cp, sampdf, infilelist, bcolist, outdir=args.outdir, force=args.force, countsplots=args.countsplots, datestr=args.datestr)
     
     
