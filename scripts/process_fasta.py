@@ -17,8 +17,6 @@ from mapseq.utils import *
 from mapseq.stats import *
 
 
-
-
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)

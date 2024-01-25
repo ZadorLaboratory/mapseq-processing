@@ -1274,6 +1274,8 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
             countsfilelist.append(of)
         make_read_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
 
+
+
 def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplots=False, readtsvs=False, datestr=None):
     '''
     Take paired FASTA file as input rather than raw FASTQ
