@@ -156,5 +156,6 @@ This program produces, for each brain, three matrices of viral barcodes by disse
 
 The three matrices are a real barcode matrix (rbcm), a real barcode matrix normalized by spike-ins (nbcm), and a scaled+normalized barcode matrix (scbcm). The real barcode matrix contains raw numbers of molecules (UMIs) for each VBC. The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. A third, normalized+scaled matrix is useful for drawing heatmaps, since all values are scaled back to values from 0.0 to 1.0 so they can be represented by color intensity.      
 
-These matrices, the all.merged.tsv file, and various statistics gathered along the way are the full output of the processing phase, implemented in the mapseq-processing project. Code useful for further investigation and inference is contained in the mapseq-analysis project. 
+These matrices, the all.merged.tsv file, and various statistics gathered along the way are the full output of the processing phase, implemented in the mapseq-processing project. Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
+	[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 
 
