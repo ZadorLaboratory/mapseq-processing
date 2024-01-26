@@ -105,7 +105,7 @@ align_collapse.py separates out the viral barcode part of the data, and partitio
 
 This is necessary because there is a fair amount of mutation that occurs during viral replication. We don't worry about mismatches in the other components of the sequence (SSI barcode, UMI sequence) because these are added during sample processing and thus have lower error rates.
 
-For a standard ~400M read experiment, this takes about 90 minutes on a high-memory (192GB RAM) node.  
+For a standard ~400M read experiment, this takes about 90 minutes on a high-memory (192GB RAM) node. (Or 50 minutes on a new Mac M3, 96GB RAM).  
 
 ### process_fasta.py
 
@@ -119,7 +119,7 @@ For a standard ~400M read experiment, this takes about 90 minutes on a high-memo
 
 Now we break the data into region by separating based on the SSI barcode.
 
-This takes about 50 minutes for 400M reads and 10 SSI barcodes.  
+This takes about 50 minutes for 400M reads and 10 SSI barcodes. (Or 8 minutes on Mac M3)  
 
 ### process_ssifasta.py
 This program actually calls a sub-program that handles each SSI  barcode in a separate process, allowing you to leverage all the CPUs on your system and finish faster. 
@@ -137,7 +137,7 @@ This program actually calls a sub-program that handles each SSI  barcode in a se
 
 This reads in all the separate SSI barcode FASTAs, and further separates out real VBC (viral barcodes), spike-ins (used for normalization), and L1s (used to detect template switching--a QC measure). These are all then merged and labelled into a single TSV with all the data. This includes molecule counts per VBC
 
-This typically takes about 12 minutes. 
+This typically takes about 12 minutes. (3 minutes on Mac M3)
 
 ### process_merged.py
 ```
@@ -146,7 +146,7 @@ This typically takes about 12 minutes.
 	-s M211_sampleinfo.xlsx  
 	-e M211.gac 
 	-O merged.out 
-	ssifasta.out/M211.merged.tsv
+	ssifasta.out/M211.merged.all.tsv
 ```
 
 This program produces, for each brain, three matrices of viral barcodes by dissected region. This is the step at which (optionally) various threshold can be applied. 

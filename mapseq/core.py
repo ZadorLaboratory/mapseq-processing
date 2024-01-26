@@ -1305,8 +1305,8 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
         
         matchrate = 0.0
         if num_matched_total > 0: 
-            matchrate = num_unmatched_total / num_matched_total              
-                  
+            unmatchrate = num_unmatched_total / num_matched_total              
+            matchrate = 1.0 - unmatchrate
         logging.info(f'handled {num_handled_total} sequences. {num_matched_total} matched. {num_unmatched_total} unmatched matchrate={matchrate}')
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
