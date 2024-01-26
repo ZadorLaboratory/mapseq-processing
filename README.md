@@ -32,10 +32,10 @@ conda config --add channels bioconda
 
 ```
 # For Linux and Intel MacOS
-	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl bowtie bowtie2 natsort git fastx_toolkit  
+	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl bowtie bowtie2 natsort git fastx_toolkit  
 	conda install cmake?  
 # For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )
-    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl natsort
+    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl natsort
  
 ```
 

@@ -1783,64 +1783,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
         
         
         
-def make_heatmaps_combined_sns(config, sampdf, infiles, outfile=None, outdir=None, expid=None, 
-                               recursion=200000, combined_pdf=True ):
-    # def make_merged_plots_new(config, outdir=None, expid=None, recursion=200000, combined_pdf=True, label_column='region' ):
-    '''
-    consume barcode matrices and create heatmap plots.
-    Will label plots with leading portion of filename, assuming it is a brain id. 
-    
-    '''
-    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    sys.setrecursionlimit(recursion)  
-    
-    clustermap_scale = config.get('plots','clustermap_scale') # log10 | log2
-    cmap = config.get('plots','heatmap_cmap')
 
-
-    if outfile is None:
-        outfile = 'heatmaps.pdf'
-    if outdir is None:
-        outdir = os.path.dirname(infiles[0])
-
-    page_dims = (11.7, 8.27)
-    with pdfpages(outfile) as pdfpages:
-        for filepath in infiles:
-            filepath = os.path.abspath(filepath)    
-            dirname = os.path.dirname(filepath)
-            filename = os.path.basename(filepath)
-            (base, ext) = os.path.splitext(filename) 
-            brain_id = base.split('.')[0]
-            logging.debug(f'handling file base/brain: {brain_id}')
-            scbcmdf = load_df(filepath)          
-            logging.info(f'plotting file: {filename}')    
-
-            # check to ensure no columns are missing barcodes, since that messes up
-            # clustermaps
-            droplist = []
-            for c in scbcmdf.columns:
-                if not scbcmdf[c].sum() > 0:
-                    logging.warn(f'columns {c} for brain {brain_id} has no barcodes, dropping...')
-                    droplist.append(c)
-            logging.debug(f'dropping columns {droplist}')
-            scbcmdf.drop(droplist,inplace=True, axis=1 )             
-            num_vbcs = len(scbcmdf.index)
-
-            try:
-                kws = dict(cbar_kws=dict(orientation='horizontal'))  
-                g = sns.clustermap(scbcmdf, cmap=cmap, yticklabels=False, col_cluster=False, standard_scale=1, **kws)
-                #g.ax_cbar.set_title('scaled log10(cts)')
-                x0, _y0, _w, _h = g.cbar_pos
-                #g.ax_cbar.set_position((0.8, .2, .03, .4))
-                g.ax_cbar.set_position([x0, 0.9, g.ax_row_dendrogram.get_position().width, 0.05])
-                g.fig.suptitle(f'{expid} brain={brain_id}\n{num_vbcs} VBCs total')
-                g.ax_heatmap.set_title(f'Scaled {clustermap_scale}(umi_count)')
-                plt.savefig(f'{outdir}/{brain_id}.{clustermap_scale}.clustermap.pdf')
-                if combined_pdf:
-                    logging.info(f'saving plot to {outfile} ...')
-                    pdfpages.savefig(g.fig)
-            except Exception as ee:
-                logging.warning(f'Unable to clustermap plot for {brain_id}. Message: {ee}')
 
 
 def process_mapseq_dir(exp_id, loglevel, force):
