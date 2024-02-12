@@ -49,6 +49,7 @@ def fix_columns_int(df, columns):
             logging.debug(f'invalid literal in {col}')
     return df
 
+
 def fix_columns_str(df, columns):
     '''
     forces column in dataframe to be string NaNs become ''
@@ -56,8 +57,8 @@ def fix_columns_str(df, columns):
     for col in columns:
         try:
             logging.debug(f'trying to fix col {col}')
-            df[col].replace(0,'0',inplace=True)
-            df[col].replace(np.nan,'', inplace=True)
+            df[col] = df[col].replace(0,'0')
+            df[col] = df[col].replace(np.nan,'')
             df[col] = df[col].astype('string')
             df[col] = df[col].str.strip()     
         except KeyError:

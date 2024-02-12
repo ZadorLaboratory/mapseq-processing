@@ -2,7 +2,7 @@
 #
 #   merges and analyzes per-barcode dataframe files. 
 #   outputs normalized barcode matrix. 
-#
+#   optionally filters on read count representation.  
 #
 
 import argparse
@@ -65,7 +65,7 @@ if __name__ == '__main__':
                     required=False,
                     default='label', 
                     type=str, 
-                    help='iniput column to use to label matrix columns | region [label] ')   
+                    help='input column to use to label matrix columns | region [label] ')   
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
