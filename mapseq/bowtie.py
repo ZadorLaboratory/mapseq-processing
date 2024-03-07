@@ -140,6 +140,8 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
     logging.debug(f'bowtie done.')
     return outfile
 
+
+
 def make_bowtie_df(infile, max_mismatch=3):
     with open(infile) as f:
         line=f.readline()

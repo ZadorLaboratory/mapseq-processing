@@ -991,10 +991,11 @@ def load_sample_info(config, file_name):
             'RT primers for MAPseq'           : 'rtprimer',
             'Brain'                           : 'brain',
             'Region'                          : 'region',
+            'Matrix Column'                   : 'matrixcolumn',
         }
     
-    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region'] 
-    int_sample_col = ['usertube', 'ourtube', 'rtprimer','region']     # brain is often not a number. 
+    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
+    int_sample_col = ['usertube', 'ourtube', 'rtprimer','region', 'matrixcolumn']     # brain is sometimes not a number. 
     str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
 
     if file_name.endswith('.xlsx'):
@@ -1029,6 +1030,12 @@ def load_sample_info(config, file_name):
                     sdf[scol] = sdf['ourtube']
                 elif scol == 'region':
                     sdf[scol] = sdf['rtprimer']
+        
+        
+        # fix empty rows. 
+        sdf.brain = 'brain-' + sdf.brain.astype(str)
+        #sdf.brain[sdf.brain == 'brain-nan'] = ''
+        sdf.loc[sdf.brain == 'brain-nan','brain'] = ''
                     
         sdf.replace(r'^s*$', float('NaN'), regex = True, inplace=True)
         sdf.dropna(how='all', axis=0, inplace=True)        
@@ -1629,7 +1636,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     
     '''
     logging.debug(f'before threshold inj df len={len(ridf)}')
-    ridf = ridf[ridf.counts >= min_injection]
+    ridf = ridf[ridf.umi_count >= min_injection]
     ridf.reset_index(inplace=True, drop=True)
     logging.debug(f'before threshold inj df len={len(ridf)}')   
     
@@ -1646,27 +1653,26 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
 
-def filter_min_target(df, min_target=1):
+
+
+def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
     '''
+    filter dataframe where *all* are less than a threshold. 
     
+    takes df, groups by key_col and sums val_col. 
+    keeps *all* rows for keys where *any* val_col > threshold for that key.  
     '''
-    logging.debug(f'before threshold inj df len={len(ridf)}')
-    ridf = ridf[ridf.counts >= min_injection]
-    ridf.reset_index(inplace=True, drop=True)
-    logging.debug(f'before threshold inj df len={len(ridf)}')   
-    
-    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
-    incol = mdf.columns
-    outcol = []
-    selcol =[]
-    for c in incol:
-        if not c.endswith('_y'):
-            selcol.append(c)
-            outcol.append(c.replace('_x',''))
-    mdf = mdf[selcol]
-    mdf.columns = outcol
-    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
-    return mdf    
+    logging.debug(f'inbound df len={len(df)}')
+    maxdf = df.groupby(key_col)[val_col].max()
+    logging.debug(f'maxdf: unique  key_col len={len(maxdf)}')
+    fmdf = maxdf[maxdf > threshold]
+    logging.debug(f'fmdf: unique keys that pass threshold len={len(fmdf)}')
+    keeplist = list(fmdf.index)
+    logging.debug(f'keep list len={len(keeplist)}')
+    outdf = df[df[key_col].isin(keeplist)]
+    outdf.reset_index(inplace=True, drop=True)
+    logging.debug(f'outdf len={len(outdf)}')
+    return outdf
 
 
 def process_merged(config, infile, outdir=None, expid=None, recursion=200000, label_column='region' ):
@@ -1690,7 +1696,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
     clustermap_scale = config.get('analysis','clustermap_scale')
       
     if expid is None:
-        expid = 'MAPseq'
+        expid = 'M000'
     
     logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} use_target_negative={use_target_negative} ')
 
@@ -1713,24 +1719,23 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
         # if use_target_negative is true, but no target negative site 
         # defined, use min_target and throw warning. 
         if use_target_negative:
-            logging.warning(f'use_target_negative is {use_target_negative}')
+            logging.info(f'use_target_negative is {use_target_negative}')
             min_target = calc_min_target(config, bdf)
             if min_target != 0:
                 logging.debug(f'non-zero target-negative UMI count = {min_target}')
 
-            if min_target > 1:
-                before = len(rtdf)
-                rtdf = rtdf[rtdf['umi_count'] >= min_target]
-                rtdf.reset_index(inplace=True, drop=True)
-                if not len(rtdf) > 0:
-                    valid = False
-                    logging.warning(f'No VBCs passed min_target filtering! Skip brain.')
-                logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
-            else:
-                logging.debug(f'min_target={min_target} no filtering.')
+        # min_target is now either calculated from target-negative, or from config. 
+        if min_target > 1:
+            before = len(rtdf)
+            frtdf = filter_all_lt(rtdf, 'sequence', 'umi_count', min_target)            
+            if not len(frtdf) > 0:
+                valid = False
+                logging.warning(f'No VBCs passed min_target filtering! Skip brain.')
+            logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
         else:
-            logging.info('not using target-negative.')
-        
+            logging.debug(f'min_target={min_target} no filtering.')
+            frtdf = rtdf
+
         if require_injection:
             # extract and filter injection areas.
             logging.debug(f'require_injection={require_injection} min_injection={min_injection}') 
@@ -1738,25 +1743,32 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
             ridf = idf[idf['type'] == 'real']  
             if len(ridf) == 0:
                 logging.warning('require_injection=True but no real VBCs from any injection site.')
-            logging.debug(f'{len(rtdf)} real target VBCs before filtering.')      
-            frtdf = filter_non_injection(rtdf, ridf, min_injection=min_injection)
-            logging.debug(f'{len(rtdf)} real target VBCs after injection filtering.')
-            if not len(rtdf) > 0:
+            logging.debug(f'{len(frtdf)} real target VBCs before filtering.')      
+            frtdf = filter_non_injection(frtdf, ridf, min_injection=min_injection)
+            logging.debug(f'{len(frtdf)} real target VBCs after injection filtering.')
+            if not len(frtdf) > 0:
                 logging.warning(f'No VBCs passed injection filtering! Skip brain.')
                 valid = False
         else:
             logging.debug(f'require_injection={require_injection} proceeding...')
-            frtdf = rtdf
-       
-        # make 
+               
+        # make matrices if brain data is valid... 
         if valid:       
-            # reals
-            rbcmdf = frtdf.pivot(index='sequence',columns=label_column, values='umi_count')
+            
+            # raw reals
+            rbcmdf = rtdf.pivot(index='sequence', columns=label_column, values='umi_count')
             scol = natsorted(list(rbcmdf.columns))
             rbcmdf = rbcmdf[scol]
             rbcmdf.fillna(value=0, inplace=True)
-            logging.debug(f'brain={brain_id} real barcode matrix len={len(rbcmdf)}')
+            logging.debug(f'brain={brain_id} raw real barcode matrix len={len(rbcmdf)}')            
             
+            # filtered reals
+            fbcmdf = frtdf.pivot(index='sequence', columns=label_column, values='umi_count')
+            scol = natsorted(list(fbcmdf.columns))
+            fbcmdf = fbcmdf[scol]
+            fbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'brain={brain_id} real barcode matrix len={len(fbcmdf)}')
+
             # spikes
             sdf = tdf[tdf['type'] == 'spike']
             sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='umi_count')
@@ -1765,19 +1777,24 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
             sbcmdf.fillna(value=0, inplace=True)    
             logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
     
-            (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
+            (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
             
-            nbcmdf = normalize_weight(rbcmdf, sbcmdf)
+            nbcmdf = normalize_weight(fbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            
             scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
             scbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
-            
-            # create binarized matrix
-            
+                        
+            # raw real
             rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
-            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')    
+            # filtered real
+            fbcmdf.to_csv(f'{outdir}/{brain_id}.fbcmdf.tsv', sep='\t')
+            # spike-in matrix
+            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')
+            # filtered normalized by spike-ins.    
             nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
+            # log-scaled normalized 
             scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
             
         logging.info(f'done with brain={brain_id}')
@@ -1925,6 +1942,9 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
+    of = os.path.join( outdir , f'{base}.multi.components.txt')
+    writelist(of, components)
+    
     logging.info(f'Collapsing {len(components)} components...')
     newdf = collapse_by_components(fdf, udf, components)
     fdf = None
@@ -1966,7 +1986,6 @@ def apply_setcompseq(row, seqmapdict ):
 def build_seqmapdict(udf, components):
     '''
     Create mappings from all unique sequence to component sequence
-    
     '''
     seqmapdict = {}
     comphandled = 0

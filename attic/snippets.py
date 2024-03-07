@@ -1,3 +1,25 @@
+def filter_min_target(df, min_target=1):
+    '''
+    
+    '''
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.counts >= min_injection]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf    
+
 
 
 #from kneed import KneeLocator

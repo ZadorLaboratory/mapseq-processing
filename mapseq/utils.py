@@ -196,6 +196,12 @@ def has_base_repeats(seqstring, n=7):
             return True
     return False
 
+def flatten_list(listoflists):
+    flat_list = []
+    for row in listoflists:
+        flat_list += row
+    return flat_list
+
 
 def fix_columns_float(df, columns):
     for col in columns:
@@ -528,12 +534,27 @@ def load_df(filepath):
     """
     Convenience method to load DF consistently across modules. 
     """
+    logging.debug(f'loading {filepath}')
     filepath = os.path.expanduser(filepath)
-    df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
-    df.fillna(value='', inplace=True)
-    df = df.astype('str', copy=False)
-    df = df.apply(pd.to_numeric, errors='ignore')
+    df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype=str, comment="#")
+    #df.fillna(value='', inplace=True)
+    #df = df.astype('str', copy=False)
+    #df = df.apply(pd.to_numeric, errors='ignore')
+    #for col in df.columns:
+    #    try:
+    #        df[col] = df[col].astype('uint32')
+    #    except ValueError:
+    #        #df.loc[:,col] = df.loc[:, col].astype(str)
+    #        #df[col] = df[col].to_string()
+    df = df.convert_dtypes(convert_integer=False)
+    for col in df.columns:
+        try:
+            df[col] = df[col].astype('uint32')
+        except ValueError:
+            logging.debug(f'skipping column {col}')
+    logging.debug(f'{df.dtypes}')
     return df
+
 
 def merge_dfs( dflist):
     newdf = None
@@ -656,6 +677,64 @@ def write_tsv(df, outfile=None):
         outfile = sys.stdout
     logging.debug(f'writing {len(df)} lines output to {outfile}')      
     df.to_csv(outfile, sep='\t')
+
+def readlist(filepath):
+    '''
+    Assumes file is a list of strings, one per line. 
+    Ignores lines beginning with a has '#'
+    Ignores characters in a line afeter a '#'
+    '''
+
+    if filepath is not None:
+        logging.debug(f'reading file: {filepath}')
+        flist = []
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if len(line) > 0:
+                        idx = line.find('#')
+                        if idx == -1:
+                            flist.append(line.strip())
+                        elif idx > 0:
+                            flist.append(line[:idx].strip())
+                    else:
+                        pass   # empty line
+                        
+            logging.debug(f'got list with {len(flist)} items.')
+            return flist
+        except:
+            return []
+    else:
+        logging.debug('no file. return [].')
+        return []
+
+
+
+def writelist(filepath, dlist, mode=0o644):
+    logging.debug(f"writing list length={len(dlist)} to file='{filepath}'")
+    rootpath = os.path.dirname(filepath)
+    basename = os.path.basename(filepath)
+    try:
+        (tfd, tfname) = tempfile.mkstemp(suffix=None,
+                                         prefix=f"{basename}.",
+                                         dir=f"{rootpath}/",
+                                         text=True)
+        logging.debug(f"made temp {tfname}")
+        with os.fdopen(tfd, 'w') as f:
+            nlines = 0
+            for item in dlist:
+                f.write(f"{item}\n")
+                nlines += 1
+        os.rename(tfname, filepath)
+        os.chmod(filepath, mode)
+        logging.debug(f"wrote {nlines} to {filepath}")
+    except Exception as ex:
+        logging.error(traceback.format_exc(None))
+
+    finally:
+        pass
+
 
 def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None, max_repeats=7):
     '''
