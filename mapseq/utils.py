@@ -444,7 +444,12 @@ def read_fasta_to_df(infile, seqlen=None):
     '''
     input fasta 
     Optionally trim sequence to seqlen, returning a two-column dataframe 'sequence' 'tail'
-    None means keep all. 
+    None means keep all.
+    
+    use string[pyarrow] ?
+    https://pythonspeed.com/articles/pandas-string-dtype-memory/
+    
+     
     '''
     handled_interval = 10000000   
     slist = []
@@ -477,8 +482,8 @@ def read_fasta_to_df(infile, seqlen=None):
                     if handled % handled_interval == 0:
                         logging.info(f'handled={handled}') 
             logging.info(f'making df from {len(slist)} sequences and tails...')    
-            ss = pd.Series(slist)
-            ts = pd.Series(tlist)
+            ss = pd.Series(slist, dtype="string[pyarrow]")
+            ts = pd.Series(tlist, dtype="string[pyarrow]")
             df = pd.DataFrame(columns=['sequence','tail'] )     
             df['sequence'] = ss
             df['tail'] = ts
@@ -538,14 +543,7 @@ def load_df(filepath):
     filepath = os.path.expanduser(filepath)
     df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype=str, comment="#")
     #df.fillna(value='', inplace=True)
-    #df = df.astype('str', copy=False)
-    #df = df.apply(pd.to_numeric, errors='ignore')
-    #for col in df.columns:
-    #    try:
-    #        df[col] = df[col].astype('uint32')
-    #    except ValueError:
-    #        #df.loc[:,col] = df.loc[:, col].astype(str)
-    #        #df[col] = df[col].to_string()
+
     df = df.convert_dtypes(convert_integer=False)
     for col in df.columns:
         try:
@@ -736,113 +734,4 @@ def writelist(filepath, dlist, mode=0o644):
         pass
 
 
-def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None, max_repeats=7):
-    '''
-    parses paired-end fastq files. merges from r1 and r2 at selected positions. 
-    outputs to single fasta file. 
-
-    config expectation. 
-    [fastq]
-    r1start = 0
-    r1end = 32
-    r2start = 0
-    r2end = 20
-    # reporting intervals for verbose output, defines how often to log. 
-    seqhandled_interval = 1000000
-    
-    QC drop all sequences with any N in them. 
-    Drop all sequences with homopolymer runs > max_homopolymers
-    
-    '''
-    filepath = os.path.abspath(outfile)    
-    outdir = os.path.dirname(outfile)
-    if not os.path.exists(outdir):
-        os.makedirs(outdir, exist_ok=True)
-        logging.debug(f'made outdir={outdir}')
-    
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-
-    r1s = int(config.get('fastq','r1start'))
-    r1e = int(config.get('fastq','r1end'))
-    r2s = int(config.get('fastq','r2start'))
-    r2e = int(config.get('fastq','r2end'))    
-
-    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
-    
-    if ( not os.path.exists(outfile) ) or force:
-        of = open(outfile, 'w')
-        pairshandled = 0
-        num_handled_total = 0
-        num_has_n = 0
-        num_has_repeats = 0
-        seq_id = 0
-
-        # handle all pairs of readfiles from readfilelist
-        for (read1file, read2file) in infilelist:
-            pairshandled += 1
-            num_handled = 0
-            logging.debug(f'handling file pair {pairshandled}')
-            if read1file.endswith('.gz'):
-                r1f = gzip.open(read1file, "rt")
-            else:
-                r1f = open(read1file)
-            
-            if read2file.endswith('.gz'):
-                r2f = gzip.open(read2file, "rt")         
-            else:
-                r2f = open(read2file)
-        
-            while True:
-                try:
-                    meta1 = r1f.readline()
-                    if len(meta1) == 0:
-                        raise StopIteration
-                    seq1 = r1f.readline().strip()
-                    sep1 = r1f.readline()
-                    qual1 = r1f.readline().strip()
-
-                    meta2 = r2f.readline()
-                    if len(meta2) == 0:
-                        break
-                    seq2 = r2f.readline().strip()
-                    sep2 = r2f.readline()
-                    qual2 = r2f.readline().strip()                    
-
-                    sub1 = seq1[r1s:r1e]
-                    sub2 = seq2[r2s:r2e]
-                    fullread = sub1 + sub2
-                    
-                    has_n = 'N' in fullread
-                    if has_n:
-                        num_has_n += 1
-                        
-                    has_repeats = has_base_repeats(fullread, n=max_repeats)
-                    if has_repeats:
-                        num_has_repeats +=1
-                    
-                    if has_repeats or has_n:
-                        pass
-                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
-                    else:
-                        of.write(f'>{seq_id}\n{fullread}\n')
-                        seq_id += 1
-
-                    num_handled += 1
-                    num_handled_total += 1
-
-                    # report progress...                    
-                    if num_handled % seqhandled_interval == 0: 
-                        logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
-                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
-                except StopIteration as e:
-                    logging.debug('iteration stopped')    
-                    break
-            
-            logging.debug(f'finished with pair {pairshandled} {num_handled} sequences.')
-        of.close()              
-        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
-        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
-    else:
-        logging.warn('All FASTA output exists and force=False. Not recalculating.')
 

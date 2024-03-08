@@ -47,6 +47,8 @@ def fix_columns_int(df, columns):
             logging.warning(f'no column {col}')
         except ValueError:
             logging.debug(f'invalid literal in {col}')
+        except RuintimeWarning:
+            logging.debug(f'invalid cast value in {col}')
     return df
 
 
@@ -1221,6 +1223,130 @@ def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=Fals
 
 
 
+def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None, max_repeats=7):
+    '''
+    parses paired-end fastq files. merges from r1 and r2 at selected positions. 
+    outputs to single fasta file. 
+
+    config expectation. 
+    [fastq]
+    r1start = 0
+    r1end = 32
+    r2start = 0
+    r2end = 20
+    # reporting intervals for verbose output, defines how often to log. 
+    seqhandled_interval = 1000000
+    
+    QC drop all sequences with any N in them. 
+    Drop all sequences with homopolymer runs > max_homopolymers
+    
+    '''
+    filepath = os.path.abspath(outfile)    
+    outdir = os.path.dirname(outfile)
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        logging.debug(f'made outdir={outdir}')
+    
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+
+    sh = StatsHandler(config, outdir=outdir, datestr=datestr)  
+
+    r1s = int(config.get('fastq','r1start'))
+    r1e = int(config.get('fastq','r1end'))
+    r2s = int(config.get('fastq','r2start'))
+    r2e = int(config.get('fastq','r2end'))    
+
+    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
+    
+    if ( not os.path.exists(outfile) ) or force:
+        of = open(outfile, 'w')
+        pairshandled = 0
+        num_handled_total = 0
+        num_has_n = 0
+        num_has_repeats = 0
+        seq_id = 0
+
+        # handle all pairs of readfiles from readfilelist
+        for (read1file, read2file) in infilelist:
+            pairshandled += 1
+            num_handled = 0
+            logging.debug(f'handling file pair {pairshandled}')
+            if read1file.endswith('.gz'):
+                r1f = gzip.open(read1file, "rt")
+            else:
+                r1f = open(read1file)
+            
+            if read2file.endswith('.gz'):
+                r2f = gzip.open(read2file, "rt")         
+            else:
+                r2f = open(read2file)
+        
+            while True:
+                try:
+                    meta1 = r1f.readline()
+                    if len(meta1) == 0:
+                        raise StopIteration
+                    seq1 = r1f.readline().strip()
+                    sep1 = r1f.readline()
+                    qual1 = r1f.readline().strip()
+
+                    meta2 = r2f.readline()
+                    if len(meta2) == 0:
+                        break
+                    seq2 = r2f.readline().strip()
+                    sep2 = r2f.readline()
+                    qual2 = r2f.readline().strip()                    
+
+                    sub1 = seq1[r1s:r1e]
+                    sub2 = seq2[r2s:r2e]
+                    fullread = sub1 + sub2
+                    
+                    has_n = 'N' in fullread
+                    if has_n:
+                        num_has_n += 1
+                        
+                    has_repeats = has_base_repeats(fullread, n=max_repeats)
+                    if has_repeats:
+                        num_has_repeats +=1
+                    
+                    if has_repeats or has_n:
+                        pass
+                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
+                    else:
+                        of.write(f'>{seq_id}\n{fullread}\n')
+                        seq_id += 1
+
+                    num_handled += 1
+                    num_handled_total += 1
+
+                    # report progress...                    
+                    if num_handled % seqhandled_interval == 0: 
+                        logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
+                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
+                
+                except StopIteration as e:
+                    logging.debug('iteration stopped')    
+                    break
+
+            logging.debug(f'finished with pair {pairshandled} saving pair info.')
+            # collect pair-specific stats.
+            sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
+        
+        of.close()
+        # collect global statistics..
+        sh.add_value('/fastq','reads_handled', num_handled_total )
+        sh.add_value('/fastq','max_repeats', max_repeats  )
+        sh.add_value('/fastq','num_has_repeats', num_has_repeats )
+        sh.add_value('/fastq','num_has_n', num_has_n )
+        
+        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
+        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
+    else:
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
+        
+        
+
 def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplots=False, readtsvs=False, datestr=None):
     '''
     Take paired FASTA file as input rather than raw FASTQ
@@ -1635,6 +1761,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     Keeps values and columns from first argument (rtdf)
     
     '''
+    logging.info(f'filtering non-injection. min_injection={min_injection}')
     logging.debug(f'before threshold inj df len={len(ridf)}')
     ridf = ridf[ridf.umi_count >= min_injection]
     ridf.reset_index(inplace=True, drop=True)
@@ -1896,9 +2023,14 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     head = base.split('.')[0]
     
     if outdir is None:
-        outdir = dirname
-    
+        outdir = dirname    
     os.makedirs(outdir, exist_ok=True)
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+
+    sh = StatsHandler(config, outdir=outdir, datestr=datestr)
+    #  sh.add_value('/collapse','n_components', len(components) )
     
     # need to strip to seq_length
     logging.info(f'Reading {infile} to df...')
@@ -1907,10 +2039,13 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     of = os.path.join( outdir , f'{base}.fulldf.tsv')
     logging.info(f'Writing full DF to {of}')
     fdf.to_csv(of, sep='\t')
+    sh.add_value('/collapse','n_full_sequences', len(fdf) )
 
     # get reduced dataframe of unique sequences
     logging.info('Getting unique DF...')    
     udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    
+    sh.add_value('/collapse','n_unique_sequences', len(udf) )
     
     logging.debug(f'udf = \n{udf}')
     of = os.path.join( outdir , f'{base}.udf.tsv')
@@ -1929,27 +2064,31 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     btdf = make_bowtie_df(afile, max_mismatch=max_mismatch)
     of = os.path.join( outdir , f'{base}.btdf.tsv')
     btdf.to_csv(of, sep='\t') 
+    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
     
     # perform collapse...      
     logging.info('Calculating Hamming components...')
     edgelist = edges_from_btdf(btdf)
     btdf = None  # help memory usage
+    sh.add_value('/collapse','n_edges', len(edgelist) )
     
     logging.debug(f'edgelist len={len(edgelist)}')
     components = get_components(edgelist)
     logging.debug(f'all components len={len(components)}')
+    sh.add_value('/collapse','n_components', len(components) )
     edgelist = None  # help memory usage
     
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
+    sh.add_value('/collapse','n_multi_components', len(components) )
     of = os.path.join( outdir , f'{base}.multi.components.txt')
     writelist(of, components)
     
     logging.info(f'Collapsing {len(components)} components...')
     newdf = collapse_by_components(fdf, udf, components)
-    fdf = None
-    udf = None
-    components = None
+    del fdf 
+    del udf
+    del components
         
     of = os.path.join( outdir , f'{base}.collapsed.tsv')
     logging.info(f'Got collapsed DF. Writing to {of}')
@@ -2005,6 +2144,9 @@ def build_seqmapdict(udf, components):
 
 def collapse_by_components(fulldf, uniqdf, components):
     #
+    #
+    # *** Assumes components are multi-element components only ***
+    #
     # components consist of indices within the uniqdf. 
     # assumes component elements are integers, as they are used as dataframe indices. 
     # create map of indices in original full DF that correspond to all members of a (multi-)component
@@ -2015,19 +2157,17 @@ def collapse_by_components(fulldf, uniqdf, components):
     #
     #  SETUP
     #  infile is all reads...
-    #  fdf = read_fasta_to_df(infile, seq_length=32)
-    #  udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
-    #  components are *uniqdf* indices from bowtie alignemnt.  
-    #
-    logging.debug(f'all components len={len(components)}')
-    components = remove_singletons(components)
+    #      fdf = read_fasta_to_df(infile, seq_length=32)
+    #      udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    #      components = remove_singletons(components)
+    
     logging.debug(f'multi-element components len={len(components)}')
     logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
     logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
     seqmapdict = build_seqmapdict(uniqdf, components)
       
     # Make new full df:
-    logging.debug('seqmapdict built. Applying.')
+    logging.info('seqmapdict built. Applying.')
     fulldf['sequence'] =fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
     logging.info(f'New collapsed df = \n{fulldf}')
     return fulldf

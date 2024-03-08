@@ -111,6 +111,7 @@ if __name__ == '__main__':
     
     sampdf = load_sample_info(cp, args.sampleinfo)
     logging.debug(f'\n{sampdf}')
+    sampdf.to_csv('./sampinfo.tsv', sep='\t')
       
     outdir = None
     if args.outfile is not None:
