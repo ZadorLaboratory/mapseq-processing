@@ -37,18 +37,23 @@ def fix_columns_int(df, columns):
     forces column in dataframe to be an integer. NaNs become '0'
     Only floating points can be NaN. No good solution for integers...
     '''
+    
     for col in columns:
-        try:
-            logging.debug(f'trying to fix col {col}')
-            fixed = np.array(df[col], np.int16)
-            logging.debug(f'fixed=\n{fixed}')
-            df[col] = fixed
-        except KeyError:
-            logging.warning(f'no column {col}')
-        except ValueError:
-            logging.debug(f'invalid literal in {col}')
-        except RuintimeWarning:
-            logging.debug(f'invalid cast value in {col}')
+        with np.errstate(invalid='raise'):
+            try:
+                logging.debug(f'trying to fix col {col}')
+                fixed = np.array(df[col], np.int16)
+                logging.debug(f'fixed=\n{fixed}')
+                df[col] = fixed
+                
+            except KeyError:
+                logging.warning(f'no column {col}')
+            
+            except ValueError:
+                logging.debug(f'invalid literal in {col}')
+            
+            except FloatingPointError:
+                logging.debug(f'invalid cast value in {col}')
     return df
 
 
@@ -321,7 +326,24 @@ def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=
     outdf.reset_index(drop=True, inplace=True)
     return outdf
 
-           
+
+def read_threshold_all(cp, alldf):
+    '''
+    we did not threshold BC by BC when processing fastqs, so we can threshold by proxy
+    using a ratio of UMIs to read_count behind them. 
+    '''
+    target_ratio = float( cp.get('ssifasta','target_read_ratio'))
+    injection_ratio = float( cp.get('ssifasta','injection_read_ratio'))
+    
+    alldf['read_ratio'] = alldf['read_count'] / alldf['umi_count']
+        
+    injdf = alldf[ alldf['site'].str.startswith('injection') ]
+    tardf = alldf[ alldf['site'].str.startswith('target') ]
+    injdf = injdf[ injdf['read_ratio'] > injection_ratio ]
+    tardf = tardf[ tardf['read_ratio'] > target_ratio ]
+    df_merged = pd.concat([injdf, tardf], ignore_index = True, sort=False)
+    return df_merged
+       
     
 def process_ssifasta_withcollapse(config, infile, outdir=None, site=None, datestr=None):
     '''
@@ -461,32 +483,6 @@ def align_and_collapse(config, countsdf, outdir, base, label):
         logging.warning(f'NonZeroReturn Exception. Probably no {label}s found. ')
         newdf = pd.DataFrame(columns = ['sequence','counts'])
     return newdf
-
-
-def max_hamming(sequence, sequencelist):
-    '''
-    calculates maximum mismatch between sequence and all sequences in sequencelist. 
-    assumes all sequences are same length
-    no indels, just substitutions. 
-    '''
-    #logging.debug(f'seq={sequence}')
-    #logging.debug(f'sequencelist={sequencelist}')
-    max_dist = 0
-    for s in sequencelist:
-        dist = 0
-        for i in range(0,len(s)):
-            if sequence[i] != s[i]:
-                dist += 1
-        if dist > max_dist:
-            max_dist = dist
-    return max_dist
-
-
-def unique_df(seqdf):
-    '''
-    filters for only unique sequences, sets counts to 1
-    '''
-    pass
 
 
 
@@ -689,184 +685,6 @@ def make_fasta_df(config, infile, ignore_n=True):
     logging.debug(f"kept {len(slist)} sequences out of {handled}")    
     df = pd.DataFrame(slist, columns=['sequence'] )
     return df
-
-
-def trim_fasta(config, infile, outdir=None, length=44):
-    filepath = os.path.abspath(infile)    
-    dirname = os.path.dirname(filepath)
-    if outdir is not None:
-        dirname = os.path.abspath(outdir)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)
-    head = filename.split('.')[0]    
-    logging.debug(f'handling {filepath}')
-    
-    ofpath = f'{dirname}/{head}.{length}.fasta'
-    logging.debug(f'opening {ofpath}...')
-    outfile = open(ofpath, 'w')    
-    trimmed = []
-    sfa = SeqIO.parse(filepath, "fasta")
-    for sr in sfa:
-        tseq = sr.seq[:length]
-        tsr = SeqRecord( tseq, id=sr.id, name=sr.name, description=sr.description)
-        trimmed.append(tsr)
-    SeqIO.write(trimmed, outfile, 'fasta')
-    logging.debug(f'wrote {len(trimmed)} to {ofpath}')
-    return ofpath
-
-
-def cumulative_fract_idx_naive(ser, fract):
-    '''
-    value at index of row that marks cumulative fraction of total. 
-    assumes series sorted in descending order. 
-    starts with largest value. 
-    '''
-    sum_total = ser.sum()
-    fraction_int = int(fract * sum_total)
-    cum_total = 0
-    val = 0
-    idx = 0
-    for idx in range(0, len(ser)):
-        val = ser[idx]
-        cum_total = cum_total + val
-        fraction =  cum_total / sum_total
-        if cum_total > fraction_int:
-            break
-        else:
-            logging.debug(f'at idx={idx} fraction is {fraction}')
-    logging.debug(f'val={val} idx={idx} cum_total={cum_total} ')
-    return val    
-        
-
-def cumulative_fract_idx(ser, fract):
-    '''
-    value at index of row that marks cumulative fraction of total. 
-    assumes series sorted in descending order. 
-    starts with largest value. 
-    '''
-    sum_total = ser.sum()
-    fraction_int = int(fract * sum_total)
-    cumsum = ser.cumsum()
-    ltser = cumsum[cumsum < fraction_int]
-    if len(ltser) < 1:
-        idx = 0
-        val = cumsum
-    else:
-        idx =  ltser.index[-1]
-        val = ser[idx]
-    logging.debug(f'val={val} idx={idx} ')
-    return val    
-
-
-
-def calc_final_thresholds(config, threshdf):
-    '''
-    take threshold df for all sites, and derive final thresholds df for
-    
-    threshdf columns used:   site  count_threshold   
-    
-    target_threshold = 100
-    target-control_threshold = 1000
-    target-negative_threshold = 100
-    target-lone_threshold = 100
-    injection_threshold = 2
-    injection-control_threshold=2
-    
-    
-        'site'  'threshold'
-    
-    
-    '''
-    tdf = pd.concat( [threshdf[threshdf['site'] == 'target-negative'], 
-                      threshdf[threshdf['site'] == 'target']] )
-    idf = threshdf[threshdf['site'] == 'injection']
-    
-    target_thresh = int(tdf['count_threshold'].min())
-    inj_thresh = int(idf['count_threshold'].min())
-
-    finaldf = pd.DataFrame( data=[ ['target', target_thresh ],['injection', inj_thresh] ], 
-                            columns= ['site','threshold'] )
-                  
-    return finaldf
-    
-
-
-
-
-def calc_thresholds_all(config, sampdf, filelist, fraction=None ):
-    '''
-    reads in all counts.df (assumes counts column).
-     
-    calculates thresholds for 'target' and 'injection'
-    
-    returns 2 dfs. one general info, one with final thresholds
-    '''
-    if fraction is not None:
-        config.set('ssifasta','count_threshold_fraction', fraction)
-    
-    outlist = []
-    
-    for filename in filelist:
-       logging.debug(f'handling {filename}') 
-       (rtprimer, site, brain, region) = guess_site(filename, sampdf)
-       cdf = pd.read_csv(filename ,sep='\t', index_col=0)
-       (count_threshold, label, clength, counts_max, counts_min)   = calculate_threshold(config, cdf, site )
-       outlist.append( [rtprimer, site, count_threshold, label, clength, counts_max, counts_min    ])
-    threshdf = pd.DataFrame(data=outlist, columns=['rtprimer', 'site', 'count_threshold', 'label', 'counts_length', 'counts_max', 'counts_min'  ])
-    finaldf = calc_final_thresholds(config, threshdf)   
-    
-    return (finaldf, threshdf)
-     
-    
-
-def calculate_threshold(config, cdf, site=None):
-    '''
-    takes counts dataframe (with 'counts' column) 
-    if 'label', use that. 
-    and calculates 'shoulder' threshold
-    site = ['control','injection','target']   
-        Will use relevant threshold. If None, will use default threshold
-    
-    target_threshold=100
-    target_ctrl_threshold=1000
-    inj_threshold=2
-    inj_ctrl_threshold=2
-    
-    '''
-    count_pct = float(config.get('ssifasta','count_threshold_fraction'))
-    min_threshold = int(config.get('ssifasta','count_threshold_min'))
-    label = 'BCXXX'
-    
-    try:
-        label = cdf['label'].unique()[0]
-    except:
-        logging.warn(f'no SSI label in DF')
-        
-    # assess distribution.
-    counts = cdf['read_count']
-    clength = len(counts)
-    counts_max = counts.max()
-    counts_min = counts.min()
-    counts_mean = counts.mean()
-    logging.info(f'handling {label} length={clength} max={counts_max} min={counts_min} ')
-    
-    val =  cumulative_fract_idx(counts, count_pct)
-    if val < min_threshold:
-        logging.warning(f'calc threshold < min...')
-    else:
-        logging.debug(f'calculated count threshold={val} for SSI={label}')
-    count_threshold=max(val, min_threshold)
-    
-    
-    #if site is None:
-    #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
-    #else:
-    #    count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
-    #logging.debug(f'count threshold for {site} = {count_threshold}')
-    return (count_threshold, label, clength, counts_max, counts_min)
-
-
-
 
 
 
@@ -1927,56 +1745,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
         logging.info(f'done with brain={brain_id}')
         
         
-        
 
-
-
-def process_mapseq_dir(exp_id, loglevel, force):
-    '''
-    E.g. 
-    
-    process_fastq.py -v -b barcode_v2.txt -s M205_sampleinfo.xlsx -O fastq.20231204.1213.out fastq/M205_HZ_S1_R1_002.fastq.gz fastq/M205_HZ_S1_R2_002.fastq.gz
-    process_ssifasta.py -v -a bowtie2 -s M205_sampleinfo.xlsx -O ssifasta.20231204.1213.out -o M205.all.20231204.1213.tsv fastq.20231204.1213.out/BC*.fasta
-    process_merged.py -v -s M205_sampleinfo.xlsx -e M205_20231204.1213 -l label -O merged.20231204.1213.out M205.all.20231204.1213.tsv 
-    make_heatmaps.py -v -s M205_sampleinfo.xlsx -e M205_20231204.1213 -O merged.20231204.1213.out   merged.20231204.1213.out/*.nbcm.tsv  
-    
-    '''   
-    d = os.path.abspath(exp_id)
-    if not os.path.exists(d):
-        sys.exit(f'Experiment directory {d} does not exist.')
-
-    logging.info(f'processing experiment dir: {d}')
-    
-    config = get_default_config()
-    expconfig = f'{d}/mapseq.conf'
-
-    if os.path.exists(expconfig):
-         config.read(expconfig)
-         logging.debug(f'read {expconfig}')
-    
-         
-    try:
-       samplefile = f'{d}/{exp_id}_sampleinfo.jrh.xlsx'
-       sampdf = load_sample_info(config, samplefile)
-       rtlist = get_rtlist(sampdf)
-       
-       outdir = f'{d}/fastq.out'
-       bcfile = f'{d}/barcode_v2.{exp_id}.txt'       
-       bclist = load_barcodes(config, bcfile, labels=rtlist, outdir=outdir)
-       readfilelist = package_pairfiles( glob.glob(f'{d}/fastq/*.fastq*'))
-
-       logging.info(f'running process_fastq_pairs. readfilelist={readfilelist} outdir={outdir}')
-       process_fastq_pairs(config, readfilelist, bclist, outdir, force=False)
-       
-         
-       #process_ssifasta(config, infile, outdir=None, site=None)
-       #process_merged(config, filelist, outdir=None, expid=None, recursion=100000, combined_pdf=True)
-       #process_qc(config, exp_dir)
-
-    except Exception as ex:
-        logging.error(f'error while handling {d} ')
-        logging.warning(traceback.format_exc(None))
-        
 
 def align_collapse_fasta(config, infile, seq_length=30, max_mismatch=3, outdir=None, datestr=None, ):
     '''
@@ -2171,7 +1940,4 @@ def collapse_by_components(fulldf, uniqdf, components):
     fulldf['sequence'] =fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
     logging.info(f'New collapsed df = \n{fulldf}')
     return fulldf
-
-
-
 

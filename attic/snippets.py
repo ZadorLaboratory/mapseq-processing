@@ -1,3 +1,220 @@
+
+
+#
+#  Biopython based code
+#  Safe, but less efficient w/ memory. 
+#
+
+
+def trim_fasta(config, infile, outdir=None, length=44):
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    if outdir is not None:
+        dirname = os.path.abspath(outdir)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)
+    head = filename.split('.')[0]    
+    logging.debug(f'handling {filepath}')
+    
+    ofpath = f'{dirname}/{head}.{length}.fasta'
+    logging.debug(f'opening {ofpath}...')
+    outfile = open(ofpath, 'w')    
+    trimmed = []
+    sfa = SeqIO.parse(filepath, "fasta")
+    for sr in sfa:
+        tseq = sr.seq[:length]
+        tsr = SeqRecord( tseq, id=sr.id, name=sr.name, description=sr.description)
+        trimmed.append(tsr)
+    SeqIO.write(trimmed, outfile, 'fasta')
+    logging.debug(f'wrote {len(trimmed)} to {ofpath}')
+    return ofpath
+
+
+
+
+
+def max_hamming(sequence, sequencelist):
+    '''
+    calculates maximum mismatch between sequence and all sequences in sequencelist. 
+    assumes all sequences are same length
+    no indels, just substitutions. 
+    '''
+    #logging.debug(f'seq={sequence}')
+    #logging.debug(f'sequencelist={sequencelist}')
+    max_dist = 0
+    for s in sequencelist:
+        dist = 0
+        for i in range(0,len(s)):
+            if sequence[i] != s[i]:
+                dist += 1
+        if dist > max_dist:
+            max_dist = dist
+    return max_dist
+
+
+
+
+
+
+
+
+
+#
+# previously used to calculate read thresholds. 
+#
+
+def calc_final_thresholds(config, threshdf):
+    '''
+    take threshold df for all sites, and derive final thresholds df for
+    
+    threshdf columns used:   site  count_threshold   
+    
+    target_threshold = 100
+    target-control_threshold = 1000
+    target-negative_threshold = 100
+    target-lone_threshold = 100
+    injection_threshold = 2
+    injection-control_threshold=2
+    
+    
+        'site'  'threshold'
+    
+    
+    '''
+    tdf = pd.concat( [threshdf[threshdf['site'] == 'target-negative'], 
+                      threshdf[threshdf['site'] == 'target']] )
+    idf = threshdf[threshdf['site'] == 'injection']
+    
+    target_thresh = int(tdf['count_threshold'].min())
+    inj_thresh = int(idf['count_threshold'].min())
+
+    finaldf = pd.DataFrame( data=[ ['target', target_thresh ],['injection', inj_thresh] ], 
+                            columns= ['site','threshold'] )
+                  
+    return finaldf
+    
+
+def calc_thresholds_all(config, sampdf, filelist, fraction=None ):
+    '''
+    reads in all counts.df (assumes counts column).
+     
+    calculates thresholds for 'target' and 'injection'
+    
+    returns 2 dfs. one general info, one with final thresholds
+    '''
+    if fraction is not None:
+        config.set('ssifasta','count_threshold_fraction', fraction)
+    
+    outlist = []
+    
+    for filename in filelist:
+       logging.debug(f'handling {filename}') 
+       (rtprimer, site, brain, region) = guess_site(filename, sampdf)
+       cdf = pd.read_csv(filename ,sep='\t', index_col=0)
+       (count_threshold, label, clength, counts_max, counts_min)   = calculate_threshold(config, cdf, site )
+       outlist.append( [rtprimer, site, count_threshold, label, clength, counts_max, counts_min    ])
+    threshdf = pd.DataFrame(data=outlist, columns=['rtprimer', 'site', 'count_threshold', 'label', 'counts_length', 'counts_max', 'counts_min'  ])
+    finaldf = calc_final_thresholds(config, threshdf)   
+    
+    return (finaldf, threshdf)
+     
+    
+
+def calculate_threshold(config, cdf, site=None):
+    '''
+    takes counts dataframe (with 'counts' column) 
+    if 'label', use that. 
+    and calculates 'shoulder' threshold
+    site = ['control','injection','target']   
+        Will use relevant threshold. If None, will use default threshold
+    
+    target_threshold=100
+    target_ctrl_threshold=1000
+    inj_threshold=2
+    inj_ctrl_threshold=2
+    
+    '''
+    count_pct = float(config.get('ssifasta','count_threshold_fraction'))
+    min_threshold = int(config.get('ssifasta','count_threshold_min'))
+    label = 'BCXXX'
+    
+    try:
+        label = cdf['label'].unique()[0]
+    except:
+        logging.warn(f'no SSI label in DF')
+        
+    # assess distribution.
+    counts = cdf['read_count']
+    clength = len(counts)
+    counts_max = counts.max()
+    counts_min = counts.min()
+    counts_mean = counts.mean()
+    logging.info(f'handling {label} length={clength} max={counts_max} min={counts_min} ')
+    
+    val =  cumulative_fract_idx(counts, count_pct)
+    if val < min_threshold:
+        logging.warning(f'calc threshold < min...')
+    else:
+        logging.debug(f'calculated count threshold={val} for SSI={label}')
+    count_threshold=max(val, min_threshold)
+    
+    
+    #if site is None:
+    #    count_threshold = int(config.get('ssifasta', 'default_threshold'))
+    #else:
+    #    count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
+    #logging.debug(f'count threshold for {site} = {count_threshold}')
+    return (count_threshold, label, clength, counts_max, counts_min)
+
+
+
+def cumulative_fract_idx_naive(ser, fract):
+    '''
+    value at index of row that marks cumulative fraction of total. 
+    assumes series sorted in descending order. 
+    starts with largest value. 
+    '''
+    sum_total = ser.sum()
+    fraction_int = int(fract * sum_total)
+    cum_total = 0
+    val = 0
+    idx = 0
+    for idx in range(0, len(ser)):
+        val = ser[idx]
+        cum_total = cum_total + val
+        fraction =  cum_total / sum_total
+        if cum_total > fraction_int:
+            break
+        else:
+            logging.debug(f'at idx={idx} fraction is {fraction}')
+    logging.debug(f'val={val} idx={idx} cum_total={cum_total} ')
+    return val    
+        
+
+def cumulative_fract_idx(ser, fract):
+    '''
+    value at index of row that marks cumulative fraction of total. 
+    assumes series sorted in descending order. 
+    starts with largest value. 
+    '''
+    sum_total = ser.sum()
+    fraction_int = int(fract * sum_total)
+    cumsum = ser.cumsum()
+    ltser = cumsum[cumsum < fraction_int]
+    if len(ltser) < 1:
+        idx = 0
+        val = cumsum
+    else:
+        idx =  ltser.index[-1]
+        val = ser[idx]
+    logging.debug(f'val={val} idx={idx} ')
+    return val    
+
+
+
+
+
+
 def filter_min_target(df, min_target=1):
     '''
     

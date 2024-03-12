@@ -534,6 +534,18 @@ def convert_numeric(df):
     # changes made in place, but also return so df = convert_numeric(df) works. 
     return df
 
+def split_path(filepath):
+    '''
+    dir, base, ext = split_path(filepath)
+    
+    '''
+    filepath = os.path.abspath(filepath)
+    dirpath = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    base, ext = os.path.splitext(filename)
+    return (dirpath, base, ext)
+
+
 
 def load_df(filepath):
     """

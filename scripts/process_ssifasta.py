@@ -164,9 +164,24 @@ if __name__ == '__main__':
     else:
         outfile = f'{outdir}/{args.expid}.all.tsv'
     
-    #sampdf = load_sample_info(cp, args.sampleinfo)
-    #logging.debug(f'\n{sampdf}')
+    #sampdf = load_sample_info(config, args.sampleinfo)
+    #logging.debug(f'\n{sampdf}')    
+    # sample info passed as filename rather than dataframe to function
+    #    because it needs to be a command line argument to sub-processes. 
     
     outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir, nocollapse=args.nocollapse)
     logging.info(f'saving output to {outfile}')
     outdf.to_csv(outfile, sep='\t')
+    
+    # create filtered subset based on reads/UMI ratio. 
+    dir, base, ext = split_path(outfile)
+    tdfoutfile = f'{dir}/{base}.filtered{ext}'
+    logging.info(f'saving read thresholded output to {outfile}')
+    tdf = read_threshold_all(cp, outdf )
+    tdf.to_csv(tdfoutfile, sep='\t')
+    
+    
+    
+    
+    
+    
