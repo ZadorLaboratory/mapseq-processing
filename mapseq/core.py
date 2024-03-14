@@ -302,16 +302,20 @@ def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=
     
     # split out spike, real, lone, otherwise same as 32.counts.tsv    
     #spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
-    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    spikedf, realdf, lonedf, unmatched = split_spike_real_lone_barcodes(config, vbcdf)
     
     # write out this step...
     realdf.to_csv(os.path.join(outdir , f'{base}.real.counts.tsv'), sep='\t')
     lonedf.to_csv(os.path.join(outdir , f'{base}.lone.counts.tsv'), sep='\t')
     spikedf.to_csv(os.path.join(outdir , f'{base}.spike.counts.tsv'), sep='\t')
+    unmatched.to_csv(os.path.join(outdir , f'{base}.unmatched.counts.tsv'), sep='\t')
 
     # remove homopolymers in real sequences.
-    max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
-    realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
+    #
+    #  base repeats already assumed removed in newer processing. 
+    #
+    # max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
+    # realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
      
     # align and collapse all.         
 
@@ -319,12 +323,14 @@ def process_ssifasta_nocollapse(config, infile, outdir=None, site=None, datestr=
     realdf['type'] = 'real'
     spikedf['type'] = 'spike'
     lonedf['type'] = 'lone'
+    unmatched['type'] = 'unmatched'
 
-    outdf = merge_dfs([ realdf, spikedf, lonedf ])
+    outdf = merge_dfs([ realdf, spikedf, lonedf, unmatched ])
     outdf['label'] = base
     outdf.sort_values(by = ['type', 'umi_count'], ascending = [True, False], inplace=True)
     outdf.reset_index(drop=True, inplace=True)
     return outdf
+
 
 
 def read_threshold_all(cp, alldf):
@@ -411,12 +417,13 @@ def process_ssifasta_withcollapse(config, infile, outdir=None, site=None, datest
     
     # split out spike, real, lone, otherwise same as 32.counts.tsv    
     #spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
-    spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    spikedf, realdf, lonedf, unmatched = split_spike_real_lone_barcodes(config, vbcdf)
     
     # write out this step...
     realdf.to_csv(os.path.join(outdir , f'{base}.real.counts.tsv'), sep='\t')
     lonedf.to_csv(os.path.join(outdir , f'{base}.lone.counts.tsv'), sep='\t')
     spikedf.to_csv(os.path.join(outdir , f'{base}.spike.counts.tsv'), sep='\t')
+    unmatched.to_csv(os.path.join(outdir , f'{base}.unmatched.counts.tsv', sep='\t' ))
 
     # remove homopolymers in real sequences.
     max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
@@ -759,6 +766,16 @@ def split_spike_real_lone_barcodes(config, df):
     '''
     df has  sequence  counts
     should be length 32 ( 30 + YY ) Y= C or T
+
+    # T or C = YY
+    # last 2nt of spike-ins AND reals
+    
+    # A or G = RR
+    # last 2nt of L1 controls 
+    
+    spikeinregex= CGTCAGTC$
+    realregex = [TC][TC]$
+    loneregex = [AG][AG]$
           
     '''
     #  df[df["col"].str.contains("this string")==False]
@@ -776,17 +793,26 @@ def split_spike_real_lone_barcodes(config, df):
     remaindf = df[~simap]
     logging.debug(f'spikeins={len(spikedf)} remaindf={len(remaindf)}')
     
-    # split real/L1
+    # split real from L1s, and track any that fail both. 
     logging.debug(f"realre = '{realre}' lonere = '{lonere}' ")
     realmap = remaindf['sequence'].str.contains(realre, regex=True) == True
     realdf = remaindf[realmap]
     realdf.reset_index(inplace=True, drop=True)
     
+    # remove reals from input. 
+    remaindf = remaindf[~realmap]
+    logging.debug(f'realdf={len(realdf)} remaindf={len(remaindf)}')
+        
     lonemap = remaindf['sequence'].str.contains(lonere, regex=True) == True 
     lonedf = remaindf[lonemap]
     lonedf.reset_index(inplace=True, drop=True)
-    logging.info(f'initial={len(df)} spikeins={len(spikedf)} real={len(realdf)} lone={len(lonedf)}')    
-    return (spikedf, realdf, lonedf)
+    logging.debug(f'lonedf={len(lonedf)} remaindf={len(remaindf)}')
+    
+    unmatcheddf = remaindf[~lonemap]
+    unmatcheddf.reset_index(inplace=True, drop=True)
+        
+    logging.info(f'initial={len(df)} spikeins={len(spikedf)} real={len(realdf)} lone={len(lonedf)} unmatched={len(unmatcheddf)}')    
+    return (spikedf, realdf, lonedf, unmatcheddf)
 
 
 def load_sample_info(config, file_name):
@@ -1157,6 +1183,7 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
         sh.add_value('/fastq','max_repeats', max_repeats  )
         sh.add_value('/fastq','num_has_repeats', num_has_repeats )
         sh.add_value('/fastq','num_has_n', num_has_n )
+        sh.add_value('/fastq','num_kept', seq_id )
         
         logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
         logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
@@ -1623,7 +1650,7 @@ def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
 def process_merged(config, infile, outdir=None, expid=None, recursion=200000, label_column='region' ):
     '''
      takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
-     outputs brain-specific SSI x target matrix DF, with counts normalized to spikeins by target.  
+     outputs brain-specific SSI x target matrix dataframes, with counts normalized to spikeins by target.  
      writes all output to outdir (or current dir). 
      
     '''

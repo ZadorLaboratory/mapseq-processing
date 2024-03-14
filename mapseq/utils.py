@@ -553,7 +553,7 @@ def load_df(filepath):
     """
     logging.debug(f'loading {filepath}')
     filepath = os.path.expanduser(filepath)
-    df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype=str, comment="#")
+    df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype="string[pyarrow]", comment="#")
     #df.fillna(value='', inplace=True)
 
     df = df.convert_dtypes(convert_integer=False)
