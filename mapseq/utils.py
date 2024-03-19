@@ -720,6 +720,41 @@ def readlist(filepath):
         logging.debug('no file. return [].')
         return []
 
+def readlol(filepath):
+    '''
+    Assumes file is a list of string representation of list, one per line. 
+    Ignores lines beginning with a has '#'
+    Ignores characters in a line afeter a '#'
+    '''
+    import ast
+    if filepath is not None:
+        logging.debug(f'reading file: {filepath}')
+        lol = []
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if len(line) > 0:
+                        idx = line.find('#')
+                        if idx == -1:
+                            linelist = ast.literal_eval(line.strip())
+                            linelist.sort()
+                            lol.append(linelist)
+                        elif idx > 0:
+                            linelist = ast.literal_eval( line[:idx].strip() )
+                            linelist.sort()
+                            lol.append(linelist)
+                    else:
+                        pass   # empty line
+                        
+            logging.debug(f'got list with {len(flist)} items.')
+            return lol
+        
+        except:
+            return []
+    else:
+        logging.debug('no file. return [].')
+        return []
 
 
 def writelist(filepath, dlist, mode=0o644):

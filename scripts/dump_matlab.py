@@ -23,7 +23,50 @@ from mapseq.utils import *
 from mapseq.stats import *
 
 
-def dump_matlab(config, infile, outdir=None, expid=None, label=None):
+def map_columns(df, sampdf):
+    '''
+    for all entries in sampldf.matrixcolumn make mapping to sampldf.rtprimer BC<rtprimer> string. 
+    apply map to dataframe columns
+    return dataframe with column names in proper order. 
+    '''
+    mdf = sampdf[['rtprimer','matrixcolumn']].copy()
+    for col in mdf.columns:
+        mdf[col] = pd.to_numeric(mdf[col], errors='coerce')
+    mdf.dropna(inplace = True)
+    mdf.matrixcolumn = mdf.matrixcolumn.astype(int)
+    mdf = mdf.astype('string')
+    col_names = [ str(x) for x in list(df.columns)]
+    
+    nmap = {}
+    for row in mdf.iterrows():
+        nmap[ str( row[1]['matrixcolumn'] ) ] =  f"BC{row[1]['rtprimer']}"
+    
+    new_colnames = []
+    for cn in col_names:
+        try:
+            new_colnames.append( str(nmap[str(cn)] ) )
+        except KeyError:
+            print(f'error {cn} type={type(cn)}')
+            new_colnames.append(cn)
+    df.columns = new_colnames
+    return df
+
+
+def get_brain_columns(sampdf, brain_id):
+    '''
+    
+    '''
+    logging.debug(f'sampdf len={len(sampdf)} ')     
+    bcols = sampdf[sampdf.brain == brain_id]['rtprimer']
+    logging.debug(f'{len(bcols)} cols for brain {brain_id} ')
+    bcols = list(bcols)
+    bcols = [ f'BC{x}' for x in bcols ]
+    bcols.sort()
+    logging.debug(f'brain columns: {bcols}')
+    return bcols
+
+
+def dump_matlab(config, infile, sampdf=None, outdir=None, expid=None, label=None):
     '''
     Brains = B1 B2 etc...
     barcodematrix  = 
@@ -60,9 +103,14 @@ def dump_matlab(config, infile, outdir=None, expid=None, label=None):
     barcodematrix = annots['barcodematrix']
     logging.debug(f'bcmatrix shape={barcodematrix.shape}')    
     bdf = pd.DataFrame(barcodematrix, index=refseqlist)
+    logging.debug(f'bcmatrix columns={bdf.columns} converting to ')
+    bdf.columns = list( [str( x + 1)  for x in list(bdf.columns)] )
+    
+    if sampdf is not None:
+        bdf = map_columns(bdf, sampdf)
     outfile = f'{outdir}/BarcodeMatrix.tsv'
     bdf.to_csv(outfile, sep='\t')
-    logging.debug(f'wrote {outdir}/{key}.norm.tsv')
+    logging.debug(f'wrote {outdir}/BarcodeMatrix.tsv')
     for brain_id in ['1','2']:
         key = f'B{brain_id}'
         bm = annots[f'{key}norm']
@@ -71,14 +119,18 @@ def dump_matlab(config, infile, outdir=None, expid=None, label=None):
             s = ''.join([chr(item) for item in row])
             seqlist.append(s)
         df = pd.DataFrame(bm, index=seqlist)
+        df.columns = list( [str( x + 1)  for x in list(df.columns)] )
+        if sampdf is not None:
+            df = map_columns(df, sampdf)
+            bcols = get_brain_columns(sampdf, brain_id)
+            logging.debug(f'df cols = {df.columns}')
+            df = df[ bcols ]
+        
         outfile = f'{outdir}/{key}.norm.tsv'
         df.to_csv(outfile, sep='\t')
         logging.debug(f'wrote {outdir}/{key}.norm.tsv')
-    
-
-
-
-    
+   
+   
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -163,9 +215,12 @@ if __name__ == '__main__':
     cfilename = f'{outdir}/dump_matlab.config.txt'
     #write_config(cp, cfilename, timestamp=True)        
     
-    #sampdf = load_sample_info(cp, args.sampleinfo)
-    #logging.debug(f'\n{sampdf}')
+    if args.sampleinfo is not None:
+        sampdf = load_sample_info(cp, args.sampleinfo)
+        logging.debug(f'\n{sampdf}')
+    else:
+        sampdf = None
         
     # create and handle 'real' 'spikein' and 'normalized' barcode matrices...
-    dump_matlab(cp, args.infile, outdir, expid=args.expid, label=args.label )
+    dump_matlab(cp, args.infile, sampdf, outdir, expid=args.expid, label=args.label )
     

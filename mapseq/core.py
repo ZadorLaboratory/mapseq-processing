@@ -867,6 +867,12 @@ def load_sample_info(config, file_name):
                 logging.error(f'error while handling {ecol} ')
                 logging.warning(traceback.format_exc(None))
 
+        # Fix brain column
+        sdf.loc[ sdf.brain.isna(), 'brain'] = 0
+        sdf.brain = sdf.brain.astype('int')
+        sdf.brain = sdf.brain.astype('string')
+        sdf.loc[ sdf.brain == '0', 'brain'] = ''
+
         for scol in sample_columns:
             try:
                 ser = sdf[scol]
@@ -879,7 +885,7 @@ def load_sample_info(config, file_name):
         
         
         # fix empty rows. 
-        sdf.brain = 'brain-' + sdf.brain.astype(str)
+        sdf.brain = sdf.brain.astype(str)
         #sdf.brain[sdf.brain == 'brain-nan'] = ''
         sdf.loc[sdf.brain == 'brain-nan','brain'] = ''
                     
@@ -1924,7 +1930,7 @@ def build_seqmapdict(udf, components):
     '''
     seqmapdict = {}
     comphandled = 0
-    comphandled_interval = 10000
+    comphandled_interval = 100
     comp_len = len(components)
     
     for comp in components:
