@@ -37,6 +37,13 @@ if __name__ == '__main__':
                         dest='verbose', 
                         help='verbose logging')
 
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
+
     parser.add_argument('-n', '--nocollapse',
                         default=True , 
                         action="store_false", 
@@ -63,13 +70,6 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='Combined out TSV for all info for this FASTA, e.g. BC1.all.tsv') 
-
-    parser.add_argument('-L','--logfile', 
-                    metavar='logfile',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='Logfile for subprocess.')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -116,6 +116,16 @@ if __name__ == '__main__':
     (rtprimer, site, brain, region) = guess_site(args.infile, sampdf)
     logging.info(f'guessed rtprimer={rtprimer} site={site} brain={brain} region={region}')
     logging.info(f'outdir={outdir} outfile={args.outfile} nocollapse={args.nocollapse}')
+    
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+    
+    
     if args.nocollapse:
         outdf = process_ssifasta_nocollapse(cp, args.infile, outdir=outdir, site=site, datestr=None)
     else:

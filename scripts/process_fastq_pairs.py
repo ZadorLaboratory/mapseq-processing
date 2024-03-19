@@ -40,6 +40,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-r','--max_repeats', 
+                        metavar='max_repeats',
+                        required=False,
+                        default=7,
+                        type=int, 
+                        help='Max homopolymer runs. [7]')
+
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=True,
@@ -58,6 +65,13 @@ if __name__ == '__main__':
                     action="store_true", 
                     default=False, 
                     help='Recalculate even if output exists.') 
+
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
    
     parser.add_argument('infiles' ,
                         metavar='infiles', 
@@ -93,6 +107,22 @@ if __name__ == '__main__':
 
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
     infilelist = package_pairfiles(args.infiles)   
+    
     logging.debug(f'infilelist = {infilelist}')
-    process_fastq_pairs_fasta(cp, infilelist, args.outfile, force=args.force, datestr=args.datestr, max_repeats=7)
+    
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+    
+    process_fastq_pairs_fasta(cp, infilelist, 
+                              args.outfile, 
+                              force=args.force, 
+                              datestr=args.datestr, 
+                              max_repeats=args.max_repeats)
+    
+    
     

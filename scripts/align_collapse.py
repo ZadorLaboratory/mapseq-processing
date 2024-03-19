@@ -43,6 +43,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
+
     parser.add_argument('-a','--aligner', 
                     metavar='aligner',
                     required=False,
@@ -53,7 +60,7 @@ if __name__ == '__main__':
     parser.add_argument('-m','--max_mismatch', 
                         metavar='max_mismatch',
                         required=False,
-                        default=0,
+                        default=3,
                         type=int, 
                         help='Max mismatch for barcode/SSI matching.')
 
@@ -62,12 +69,12 @@ if __name__ == '__main__':
                         required=False,
                         default=30,
                         type=int, 
-                        help='Length of viral barcode to collapse')
+                        help='Length of viral barcode to collapse [30]')
 
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
-                        default=15000,
+                        default=20000,
                         type=int, 
                         help='Max recursion. Handle larger input to collapse() System default ~3000.')
 
@@ -128,6 +135,19 @@ if __name__ == '__main__':
 
     logging.info(f'handling {args.infile} to outdir {args.outdir}')    
     logging.debug(f'infile = {args.infile}')
-    align_collapse_fasta(cp, args.infile, seq_length=args.seq_length, max_mismatch=3, outdir=args.outdir, datestr=args.datestr )
+    
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+     
+    align_collapse_fasta(cp, args.infile, 
+                         seq_length=args.seq_length, 
+                         max_mismatch=args.max_mismatch, 
+                         outdir=args.outdir, 
+                         datestr=args.datestr )
     
     

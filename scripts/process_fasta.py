@@ -41,6 +41,14 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
+
+
     parser.add_argument('-b','--barcodes', 
                         metavar='barcodes',
                         required=False,
@@ -133,6 +141,15 @@ if __name__ == '__main__':
     logging.debug(bcolist)
     logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots} readtsvs={args.readtsvs}')    
     logging.debug(f'infile = {args.infile}')
+    
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+    
     process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, 
                   countsplots=args.countsplots, readtsvs=args.readtsvs, datestr=args.datestr)
     

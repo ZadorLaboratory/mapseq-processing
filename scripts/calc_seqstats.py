@@ -82,33 +82,34 @@ def calc_seqstats(config, sampdf,  infile, outfile=None, outdir=None):
     #
     # all spike-ins are   real = all_real - spike_ins
     #
-    realre = '^[TC][TC]'
+    ltre = '^[TC][TC]'
     lonere = '^[AG][AG]'
     
     logging.info(f'calculating L2s')
     # L2s (includes all reals and valid spikeins)   
-    ltmap = alldf['tail'].str.contains(realre, regex=True) == True
+    ltmap = alldf['tail'].str.contains(ltre, regex=True) == True
     ltdf = alldf[ltmap]
-    
+
+    # L1s
+    logging.info(f'selecting L1s')    
+    lonemap = alldf['tail'].str.contains(lonere, regex=True) == True
+    ldf = alldf[lonemap]
+        
     # Spike-in L2s
     logging.info(f'selecting spike-ins')
     simap = ltdf['sequence'].str.contains(sire, regex=True) == True
     sdf = ltdf[simap]
     
     # Real L2s. 
+    # L2s that do NOT have the spike-in sequence 
     rmap = ltdf['sequence'].str.contains(sire, regex=True) == False
     rdf = ltdf[rmap]
     
-    # L1s
-    logging.info(f'selecting L1s')    
-    lmap = alldf['tail'].str.contains(lonere, regex=True) == True
-    ldf = alldf[lmap]
-    
+    # Matches neither L1 OR L2 2 nucleotide code. 
     logging.info(f'calculating unmatched')
-    remaindf = alldf[~lmap]
+    remaindf = alldf[~lonemap]
     remaindf = remaindf[~ltmap]
-    
-    
+        
     n_total =  len(alldf)
     n_ltwo = len(ltdf)
     n_spikein = len(sdf) 
@@ -120,7 +121,7 @@ def calc_seqstats(config, sampdf,  infile, outfile=None, outdir=None):
     lone_proportion = ( n_lone + 1 )  / ( n_total + 1 )
 
     sh.add_value(f'/seqstats','n_total', n_total)    
-    sh.add_value(f'/seqstats','n_ltwo', n_lone )
+    sh.add_value(f'/seqstats','n_ltwo', n_ltwo )
     sh.add_value(f'/seqstats','n_spikein', n_spikein )
     sh.add_value(f'/seqstats','n_real', n_real )
     sh.add_value(f'/seqstats','n_lone', n_lone )

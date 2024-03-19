@@ -14,7 +14,6 @@
 #    sys.setrecursionlimit(10**6)
 #
 
-
 import argparse
 import logging
 import os
@@ -60,6 +59,13 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
+
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
 
     parser.add_argument('-a','--aligner', 
                     metavar='aligner',
@@ -168,6 +174,15 @@ if __name__ == '__main__':
     #logging.debug(f'\n{sampdf}')    
     # sample info passed as filename rather than dataframe to function
     #    because it needs to be a command line argument to sub-processes. 
+    
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+    
     
     outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir, nocollapse=args.nocollapse)
     logging.info(f'saving output to {outfile}')

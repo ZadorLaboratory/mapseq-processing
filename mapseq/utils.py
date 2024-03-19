@@ -661,6 +661,7 @@ def write_config(config, filename, timestamp=True, datestring=None):
     with open(filename, 'w') as configfile:
         config.write(configfile)
     logging.debug(f'wrote current config to {filename}')
+    
     return os.path.abspath(filename)
     
 
