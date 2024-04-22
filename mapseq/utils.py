@@ -15,6 +15,7 @@ import urllib
 
 from configparser import ConfigParser
 
+
 import datetime as dt
 
 import numpy as np
@@ -379,18 +380,16 @@ def get_mainbase(filepath):
     return base
 
 
-def write_fasta_from_df(df, outfile=None):
+
+def write_fasta_from_df(config, df, outfile=None):
     '''
     Assumes df has 'sequence' column
-    
     '''
-    logging.debug(f'writing {len(df)} sequence as fasta from DF...')
-    idx = 0
+    logging.debug(f'creating bowtie input')
+    srlist = dataframe_to_seqlist(df)
+    logging.debug(f'len srlist={len(srlist)}')
     if outfile is not None:
-        with open(outfile, 'w') as of:
-            for s in df['sequence']:
-                of.write(f'>{idx}\n{s}\n')
-                idx += 1  
+        SeqIO.write(srlist, outfile, 'fasta')
     else:
         logging.error('outfile is None, not implemented.')
     return outfile
@@ -468,7 +467,7 @@ def read_fasta_to_df(infile, seqlen=None):
                     if handled % handled_interval == 0:
                         logging.info(f'handled={handled}')  
             logging.info(f'making df from {len(slist)} sequences...')    
-            df = pd.DataFrame(slist, columns=['sequence'] )
+            df = pd.DataFrame(slist, columns=['sequence'], dtype="string[pyarrow]"  )
             
     else:
         with open(infile) as fa:
@@ -780,6 +779,19 @@ def writelist(filepath, dlist, mode=0o644):
 
     finally:
         pass
+
+def log_objectinfo(obj, label):
+    '''
+    print info about object to the debug log 
+    label should be the variable name for the object
+    '''
+    ot = type(obj)
+    size_gb = ((( sys.getsizeof(fdf) ) / 1024 ) / 1024 ) / 1024
+    logging.debug(f"variable= '{label}' type={ot} size={size_gb:.4f} GB.")
+    
+class DotConfigParser(ConfigParser):
+    def __init__(self):
+        super(DotConfigParser, self)
 
 
 

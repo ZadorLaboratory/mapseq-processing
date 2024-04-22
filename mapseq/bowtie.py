@@ -7,14 +7,15 @@ import os
 import sys
 import traceback
 
-gitpath=os.path.expanduser("~/git/mapseq-processing")
-sys.path.append(gitpath)
-
 import numpy as np
 import pandas as pd
 
 from collections import defaultdict
-from mapseq.utils import *
+
+gitpath=os.path.expanduser("~/git/cshlwork")
+sys.path.append(gitpath)
+
+from cshlwork.utils import *
 
 #
 # Possibly set up to do pipline internally?
@@ -142,7 +143,7 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
 
 
 
-def make_bowtie_df(infile, max_mismatch=3):
+def make_bowtie_df(infile, max_mismatch=3, ignore_self=False):
     with open(infile) as f:
         line=f.readline()
     if line.startswith('@HD'):
@@ -151,7 +152,8 @@ def make_bowtie_df(infile, max_mismatch=3):
         logging.debug(f'df before max_mismatch =< {max_mismatch}')
         df = df[df['n_mismatch'] <= max_mismatch]
         # alignments to *other* sequences only
-        df = df[df['n_mismatch'] > 0]
+        if ignore_self:
+            df = df[df['n_mismatch'] > 0]
         logging.debug(f'df after max_mismatch < {max_mismatch} =\n{df}')
     else:
         logging.debug('Detected bowtie1 input.')
@@ -275,88 +277,6 @@ def make_adjacency_df(bowtiedf):
     return mdf
 
     
-    
 
-if __name__ == '__main__':
-    FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
-    logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.WARN)
-    
-    parser = argparse.ArgumentParser()
-      
-    parser.add_argument('-d', '--debug', 
-                        action="store_true", 
-                        dest='debug', 
-                        help='debug logging')
-
-    parser.add_argument('-v', '--verbose', 
-                        action="store_true", 
-                        dest='verbose', 
-                        help='verbose logging')
-    
-    parser.add_argument('-c','--config', 
-                        metavar='config',
-                        required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
-                        type=str, 
-                        help='config file.')    
-
-    parser.add_argument('-a','--aligner', 
-                    metavar='aligner',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='aligner tool  [bowtie | bowtie2]')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max mismatch for aligner read collapse.')
-
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='Output bowtie DF file')  
-
-    parser.add_argument('infile',
-                        type=str,
-                        help='fasta file')
-       
-    args= parser.parse_args()
-    
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)   
-
-    cp = ConfigParser()
-    cp.read(args.config)
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
-    
-    logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infile={args.infile}')  
-
-    #  config, infile, outfile, tool='bowtie'
-    filepath = os.path.abspath(args.infile)    
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)   
-    btfile = os.path.join(dirname, f'{base}.{args.aligner}') 
-       
-    btout = run_bowtie(cp, args.infile, btfile, tool=args.aligner)
-    logging.info(f'produced {btout}')
-    btdf = make_bowtie_df(btout)
-    logging.info(f'produced DF=\n{btdf}')
-    outfile = args.outfile
-    if outfile is None:
-        outfile= os.path.join(dirname, f'{base}.btdf.tsv')
-    btdf.to_csv(outfile, sep='\t') 
-    
-
-    
 
 

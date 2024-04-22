@@ -98,12 +98,12 @@ def dump_matlab(config, infile, sampdf=None, outdir=None, expid=None, label=None
     writelist(outfile, refseqlist)
     rbcdf = pd.DataFrame(refseqlist, columns=['sequence'])
     outfile = f'{outdir}/refbarcodes.fasta'
-    write_fasta_from_df(rbcdf, './refbarcodes.fasta')
+    write_fasta_from_df(cp, rbcdf, './refbarcodes.fasta')
     
     barcodematrix = annots['barcodematrix']
     logging.debug(f'bcmatrix shape={barcodematrix.shape}')    
     bdf = pd.DataFrame(barcodematrix, index=refseqlist)
-    logging.debug(f'bcmatrix columns={bdf.columns} converting to ')
+    logging.debug(f'bcmatrix columns={list(bdf.columns)} converting to string.')
     bdf.columns = list( [str( x + 1)  for x in list(bdf.columns)] )
     
     if sampdf is not None:
@@ -178,7 +178,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',
-                        required=True,
+                        required=False,
                         default=None,
                         type=str, 
                         help='XLS sampleinfo file. ')

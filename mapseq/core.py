@@ -600,8 +600,13 @@ def tarjan(V):
     import resource, sys
     resource.setrlimit(resource.RLIMIT_STACK, (2**29,-1))
     sys.setrecursionlimit(10**6)
+    
+    Same algorithm as used in MATLAB pipeline. 
+    https://www.mathworks.com/help/matlab/ref/graph.conncomp.html 
+    
+    
     '''
-    def strongconnect(v, S):
+    def strongconnect(v, S): 
         v.root = pos = len(S)
         S.append(v)
         for w in v.succ:
@@ -1863,7 +1868,7 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     logging.info(f'Running {aligner}...')
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
     logging.info(f'Bowtie done. Produced {afile}. Creating btdf dataframe...')
-    btdf = make_bowtie_df(afile, max_mismatch=max_mismatch)
+    btdf = make_bowtie_df(afile, max_mismatch=max_mismatch, ignore_self=True)
     of = os.path.join( outdir , f'{base}.btdf.tsv')
     btdf.to_csv(of, sep='\t') 
     sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
@@ -1930,7 +1935,7 @@ def build_seqmapdict(udf, components):
     '''
     seqmapdict = {}
     comphandled = 0
-    comphandled_interval = 100
+    comphandled_interval = 100000
     comp_len = len(components)
     
     for comp in components:
@@ -1972,5 +1977,6 @@ def collapse_by_components(fulldf, uniqdf, components):
     logging.info('seqmapdict built. Applying.')
     fulldf['sequence'] =fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
     logging.info(f'New collapsed df = \n{fulldf}')
+    log_objectinfo(fulldf, 'fulldf')
     return fulldf
 

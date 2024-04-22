@@ -523,3 +523,40 @@ def collapse_by_components_naive(fulldf, uniqdf, components):
             logging.info(f'handled {comphandled}/{glist_len} components.')
     logging.info(f'new collapsed df = \n{newdf}')
     return newdf
+
+
+def counts_freq(matlabfile, logscale = 'log10', logcol = 'counts' ):
+    '''
+    '''
+    df = pd.read_csv('barcodematrix.tsv',sep='\t', header=None)
+    rowsum = df.sum(axis=1)
+    rowsort = rowsum.sort_values(ascending=False)
+    df = pd.DataFrame(data=rowsort)
+    df.columns = ['counts']
+    df  = df.reset_index(drop=True)
+       
+    df[f'log_{logcol}'] = np.log10(df[f'{logcol}'])
+
+    
+    #if logscale == 'log2':
+    #    df = np.log2(df)
+    #elif logscale == 'log10':
+    #    df = np.log10(df)
+    
+    ax = sns.lineplot(data=df, x=df.index, y=df[ f'log_{logcol}' ])
+    ax.set_title('HZ120Vamp2 counts frequency')
+    ax.set(xlabel='Sequence Rank', ylabel='log10(BC molecule count)')
+    
+    #   OR 
+    # plt.xlabel('x-axis label')
+    # plt.ylabel('y-axis label')
+    
+    plt.savefig('Z120Vamp2.log10.countsfreq.png')
+    #plt.show()
+
+
+    
+    
+    
+    
+

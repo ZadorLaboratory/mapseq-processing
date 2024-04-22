@@ -150,9 +150,9 @@ This typically takes about 12 minutes. (3 minutes on Mac M3)
 ```
 
 This program produces, for each brain, three matrices of viral barcodes by dissected region. This is the step at which (optionally) various threshold can be applied. 
--- Minimum UMI count
--- Filter out VBCs not present in the injection
--- Minimum original read count.   
+-- Minimum UMI count in target and/or injection areas (min_target, min_injection)
+-- Filter out VBCs not present in the injection (require_injection)
+-- Minimum original read count (min_counts)
 
 The three matrices are a real barcode matrix (rbcm), a real barcode matrix normalized by spike-ins (nbcm), and a scaled+normalized barcode matrix (scbcm). The real barcode matrix contains raw numbers of molecules (UMIs) for each VBC. The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. A third, normalized+scaled matrix is useful for drawing heatmaps, since all values are scaled back to values from 0.0 to 1.0 so they can be represented by color intensity.      
 
