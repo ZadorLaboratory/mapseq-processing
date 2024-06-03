@@ -28,18 +28,21 @@ def def_dict_value():
 
 class StatsHandler(object):
     
-    def __init__(self, config, outdir=None, datestr = None ):
+    def __init__(self, config, outdir=None, datestr = None, outfile=None ):
         global MYSTATS
         self.config = config
         if outdir is None:
-            outdir = "."
+            outdir = "./"
         self.outdir = outdir
         self.statsdict = {}
         if datestr is None:
             self.datestr = dt.datetime.now().strftime("%Y%m%d%H%M")    
         else:
             self.datestr = datestr
-        self.filename = os.path.abspath(f'{outdir}/stats.{self.datestr}.json')
+        if outfile is None:
+            self.filename = os.path.abspath(f'{outdir}/stats.{self.datestr}.json')
+        else:
+            self.filename = outfile
         MYSTATS = self
         self.write_stats()
         

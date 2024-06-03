@@ -111,24 +111,27 @@ def dump_matlab(config, infile, sampdf=None, outdir=None, expid=None, label=None
     outfile = f'{outdir}/BarcodeMatrix.tsv'
     bdf.to_csv(outfile, sep='\t')
     logging.debug(f'wrote {outdir}/BarcodeMatrix.tsv')
-    for brain_id in ['1','2']:
+    for brain_id in ['1','2','3']:
         key = f'B{brain_id}'
-        bm = annots[f'{key}norm']
-        seqlist = []
-        for row in annots[f'{key}seq']:
-            s = ''.join([chr(item) for item in row])
-            seqlist.append(s)
-        df = pd.DataFrame(bm, index=seqlist)
-        df.columns = list( [str( x + 1)  for x in list(df.columns)] )
-        if sampdf is not None:
-            df = map_columns(df, sampdf)
-            bcols = get_brain_columns(sampdf, brain_id)
-            logging.debug(f'df cols = {df.columns}')
-            df = df[ bcols ]
-        
-        outfile = f'{outdir}/{key}.norm.tsv'
-        df.to_csv(outfile, sep='\t')
-        logging.debug(f'wrote {outdir}/{key}.norm.tsv')
+        try:
+            bm = annots[f'{key}norm']
+            seqlist = []
+            for row in annots[f'{key}seq']:
+                s = ''.join([chr(item) for item in row])
+                seqlist.append(s)
+            df = pd.DataFrame(bm, index=seqlist)
+            df.columns = list( [str( x + 1)  for x in list(df.columns)] )
+            if sampdf is not None:
+                df = map_columns(df, sampdf)
+                bcols = get_brain_columns(sampdf, brain_id)
+                logging.debug(f'df cols = {df.columns}')
+                df = df[ bcols ]
+            
+            outfile = f'{outdir}/{key}.norm.tsv'
+            df.to_csv(outfile, sep='\t')
+            logging.debug(f'wrote {outdir}/{key}.norm.tsv')
+        except KeyError:
+            logging.debug(f'No key {key}')
    
    
 if __name__ == '__main__':

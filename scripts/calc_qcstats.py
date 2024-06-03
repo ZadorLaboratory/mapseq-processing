@@ -95,23 +95,20 @@ def calc_qcstats(config, sampdf,  infile, outfile=None, outdir=None):
 
     '''
     logging.debug(f'infile={infile} outfile={outfile} ')
-    
     try:
         sh = get_default_stats()
     except:
         sh = StatsHandler(config, outdir=outdir, datestr=None)
     
-    if outdir is not None:
+    if outfile is not None:
+        outdir = os.path.abspath( os.path.dirname(outfile))
+        logging.debug(f'making outdir: {outdir} ')
         os.makedirs(outdir, exist_ok=True)
     else:
-        outdir = './'
+        outfile = './qcstats.txt'
 
-    if outfile is not None:
-        odir = os.path.dirname(outfile)
-        logging.debug(f'making outdir: {odir} ')
-        os.makedirs(odir, exist_ok=True)
-    else:
-        outfile = f'{outdir}/qcstats.txt'    
+    if outdir is not None:
+        os.makedirs(os.path.abspath( outdir) , exist_ok=True)
 
     logging.debug(f'final infile={infile} outfile={outfile} outdir={outdir} ')
     alldf = load_df(infile)
@@ -198,7 +195,7 @@ if __name__ == '__main__':
     outdir = None
     outfile = None
     if args.outfile is not None:
-        outdir = os.path.dirname(args.outfile)
+        outdir = os.path.abspath( os.path.dirname(args.outfile))
         logging.debug(f'making outdir: {outdir} ')
         os.makedirs(outdir, exist_ok=True)
         outfile = args.outfile
@@ -210,7 +207,7 @@ if __name__ == '__main__':
         outdir = args.outdir
 
 
-    sh = StatsHandler(config, outdir=outdir, datestr=None)
+    sh = StatsHandler(config, outdir=outdir, datestr=None, outfile='')
     calc_qcstats(config, sampdf, args.infile, outfile=outfile, outdir=outdir)
     
 

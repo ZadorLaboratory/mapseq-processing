@@ -385,7 +385,7 @@ def write_fasta_from_df(config, df, outfile=None):
     '''
     Assumes df has 'sequence' column
     '''
-    logging.debug(f'creating bowtie input')
+    logging.debug(f'creating FASTA output.')
     srlist = dataframe_to_seqlist(df)
     logging.debug(f'len srlist={len(srlist)}')
     if outfile is not None:

@@ -874,7 +874,10 @@ def load_sample_info(config, file_name):
 
         # Fix brain column
         sdf.loc[ sdf.brain.isna(), 'brain'] = 0
-        sdf.brain = sdf.brain.astype('int')
+        try:
+            sdf.brain = sdf.brain.astype('int')
+        except ValueError:
+            pass
         sdf.brain = sdf.brain.astype('string')
         sdf.loc[ sdf.brain == '0', 'brain'] = ''
 
@@ -1866,6 +1869,8 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     # run allXall bowtie
     of = os.path.join( outdir , f'{base}.bt2.sam')
     logging.info(f'Running {aligner}...')
+    # switch to generic bowtie later... JRH
+    #afile = run_bowtie(config, seqfasta, seqfasta, of, tool=aligner)
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
     logging.info(f'Bowtie done. Produced {afile}. Creating btdf dataframe...')
     btdf = make_bowtie_df(afile, max_mismatch=max_mismatch, ignore_self=True)
@@ -1884,6 +1889,15 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     logging.debug(f'all components len={len(components)}')
     sh.add_value('/collapse','n_components', len(components) )
     edgelist = None  # help memory usage
+
+    # components is list of lists.
+    data = [ len(c) for c in components]
+    data.sort(reverse=True)
+    ccount = pd.Series(data)
+    of = os.path.join( outdir , f'{base}.comp_count.tsv')
+    ccount.to_csv(of, sep='\t') 
+ 
+    
     
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
@@ -1891,6 +1905,7 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     of = os.path.join( outdir , f'{base}.multi.components.txt')
     writelist(of, components)
     
+
     logging.info(f'Collapsing {len(components)} components...')
     newdf = collapse_by_components(fdf, udf, components)
     del fdf 
