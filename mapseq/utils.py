@@ -389,6 +389,7 @@ def write_fasta_from_df(config, df, outfile=None):
     srlist = dataframe_to_seqlist(df)
     logging.debug(f'len srlist={len(srlist)}')
     if outfile is not None:
+        logging.info(f'writing FASTA to {outfile}')
         SeqIO.write(srlist, outfile, 'fasta')
     else:
         logging.error('outfile is None, not implemented.')
@@ -786,7 +787,7 @@ def log_objectinfo(obj, label):
     label should be the variable name for the object
     '''
     ot = type(obj)
-    size_gb = ((( sys.getsizeof(fdf) ) / 1024 ) / 1024 ) / 1024
+    size_gb = ((( sys.getsizeof(obj) ) / 1024 ) / 1024 ) / 1024
     logging.debug(f"variable= '{label}' type={ot} size={size_gb:.4f} GB.")
     
 class DotConfigParser(ConfigParser):

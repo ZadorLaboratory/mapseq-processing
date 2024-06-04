@@ -1866,9 +1866,9 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     logging.info(f'Writing uniques as FASTA to {of}')
     seqfasta = write_fasta_from_df(udf, outfile=of)
     
-    # run allXall bowtie
+    # run allXall bowtiex
     of = os.path.join( outdir , f'{base}.bt2.sam')
-    logging.info(f'Running {aligner}...')
+    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
     # switch to generic bowtie later... JRH
     #afile = run_bowtie(config, seqfasta, seqfasta, of, tool=aligner)
     afile = run_bowtie(config, seqfasta, of, tool=aligner)
