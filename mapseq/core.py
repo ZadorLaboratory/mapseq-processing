@@ -88,7 +88,7 @@ def get_rtlist(sampledf):
     nrtlist = []
     for x in rtlist:
         try:
-            y = int(x)
+            y = int(float(x))
             nrtlist.append(y)
         except ValueError:
             logging.debug(f'ignoring bad int() input.')
@@ -348,6 +348,7 @@ def read_threshold_all(cp, alldf):
     injdf = injdf[ injdf['read_ratio'] > injection_ratio ]
     tardf = tardf[ tardf['read_ratio'] > target_ratio ]
     df_merged = pd.concat([injdf, tardf], ignore_index = True, sort=False)
+    logging.info(f'target_ratio = {target_ratio} injection_ratio = {injection_ratio} before len={len(alldf)} after len={len(df_merged)}')
     return df_merged
        
     
@@ -1218,6 +1219,7 @@ def process_fasta(config, sampdf, infile, bclist, outdir, force=False, countsplo
         if not os.path.exists(outdir):
             os.makedirs(outdir, exist_ok=True)
             logging.debug(f'made outdir={outdir}')
+    
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     

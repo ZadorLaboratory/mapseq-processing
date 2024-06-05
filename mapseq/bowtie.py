@@ -15,7 +15,8 @@ from collections import defaultdict
 gitpath=os.path.expanduser("~/git/cshlwork")
 sys.path.append(gitpath)
 
-from cshlwork.utils import *
+# Stop using cshlwork utils. Copy any needed directly into mapseq package. 
+#from cshlwork.utils import *
 
 #
 # Possibly set up to do pipline internally?

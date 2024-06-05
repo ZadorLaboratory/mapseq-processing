@@ -191,7 +191,7 @@ if __name__ == '__main__':
     # create filtered subset based on reads/UMI ratio. 
     dir, base, ext = split_path(outfile)
     tdfoutfile = f'{dir}/{base}.filtered{ext}'
-    logging.info(f'saving read thresholded output to {outfile}')
+    logging.info(f'saving read thresholded output to {tdoutfile}')
     tdf = read_threshold_all(cp, outdf )
     tdf.to_csv(tdfoutfile, sep='\t')
     
