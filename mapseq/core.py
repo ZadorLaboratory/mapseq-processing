@@ -882,6 +882,9 @@ def load_sample_info(config, file_name):
         sdf.brain = sdf.brain.astype('string')
         sdf.loc[ sdf.brain == '0', 'brain'] = ''
 
+        # fix rtprimer column
+        
+
         for scol in sample_columns:
             try:
                 ser = sdf[scol]
