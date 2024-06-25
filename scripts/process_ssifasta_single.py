@@ -44,12 +44,7 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
-    parser.add_argument('-n', '--nocollapse',
-                        default=True , 
-                        action="store_false", 
-                        dest='nocollapse', 
-                        help='assume input already aligned/collapsed')
-    
+   
     parser.add_argument('-c','--config', 
                         metavar='config',
                         required=False,
@@ -115,7 +110,7 @@ if __name__ == '__main__':
     sampdf = load_sample_info(cp, args.sampleinfo)
     (rtprimer, site, brain, region) = guess_site(args.infile, sampdf)
     logging.info(f'guessed rtprimer={rtprimer} site={site} brain={brain} region={region}')
-    logging.info(f'outdir={outdir} outfile={args.outfile} nocollapse={args.nocollapse}')
+    logging.info(f'outdir={outdir} outfile={args.outfile}')
     
     if args.logfile is not None:
         log = logging.getLogger()
@@ -125,11 +120,8 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    
-    if args.nocollapse:
-        outdf = process_ssifasta_nocollapse(cp, args.infile, outdir=outdir, site=site, datestr=None)
-    else:
-        outdf = process_ssifasta_withcollapse(cp, args.infile, outdir=outdir, site=site, datestr=None)
+    outdf = process_ssifasta(cp, args.infile, outdir=outdir, site=site, datestr=None)
+
     outdf['site'] = site
     outdf['brain'] = brain
     outdf['region'] = region

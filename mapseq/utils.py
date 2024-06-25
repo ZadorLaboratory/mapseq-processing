@@ -28,7 +28,6 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
@@ -197,6 +196,16 @@ def has_base_repeats(seqstring, n=7):
             return True
     return False
 
+def has_n_bases(seqstring, n=0):
+    '''
+    if string contains 'N' <n> times or more.    
+    '''
+    ncount = seqstring.count('N')
+    if ncount > n:
+        return True
+    return False
+
+
 def flatten_list(listoflists):
     flat_list = []
     for row in listoflists:
@@ -216,25 +225,51 @@ def fix_columns_float(df, columns):
     df.replace(0, np.nan, inplace=True)
     return df
 
+
 def fix_columns_int(df, columns):
     '''
     forces column in dataframe to be an integer. NaNs become '0'
     Only floating points can be NaN. No good solution for integers...
-    '''   
+    '''
+    
+    for col in columns:
+        with np.errstate(invalid='raise'):
+            try:
+                logging.debug(f'trying to fix col {col}')
+                fixed = np.array(df[col], np.int16)
+                logging.debug(f'fixed=\n{fixed}')
+                df[col] = fixed
+                
+            except KeyError:
+                logging.warning(f'no column {col}')
+            
+            except ValueError:
+                logging.debug(f'invalid literal in {col}')
+            
+            except FloatingPointError:
+                logging.debug(f'invalid cast value in {col}')
+    return df
+
+
+def fix_columns_str(df, columns):
+    '''
+    forces column in dataframe to be string NaNs become ''
+    '''
     for col in columns:
         try:
             logging.debug(f'trying to fix col {col}')
-            fixed = np.array(df[col], np.int16)
-            logging.debug(f'fixed=\n{fixed}')
-            df[col] = fixed
-                
-        except ValueError:
-            logging.debug(f'invalid literal in {col}')
+            df[col] = df[col].replace(0,'0')
+            df[col] = df[col].replace(np.nan,'')
+            df[col] = df[col].astype('string')
+            df[col] = df[col].str.strip()     
+        except KeyError:
+            pass
+        except Exception as ex:
+            logging.error(f'error while handling {col} ')
+            logging.warning(traceback.format_exc(None))
     return df
 
-                   
-
-
+                 
 def add_rowlist_column(rowlist, colval):
     """
     For use during dataframe construction. Adds col to list of rows with specified.
@@ -381,18 +416,39 @@ def get_mainbase(filepath):
 
 
 
-def write_fasta_from_df(config, df, outfile=None):
+def write_fasta_from_df(df, outfile=None, sequence=['sequence'], header=None, sep=':'):
     '''
-    Assumes df has 'sequence' column
+    header is list of one or more columns to concatenate, using chosen separator. 
+    sequence are columns to use as body. 
+    if more than one column is used as body, header will also contain the column name. 
+    
     '''
-    logging.debug(f'creating FASTA output.')
-    srlist = dataframe_to_seqlist(df)
-    logging.debug(f'len srlist={len(srlist)}')
+    logging.debug(f'writing {len(df)} {sequence} column as fasta from DF...')
+    
     if outfile is not None:
-        logging.info(f'writing FASTA to {outfile}')
-        SeqIO.write(srlist, outfile, 'fasta')
+        with open(outfile, 'w') as of:
+            if header is None:
+                # header is index number
+                idx = 0
+                for i in range(0,len(df)):
+                    for scol in sequence:
+                        s = df.iloc[i][scol]
+                        of.write(f'>{idx}\n{s}\n')
+                        idx += 1                      
+            else:
+                # build header out of columns given. 
+                for i in range(0,len(df)):
+                    for scol in sequence:
+                        r = df.iloc[i]
+                        hlist = list( r[ header ] )
+                        if len(sequence) > 1:
+                            hlist.append(scol)
+                        h = sep.join( hlist )
+                        logging.debug(f'header={h}')
+                        s = r[scol].upper()
+                        of.write(f'>{h}\n{s}\n')    
     else:
-        logging.error('outfile is None, not implemented.')
+            logging.error('outfile is None, not implemented.')
     return outfile
 
 
@@ -519,6 +575,35 @@ def dataframe_to_seqlist(df, seqcol='sequence',idcol=None, desccols=None, sep=':
         srlist.append(sr)
     logging.debug(f'made list of {len(srlist)} SeqRecords')
     return srlist    
+
+
+def calc_thread_count(nthreads):
+    '''
+    check number of threads requested against real CPU count. 
+    allow negative numbers to refer to "use all but X" CPUs
+    ensure value returned is sane. 
+    allow "0" to refer to "all CPUs"
+    None defaults to num_cpus - 2
+    
+    '''
+    if nthreads is None:
+        nthreads = -2
+    ncpus = os.cpu_count()
+    threads = 1 # safe default
+    if nthreads > 1:
+        # use nthreads CPUS up to ncpus.
+        threads = min(nthreads, ncpus)
+        logging.debug(f'nthreads positive. use {threads}') 
+    elif nthreads < 0:
+        # use all but -N CPUs
+        threads = ncpus - abs(nthreads)
+        threads = max(threads, 1)
+        logging.debug(f'nthreads negative. Use all but {abs(nthreads)}')
+    else:
+        # ntrheads is 0
+        logging.debug(f'nthreads = 0, use all CPUS: {ncpus}')
+        threads = ncpus
+    return (ncpus, threads)
             
 
 def convert_numeric(df):

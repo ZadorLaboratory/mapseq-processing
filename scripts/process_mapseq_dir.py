@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 #
+#    
+#
+#   EXP_123/
+#          .sampleinfo.xlsx    
+#          /fastq/F1 F2 F3 F4
 #
 #
-
 import argparse
 import logging
 import os
@@ -47,13 +51,13 @@ def process_mapseq_dir(dirpath, expid, loglevel, conffile=None):
     '''
     E.g. 
    
-    process_fastq_pairs.py -v -o fastq.2.out/M253.all.fasta fastq/M253_CR_S1_R* 
+    process_fastq_pairs.py -v -o fastq.out/M253.all.fasta fastq/M253_CR_S1_R* 
     align_collapse.py -v -b 30 -m 3 -O collapse.2.out fastq.2.out/M253.all.fasta   
     process_fasta.py -v -s M253_sampleinfo.xlsx -O fasta.out collapse.out/M253.all.collapsed.fasta 
     process_ssifasta.py -v -s M253_sampleinfo.xlsx -o ssifasta.out/M253.merged.all.tsv  -O ssifasta.out
     process_merged.py -v -s M253_sampleinfo.xlsx -e M253.default -O merged.out ssifasta.out/M253.all.tsv
     
-    
+
     '''
     logging.info(f'dirpath={dirpath} expid={expid}, loglevel={loglevel}, conffile={conffile}')
     
@@ -87,8 +91,7 @@ def process_mapseq_dir(dirpath, expid, loglevel, conffile=None):
 
     # all scripts...
     scriptroot = f'{gitpath}/scripts'
-    
-    
+        
     #
     # process_fastq_pairs
     #

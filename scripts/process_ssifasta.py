@@ -47,12 +47,7 @@ if __name__ == '__main__':
                         dest='verbose', 
                         help='verbose logging')
 
-    parser.add_argument('-n', '--nocollapse',
-                        default=True, 
-                        action="store_false", 
-                        dest='nocollapse', 
-                        help='assume input already aligned/collapsed')
-    
+   
     parser.add_argument('-c','--config', 
                         metavar='config',
                         required=False,
@@ -67,31 +62,11 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
-    parser.add_argument('-a','--aligner', 
-                    metavar='aligner',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='aligner tool  [bowtie | bowtie2]')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max mismatch for aligner read collapse.')
-
-    parser.add_argument('-r','--recursion', 
-                        metavar='recursion',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max recursion. Handle larger input to collapse() Default is ~5000.')
 
     parser.add_argument('-t','--threads', 
                         metavar='threads',
                         required=False,
-                        default=1,
+                        default=None,
                         type=int, 
                         help='Handle each input file concurrently in a separate process.')
 
@@ -137,21 +112,10 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.INFO)   
 
     cp = ConfigParser()
-    cp.read(args.config)
-    
-    if args.aligner is not None:
-        cp.set('ssifasta','tool', args.aligner)
-    
+    cp.read(args.config)   
     cdict = format_config(cp)
-    
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    
     logging.debug(f'infiles={args.infiles}')
-    logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
-    if args.recursion is not None:
-        rlimit = int(args.recursion)
-        logging.info(f'set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)
     
     outdir = None
     outfile = None
@@ -184,7 +148,7 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     
-    outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir, nocollapse=args.nocollapse)
+    outdf = process_ssifasta_files(cp, args.sampleinfo, args.infiles, numthreads=args.threads, outdir=outdir)
     logging.info(f'saving output to {outfile}')
     outdf.to_csv(outfile, sep='\t')
     

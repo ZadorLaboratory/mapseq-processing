@@ -11,8 +11,6 @@ import sys
 
 from configparser import ConfigParser
 
-import pandas as pd
-
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
@@ -54,7 +52,7 @@ if __name__ == '__main__':
                         type=str,
                         nargs='*',
                         default=None, 
-                        help='Directories to process...')
+                        help='Fastq input to process. ')
        
     args= parser.parse_args()
     

@@ -17,8 +17,6 @@ from mapseq.utils import *
 from mapseq.stats import *
 
 
-
-
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -60,14 +58,14 @@ if __name__ == '__main__':
     parser.add_argument('-m','--max_mismatch', 
                         metavar='max_mismatch',
                         required=False,
-                        default=3,
+                        default=None,
                         type=int, 
                         help='Max mismatch for barcode/SSI matching.')
 
     parser.add_argument('-b','--seq_length', 
                         metavar='seq_length',
                         required=False,
-                        default=30,
+                        default=None,
                         type=int, 
                         help='Length of viral barcode to collapse [30]')
 
@@ -108,8 +106,13 @@ if __name__ == '__main__':
     cp.read(args.config)
     
     if args.aligner is not None:
-        cp.set('ssifasta','tool', args.aligner)
-    
+        cp.set('collapse','tool', args.aligner)
+
+    if args.max_mismatch is not None:
+        cp.set('collapse','max_mismatch', args.max_mismatch)    
+
+    if args.seq_length is not None:
+        cp.set('collapse','seq_length', args.seq_length)
     
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')

@@ -554,7 +554,102 @@ def counts_freq(matlabfile, logscale = 'log10', logcol = 'counts' ):
     plt.savefig('Z120Vamp2.log10.countsfreq.png')
     #plt.show()
 
+def process_ssifasta_withcollapse(config, infile, outdir=None, site=None, datestr=None):
+    '''
+    by default, outdir will be same dir as infile
+    assumes infile fasta has already been trimmed to remove SSI
+    
+    site = ['target-control','injection-control','target','target-negative',target-lone']   
+    Will use relevant threshold. If None, will use default threshold
+    
+    '''
+    aligner = config.get('ssifasta','tool')
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
 
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(config, outdir=outdir, datestr=datestr)
+    #sh = get_default_stats()
+    
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    logging.debug(f'handling {filepath} base={base}')
+    
+    # make raw fasta TSV of barcode-splitter output for one barcode. 
+    # trim to 44 nt since we know last 8 are SSI  
+    logging.debug('calc counts...')
+    seqdf = make_fasta_df(config, infile)
+    of = os.path.join(dirname , f'{base}.read.seq.tsv')
+    seqdf.to_csv(of, sep='\t')
+    
+    # to calculate threshold we need counts calculated. 
+    cdf = make_read_counts_df(config, seqdf, label=base)  
+    logging.debug(f'initial counts df {len(cdf)} all reads.')
+    
+    # these are ***READ*** counts
+    of = os.path.join(dirname , f'{base}.read.counts.tsv')
+    cdf.to_csv(of, sep='\t') 
+        
+    threshold = get_read_count_threshold(config, cdf, site)
+    logging.debug(f'got threshold={threshold} for site {site}')
+    tdf = threshold_read_counts(config, cdf, threshold=threshold)
+    logging.info(f'at threshold={threshold} {len(tdf)} unique molecules.')
+    
+    # thresholded raw counts. duplicates are all one UMI, so set counts to 1. 
+    # each row (should be) a distinct UMI, so trim to 32. 
+    #tdf['counts'] = 1          
+    tdf['sequence'] = tdf['sequence'].str[:32]
+    tdf['umi_count'] = 1
+    
+    # this contains duplicate VBCs with *different* UMIs
+    of = os.path.join(dirname , f'{base}.umi.seq.tsv')
+    tdf.to_csv(of, sep='\t') 
+    
+    # now we have actual viral barcode df with *unique molecule counts.*
+    vbcdf = make_umi_counts_df(config, tdf)
+    of = os.path.join(dirname , f'{base}.umi.counts.tsv')
+    vbcdf.to_csv(of, sep='\t')     
+    
+    # split out spike, real, lone, otherwise same as 32.counts.tsv    
+    #spikedf, realdf, lonedf = split_spike_real_lone_barcodes(config, vbcdf)
+    spikedf, realdf, lonedf, unmatched = split_spike_real_lone_barcodes(config, vbcdf)
+    
+    # write out this step...
+    realdf.to_csv(os.path.join(outdir , f'{base}.real.counts.tsv'), sep='\t')
+    lonedf.to_csv(os.path.join(outdir , f'{base}.lone.counts.tsv'), sep='\t')
+    spikedf.to_csv(os.path.join(outdir , f'{base}.spike.counts.tsv'), sep='\t')
+    unmatched.to_csv(os.path.join(outdir , f'{base}.unmatched.counts.tsv', sep='\t' ))
+
+    # remove homopolymers in real sequences.
+    max_homopolymer_run=int(config.get('ssifasta', 'max_homopolymer_run')) 
+    realdf = remove_base_repeats(realdf, col='sequence', n=max_homopolymer_run)
+     
+    # align and collapse all.         
+    acrealdf = align_and_collapse(config, realdf, outdir, base, 'real')
+    acspikedf = align_and_collapse(config, spikedf, outdir, base, 'spike')
+    aclonedf = align_and_collapse(config, lonedf, outdir, base, 'lone')
+    acrealdf.to_csv(os.path.join(outdir , f'{base}.real.tsv'), sep='\t')
+    acspikedf.to_csv(os.path.join(outdir , f'{base}.spike.tsv'), sep='\t')
+    aclonedf.to_csv(os.path.join(outdir , f'{base}.lone.tsv'), sep='\t')
+
+    # add labels for merging...
+    acrealdf['type'] = 'real'
+    acspikedf['type'] = 'spike'
+    aclonedf['type'] = 'lone'
+
+    outdf = merge_dfs([ acrealdf, acspikedf, aclonedf ])
+    outdf['label'] = base
+    outdf.sort_values(by = ['type', 'umi_count'], ascending = [True, False], inplace=True)
+    outdf.reset_index(drop=True, inplace=True)
+    return outdf
     
     
     

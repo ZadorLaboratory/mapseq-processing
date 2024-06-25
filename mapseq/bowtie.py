@@ -12,11 +12,10 @@ import pandas as pd
 
 from collections import defaultdict
 
-gitpath=os.path.expanduser("~/git/cshlwork")
+gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-# Stop using cshlwork utils. Copy any needed directly into mapseq package. 
-#from cshlwork.utils import *
+from mapseq.utils import *
 
 #
 # Possibly set up to do pipline internally?
@@ -52,6 +51,14 @@ OPT_MAP = { 'score'     : 'AS',
             'md'        : 'MD',
             'yt'        : 'YT'    
             }
+
+
+
+class NonZeroReturnException(Exception):
+    """
+    Thrown when a command has non-zero return code. 
+    """
+    
 
 
 def run_bowtie(config, infile, outfile, tool='bowtie'):
@@ -107,7 +114,7 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
     threads = config.get(tool, 'threads')
 
     if tool == 'bowtie':    
-        max_mismatch = config.get(tool, 'max_mismatch')
+        max_mismatch = config.get('bowtie', 'max_mismatch')
         cmd = ['bowtie',
                '-v', max_mismatch,
                '-p', threads, # # threads
@@ -129,7 +136,6 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
                '-S', outfile, 
                infile,
                ]
-    
     
     logging.debug(f'running bowtie...')
     try:

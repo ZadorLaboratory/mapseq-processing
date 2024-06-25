@@ -47,6 +47,13 @@ if __name__ == '__main__':
                         type=int, 
                         help='Max homopolymer runs. [7]')
 
+    parser.add_argument('-n','--max_n_bases', 
+                        metavar='max_n_bases',
+                        required=False,
+                        default=0,
+                        type=int, 
+                        help='Max number of ambiguous bases.')
+
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=True,
@@ -122,7 +129,8 @@ if __name__ == '__main__':
                               args.outfile, 
                               force=args.force, 
                               datestr=args.datestr, 
-                              max_repeats=args.max_repeats)
+                              max_repeats=args.max_repeats,
+                              max_n_bases=args.max_n_bases)
     
     
     

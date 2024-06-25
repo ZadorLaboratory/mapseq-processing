@@ -25,7 +25,6 @@ MYSTATS = None
 def def_dict_value(): 
     return defaultdict(def_dict_value)
 
-
 class StatsHandler(object):
     
     def __init__(self, config, outdir=None, datestr = None, outfile=None ):

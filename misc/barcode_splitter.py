@@ -1,20 +1,61 @@
 #!/usr/bin/env python
+#
+# Generic SSI barcode splitter, a la fastx_barcode_splitter.py
+#
+#
+
 import argparse
 import logging
 import os
 import sys
 
-from configparser import ConfigParser
+#from pprint import pprint
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
-import pandas as pd
+from configparser import ConfigParser
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import *
 from mapseq.barcode import *
-from mapseq.utils import *
 from mapseq.stats import *
+
+def format_config(cp):
+    cdict = {section: dict(cp[section]) for section in cp.sections()}
+    #s = pprint.pformat(cdict, indent=4)
+    s = pp.pprint(cdict)
+    return s
+
+def write_config(cp, filename, timestamp=True, datestring=None):
+    '''
+    writes config file to relevant name,
+    if timestamp=True, puts date/time code dot-separated before extension. e.g.
+    filename = /path/to/some.file.string.txt  ->  /path/to/some.file.string.202303081433.txt
+    date is YEAR/MO/DY/HR/MI
+    if datestring is not None, uses that timestamp
+    
+    '''
+    filepath = os.path.abspath(filename)    
+    dirname = os.path.dirname(filepath)
+    basefilename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(basefilename) 
+    
+    if timestamp:
+        if datestring is None:
+            datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+        else:
+            datestr = datestring
+        filename = f'{dirname}/{base}.{datestr}{ext}'
+
+    os.makedirs(dirname, exist_ok=True)
+        
+    with open(filename, 'w') as configfile:
+        cp.write(configfile)
+    logging.debug(f'wrote current config to {filename}')
+    return os.path.abspath(filename)
+
+
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -36,7 +77,7 @@ if __name__ == '__main__':
     parser.add_argument('-c','--config', 
                         metavar='config',
                         required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/splitter.conf'),
                         type=str, 
                         help='out file.')    
 
@@ -53,13 +94,6 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
                         type=str, 
                         help='barcode file space separated: label   sequence')
-
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=False,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -79,18 +113,6 @@ if __name__ == '__main__':
                     action="store_true", 
                     default=False, 
                     help='Recalculate even if output exists.') 
-
-    parser.add_argument('-p', '--countsplots', 
-                        action="store_true", 
-                        dest='countsplots',
-                        default=False, 
-                        help='create countsplots for all barcodes.' )
-
-    parser.add_argument('-r', '--readtsvs', 
-                        action="store_true", 
-                        dest='readtsvs',
-                        default=False, 
-                        help='create read tsvs.' )   
    
     parser.add_argument('infile',
                         metavar='infile',
@@ -123,21 +145,7 @@ if __name__ == '__main__':
         dirname = os.path.dirname(filepath)
         outdir = dirname
 
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-    rtlist = get_rtlist(sampdf)
-
-    logging.debug(f'making barcodes with label list={rtlist}')
-    bcolist = load_barcodes(cp, 
-                            args.barcodes, 
-                            labels=rtlist, 
-                            outdir=outdir, 
-                            eol=True, 
-                            max_mismatch=0)
-    logging.info(f'made list of barcode handlers, length={len(bcolist)}')
-    logging.debug(bcolist)
-    logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots} readtsvs={args.readtsvs}')    
+    logging.info(f'handling {args.infile} to outdir {args.outdir}')    
     logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
@@ -147,9 +155,8 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
-    process_fasta(cp, args.infile, bcolist, outdir=args.outdir, force=args.force, datestr=args.datestr)
     
-    #process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, 
-    #              countsplots=args.countsplots, readtsvs=args.readtsvs, datestr=args.datestr)
+    split_fasta(cp, args.infile, args.barcodes, 
+                outdir=args.outdir, force=args.force, datestr=args.datestr)
     
     

@@ -4,11 +4,11 @@
 #
 #
 import atexit
+import datetime as dt
 import logging
 import os
 import pprint 
 import traceback
-
 
 import pandas as pd
 
@@ -17,7 +17,148 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 from collections import defaultdict
-pp = pprint.PrettyPrinter(indent=4)
+
+
+from mapseq.stats import *
+from mapseq.utils import *
+
+
+def write_config(cp, filename, timestamp=True, datestring=None):
+    '''
+    writes config file to relevant name,
+    if timestamp=True, puts date/time code dot-separated before extension. e.g.
+    filename = /path/to/some.file.string.txt  ->  /path/to/some.file.string.202303081433.txt
+    date is YEAR/MO/DY/HR/MI
+    if datestring is not None, uses that timestamp
+    
+    '''
+    filepath = os.path.abspath(filename)    
+    dirname = os.path.dirname(filepath)
+    basefilename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(basefilename) 
+    
+    if timestamp:
+        if datestring is None:
+            datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+        else:
+            datestr = datestring
+        filename = f'{dirname}/{base}.{datestr}{ext}'
+
+    os.makedirs(dirname, exist_ok=True)
+        
+    with open(filename, 'w') as configfile:
+        cp.write(configfile)
+    logging.debug(f'wrote current config to {filename}')
+    return os.path.abspath(filename)
+
+
+def split_fasta(cp, infile, barcodefile, outdir, force=False, datestr=None):
+    '''
+    Take paired FASTA file as input rather than raw FASTQ
+    Use combined barcode sorter structure to minimize character comparisons. 
+
+    '''
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+    
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    
+    bclist = load_barcodes(cp, 
+                            barcodefile, 
+                            labels=None, 
+                            outdir=outdir, 
+                            eol=True, 
+                            max_mismatch=0)
+    logging.info(f'made list of barcode handlers, length={len(bclist)}')
+    logging.debug(bclist)
+    
+    output_exists = check_output(bclist)
+    cfilename = f'{outdir}/splitter.config.txt'
+    bc_length=len(bclist[0].barcode)
+    unmatched = os.path.abspath(f'{outdir}/unmatched.fasta')
+    
+    seqhandled_interval = int(cp.get('splitter','seqhandled_interval')) 
+    matched_interval = int(cp.get('splitter','matched_interval'))
+    unmatched_interval = int(cp.get('splitter','unmatched_interval'))
+    
+    logging.info(f'performing split. outdir={outdir} output_exists={output_exists} force={force} ')
+    
+    if ( not output_exists ) or force:
+        write_config(cp, cfilename, timestamp=True, datestring=datestr)
+        sh = StatsHandler(cp, outdir=outdir, datestr=datestr)        
+        # create structure to search for all barcode simultaneously
+        labeldict = {}
+        for bco in bclist:
+            labeldict[bco.barcode] = bco.label
+        matchdict, seqdict, unmatched_file = build_bcmatcher(bclist) 
+
+        pairshandled = 0
+        num_handled_total = 0
+        num_matched_total = 0
+        num_unmatched_total = 0
+
+        # handle all sequences in input 
+        with open(infile) as f:
+            num_handled = 0
+            num_matched = 0
+            num_unmatched = 0
+            
+            logging.debug(f'handling file {infile}')
+            while True:
+                try:
+                    line = f.readline()
+                    if line.startswith('>'):
+                        pass
+                    else:
+                        if len(line) == 0:
+                            raise StopIteration
+                        
+                        fullread = line.strip()
+                        # handle sequence
+                        matched = False
+                        seq = fullread[-bc_length:]
+                        # id, seq, matchdict, fullseq, unmatched
+                        matched = do_match(num_handled, seq, matchdict, fullread, unmatched_file)
+                        num_handled += 1
+                        num_handled_total += 1
+    
+                        # report progress...                    
+                        if not matched:
+                            num_unmatched += 1
+                            num_unmatched_total += 1                        
+                            if num_unmatched % unmatched_interval == 0:
+                                logging.debug(f'{num_unmatched} unmatched so far.')
+                        else:
+                            num_matched += 1
+                            num_matched_total += 1
+                            if num_matched % matched_interval == 0:
+                                logging.debug(f'match {num_matched}: found SSI in {fullread}!')                        
+    
+                        if num_handled % seqhandled_interval == 0: 
+                            logging.info(f'handled {num_handled} matched={num_matched} unmatched={num_unmatched}')
+                    
+                except StopIteration as e:
+                    logging.debug('iteration stopped')    
+                    break
+            
+        logging.debug(f'finished with {infile}')
+        sh.add_value('/fasta','reads_handled', num_handled_total )
+        sh.add_value('/fasta','reads_unmatched', num_unmatched_total )
+        f.close()
+        
+        matchrate = 0.0
+        if num_matched_total > 0: 
+            unmatchrate = num_unmatched_total / num_matched_total              
+            matchrate = 1.0 - unmatchrate
+        logging.info(f'handled {num_handled_total} sequences. {num_matched_total} matched. {num_unmatched_total} unmatched matchrate={matchrate}')
+    else:
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
+    
 
 def build_bcmatcher(bclist):
     '''
