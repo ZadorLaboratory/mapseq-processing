@@ -1466,6 +1466,8 @@ def normalize_weight(df, weightdf, columns=None):
     Assumes matrices have same columns!!  
     If column numbers are mis-matched, will create empty column
     If columns is none, use/weight all columns, otherwise ignore unlisted columns
+
+    !! only use target columns. 
     
     '''
     logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
@@ -1623,10 +1625,11 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
     if outdir is None:
         outdir = './'
 
-    require_injection = config.getboolean('analysis','require_injection')
-    min_injection = int(config.get('analysis','min_injection'))
-    min_target = int(config.get('analysis','min_target'))   
-    use_target_negative=config.getboolean('analysis','use_target_negative')
+    require_injection = config.getboolean('merged','require_injection')
+    min_injection = int(config.get('merged','min_injection'))
+    min_target = int(config.get('merged','min_target'))   
+    use_target_negative=config.getboolean('merged','use_target_negative')
+    
     clustermap_scale = config.get('analysis','clustermap_scale')
       
     if expid is None:
@@ -1712,6 +1715,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
             logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
     
             (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
+            
             
             nbcmdf = normalize_weight(fbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')

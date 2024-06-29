@@ -80,12 +80,6 @@ if __name__ == '__main__':
                     default=False, 
                     help='Recalculate even if output exists.') 
 
-    parser.add_argument('-p', '--countsplots', 
-                        action="store_true", 
-                        dest='countsplots',
-                        default=False, 
-                        help='create countsplots for all barcodes.' )
-
     parser.add_argument('-r', '--readtsvs', 
                         action="store_true", 
                         dest='readtsvs',
