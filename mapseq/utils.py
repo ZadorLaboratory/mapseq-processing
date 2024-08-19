@@ -15,7 +15,6 @@ import urllib
 
 from configparser import ConfigParser
 
-
 import datetime as dt
 
 import numpy as np

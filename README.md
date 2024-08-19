@@ -127,8 +127,7 @@ This program actually calls a sub-program that handles each SSI  barcode in a se
 ```
 ~/git/mapseq-processing/scripts/process_ssifasta.py 
 	-v				# give verbose output
-	-n 				# do not collapse (already done earlier)
-	-t 24				# processes to use 
+	-t 6				# processes to use 
 	-s M211_sampleinfo.xlsx 	# sample metadata 
 	-o M211.merged.all.tsv		# output file for all VBCs 
 	-O ./ssifasta.out 		# output directory

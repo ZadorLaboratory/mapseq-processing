@@ -31,6 +31,7 @@ Install dependencies, useful tools:
     
     For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )
     conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl natsort
+	brew install bowtie2
 
 Clone the mapseq-processing software from the repository to the standard location:
 
