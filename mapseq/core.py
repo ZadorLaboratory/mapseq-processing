@@ -700,7 +700,7 @@ def load_sample_info(config, file_name):
         }
     
     sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
-    int_sample_col = ['usertube', 'ourtube', 'rtprimer','region', 'matrixcolumn']     # brain is sometimes not a number. 
+    int_sample_col = ['usertube', 'ourtube', 'rtprimer', 'region', 'matrixcolumn']     # brain is sometimes not a number. 
     str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
 
     if file_name.endswith('.xlsx'):
@@ -725,6 +725,11 @@ def load_sample_info(config, file_name):
             except Exception as ex:
                 logging.error(f'error while handling {ecol} ')
                 logging.warning(traceback.format_exc(None))
+                
+        logging.debug(f"rtprimer = {sdf['rtprimer']} dtype={sdf['rtprimer'].dtype}")
+        
+        # Only keep rows with rtprimer info. 
+        sdf = sdf[sdf['rtprimer'].isna() == False]
 
         # Fix brain column
         sdf.loc[ sdf.brain.isna(), 'brain'] = 0
@@ -735,9 +740,9 @@ def load_sample_info(config, file_name):
         sdf.brain = sdf.brain.astype('string')
         sdf.loc[ sdf.brain == '0', 'brain'] = ''
 
-        # fix rtprimer column
+        # fix rtprimer column, if it was read as float string (e.g '127.0' )
+        #sdf['rtprimer'] =  sdf['rtprimer'].astype(float).astype(int).astype(str)
         
-
         for scol in sample_columns:
             try:
                 ser = sdf[scol]
