@@ -131,7 +131,7 @@ if __name__ == '__main__':
                             max_mismatch=0)
     logging.info(f'made list of barcode handlers, length={len(bcolist)}')
     logging.debug(bcolist)
-    logging.info(f'handling {args.infile} to outdir {args.outdir} with countsplots={args.countsplots} readtsvs={args.readtsvs}')    
+    logging.info(f'handling {args.infile} to outdir {args.outdir} ')    
     logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:

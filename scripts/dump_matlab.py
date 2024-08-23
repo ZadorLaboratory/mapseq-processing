@@ -97,8 +97,9 @@ def dump_matlab(config, infile, sampdf=None, outdir=None, expid=None, label=None
     outfile = f'{outdir}/refbarcodes.txt'
     writelist(outfile, refseqlist)
     rbcdf = pd.DataFrame(refseqlist, columns=['sequence'])
+    logging.debug(f'refseqlist dataframe={rbcdf}')
     outfile = f'{outdir}/refbarcodes.fasta'
-    write_fasta_from_df(cp, rbcdf, './refbarcodes.fasta')
+    write_fasta_from_df(rbcdf, './refbarcodes.fasta')
     
     barcodematrix = annots['barcodematrix']
     logging.debug(f'bcmatrix shape={barcodematrix.shape}')    

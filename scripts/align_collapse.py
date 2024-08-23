@@ -109,10 +109,10 @@ if __name__ == '__main__':
         cp.set('collapse','tool', args.aligner)
 
     if args.max_mismatch is not None:
-        cp.set('collapse','max_mismatch', args.max_mismatch)    
+        cp.set('collapse','max_mismatch', str(args.max_mismatch))    
 
     if args.seq_length is not None:
-        cp.set('collapse','seq_length', args.seq_length)
+        cp.set('collapse','seq_length', str(args.seq_length) )
     
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
