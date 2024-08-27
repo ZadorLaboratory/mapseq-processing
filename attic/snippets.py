@@ -31,6 +31,25 @@ def trim_fasta(config, infile, outdir=None, length=44):
 
 
 
+def calc_min_target(config, braindf):
+    '''
+    how many molecules (unique UMIs) are in supposedly target-negative area?
+    
+    '''
+    countlist = []
+    min_target = 0
+    braindf['umi_count'] = braindf['umi_count'].astype(int)
+    tndf = braindf[ braindf['site'] == 'target-negative']
+    tndf = tndf[ tndf['type'] == 'real']
+    lablist = list(tndf['label'].dropna().unique())
+    for label in lablist:
+        ldf = tndf[tndf['label'] == label]
+        if len(ldf) > 0:
+            countlist.append( ldf['umi_count'].sum())
+    if len(countlist) > 0:
+        min_target = max(countlist)
+        logging.debug(f'calculated min_target={min_target}')
+    return min_target
 
 
 def max_hamming(sequence, sequencelist):

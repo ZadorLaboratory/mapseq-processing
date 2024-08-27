@@ -466,25 +466,29 @@ def make_fasta_df(config, infile, ignore_n=True):
 
 
 
-def calc_min_target(config, braindf):
+def calc_min_threshold(config, df, site='target-negative'):
     '''
-    how many molecules (unique UMIs) are in supposedly target-negative area?
-    
+    retrieve maximum umi_count value for provided site type. 
+    returns max max value...
+
     '''
+    logging.debug(f'getting UMI threshold type={site}')
     countlist = []
-    min_target = 0
-    braindf['umi_count'] = braindf['umi_count'].astype(int)
-    tndf = braindf[ braindf['site'] == 'target-negative']
-    tndf = tndf[ tndf['type'] == 'real']
+    min_threshold = 0
+    df['umi_count'] = df['umi_count'].astype(int)
+    tndf = df[ df['site'] == site]
     lablist = list(tndf['label'].dropna().unique())
     for label in lablist:
         ldf = tndf[tndf['label'] == label]
         if len(ldf) > 0:
-            countlist.append( ldf['umi_count'].sum())
+            maxumi = ldf['umi_count'].max()
+            logging.debug(f'max umi_count for label {label} = {maxumi}')
+            countlist.append( maxumi )
     if len(countlist) > 0:
-        min_target = max(countlist)
-        logging.debug(f'calculated min_target={min_target}')
-    return min_target
+        min_threshold = max(countlist)
+        logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
+    return min_threshold
+
 
 
 def get_read_count_threshold(config, cdf, site=None):
@@ -1546,13 +1550,14 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
     min_injection = int(config.get('merged','min_injection'))
     min_target = int(config.get('merged','min_target'))   
     use_target_negative=config.getboolean('merged','use_target_negative')
+    use_target_water_control=config.getboolean('merged','use_target_water_control')
     
     clustermap_scale = config.get('analysis','clustermap_scale')
       
     if expid is None:
         expid = 'M000'
     
-    logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} use_target_negative={use_target_negative} ')
+    logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
 
     alldf['brain'] = alldf['brain'].astype('string')
     bidlist = list(alldf['brain'].dropna().unique())
@@ -1574,9 +1579,16 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
         # defined, use min_target and throw warning. 
         if use_target_negative:
             logging.info(f'use_target_negative is {use_target_negative}')
-            min_target = calc_min_target(config, bdf)
-            if min_target != 0:
-                logging.debug(f'non-zero target-negative UMI count = {min_target}')
+            max_negative = calc_min_threshold(config, bdf, 'target-negative')
+            logging.debug(f'target-negative UMI count = {max_negative}')
+
+        if use_target_water_control:
+            logging.info(f'use_target_water_control is {use_target_water_control}')
+            max_water_control = calc_min_threshold(config, bdf, 'target-water-control')
+            logging.debug(f'target_water_control UMI count = {max_water_control}')
+        
+        min_target = max([ min_target, max_negative, max_water_control ])
+        logging.debug(f'min_target UMI count after all constraints = {min_target}')   
 
         # min_target is now either calculated from target-negative, or from config. 
         if min_target > 1:
