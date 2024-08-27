@@ -652,6 +652,96 @@ def process_ssifasta_withcollapse(config, infile, outdir=None, site=None, datest
     return outdf
     
     
+def align_and_collapse(config, countsdf, outdir, base, label):
+    '''
+    countsdf  'sequence' 'read_count' 'umi_count' columns
+    outdir    working dir or temp dir. 
+    base      leading file name, e.g. barcode label, e.g. 'SSI4'
+    label     type of sequence, e.g. real, spike, L1 (lone)
     
+    '''
+    sh = get_default_stats()
+    newdf = None
+    logging.debug(f'handling {base} {label}s...')
+    aligner = config.get('ssifasta','tool')
+    num_sequences = len(countsdf)
+    num_reads = countsdf.read_count.sum()
+    logging.info(f'{base} {label} {num_sequences} sequences, representing {num_reads} reads.')      
+    # sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
+    sh.add_value(f'/ssifasta/{base}/{label}','num_sequences',len(countsdf))
+    sh.add_value(f'/ssifasta/{base}/{label}','num_reads',len(countsdf))
+    
+    of = os.path.join( outdir , f'{base}.{label}.seq.fasta')
+    logging.debug(f'make fasta for {aligner} = {of}') 
+    seqfasta = write_fasta_from_df(countsdf, outfile=of)
+    of = os.path.join(outdir , f'{base}.{label}.{aligner}')
+    logging.debug(f'running {aligner}...')
+    try:
+        afile = run_bowtie(config, seqfasta, of, tool=aligner )  
+        logging.debug(f'handle {aligner} align file: {afile}')
+        btdf = make_bowtie_df(afile)
+        of = os.path.join(outdir , f'{base}.{label}.btdf.tsv')
+        btdf.to_csv(of, sep='\t') 
+        edgelist = edges_from_btdf(btdf)
+        components = get_components(edgelist)
+        logging.debug(f'countdf columns are {countsdf.columns}')
+        newdf = collapse_umi_counts_df(countsdf, components)
+        logging.debug(f'orig len={num_sequences}, {len(components)} components, collapsed len={len(newdf)}')
+        sh.add_value(f'/ssifasta/{base}/{label}','num_collapsed', len(newdf) )
+
+    except NonZeroReturnException:
+        logging.warning(f'NonZeroReturn Exception. Probably no {label}s found. ')
+        newdf = pd.DataFrame(columns = ['sequence','counts'])
+    return newdf
+
+
+
+def collapse_umi_counts_df(countsdf, components):
+    '''
+    takes components consisting of indices
+    determines sequence with largest count columns: 'sequence', 'umi_counts'
+    collapses all other member components to the sequence of the largest.
+    adds their counts to that of that sequence.
+    retain columns and values for highest counts row. 
+    
+    *** need to *sum*  read_counts column as well... 
+    
+     
+    '''
+    # list of lists to collect values..
+    logging.debug(f'collapsing countsdf len={len(countsdf)} w/ {len(components)} components.')
+    lol = []
+    colnames = list(countsdf.columns)
+    for component in components:
+        logging.debug(f'component={component}')
+        # make new df of only component sequence rows
+        cdf = countsdf.iloc[component].reset_index(drop=True)
+        logging.debug(f'cdf=\n{cdf}')
+        # which sequence has highest count?
+        maxid = cdf['umi_count'].idxmax()
+        # extract sequence and count as python list
+        row = list(cdf.iloc[maxid])
+        # set counts as sum of all collapse sequences. 
+        row[1] = cdf['read_count'].sum()
+        row[2] = cdf['umi_count'].sum()
+        lol.append(row)
+    
+        if logging.getLogger().level <= logging.DEBUG:
+            slist = list(cdf['sequence'])
+            logging.debug(f'slist={slist}')
+            if len(slist) > 1:
+                s = row[0]
+                maxdiff = max_hamming(s, slist)
+                logging.debug(f'max_hamming = {maxdiff} n_seqs={len(slist)}')
+            else:
+                 logging.debug(f'skip distance calc, one sequence in component.')
+        
+    newdf = pd.DataFrame(data=lol, columns=colnames)
+    logging.debug(f'original len={len(countsdf)} collapsed len={len(newdf)}')
+    newdf.sort_values('umi_count',ascending=False, inplace=True)
+    newdf.reset_index(drop=True, inplace=True)
+    return newdf
+
+
     
 
