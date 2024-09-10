@@ -708,158 +708,13 @@ def merge_fastq_pairs(config, readfilelist, outdir):
         pairshandled += 1    
 
 
-def process_fastq_pairs(config, sampdf, readfilelist, bclist, outdir, force=False, countsplots=False, readtsvs=False, datestr=None):
-    '''
-    Do not use BioConda data structures. 
-    Use combined barcode sorter structure to minimize character comparisons. 
-
-    '''
-    if outdir is None:
-        outdir = "."
-    else:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-            logging.debug(f'made outdir={outdir}')
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-
-    if countsplots:
-        readtsvs = True
-    
-    output_exists = check_output(bclist)
-    logging.debug(f'output_exists={output_exists} force={force}')
-
-    cfilename = f'{outdir}/process_fastq.config.txt'
-    bc_length=len(bclist[0].barcode)
-    outfile = os.path.abspath(f'{outdir}/unmatched.fasta')
-    pairedfile = os.path.abspath(f'{outdir}/paired.txt')    
-    r1s = int(config.get('fastq','r1start'))
-    r1e = int(config.get('fastq','r1end'))
-    r2s = int(config.get('fastq','r2start'))
-    r2e = int(config.get('fastq','r2end'))    
-
-    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
-    matched_interval = int(config.get('fastq','matched_interval'))
-    unmatched_interval = int(config.get('fastq','unmatched_interval'))
-    #seqhandled_interval = 1000000 
-    #matched_interval = 1000000
-    #unmatched_interval = 1000000
-    
-    if ( not output_exists ) or force:
-        write_config(config, cfilename, timestamp=True, datestring=datestr)
-        sh = StatsHandler(config, outdir=outdir, datestr=datestr)        
-        # create structure to search for all barcode simultaneously
-        labeldict = {}
-        for bco in bclist:
-            labeldict[bco.barcode] = bco.label
-        matchdict, seqdict, unmatched_file = build_bcmatcher(bclist) 
-
-        pf = open(pairedfile, 'w')
-        pairshandled = 0
-        num_handled_total = 0
-        num_matched_total = 0
-        num_unmatched_total = 0
-
-        # handle all pairs of readfiles from readfilelist
-        for (read1file, read2file) in readfilelist:
-            pairshandled += 1
-            num_handled = 0
-            num_matched = 0
-            num_unmatched = 0
-            
-            logging.debug(f'handling file pair {pairshandled}')
-            if read1file.endswith('.gz'):
-                r1f = gzip.open(read1file, "rt")
-            else:
-                r1f = open(read1file)
-            
-            if read2file.endswith('.gz'):
-                r2f = gzip.open(read2file, "rt")         
-            else:
-                r2f = open(read2file)
-        
-            while True:
-                try:
-                    meta1 = r1f.readline()
-                    if len(meta1) == 0:
-                        raise StopIteration
-                    seq1 = r1f.readline().strip()
-                    sep1 = r1f.readline()
-                    qual1 = r1f.readline().strip()
-
-                    meta2 = r2f.readline()
-                    if len(meta2) == 0:
-                        break
-                    seq2 = r2f.readline().strip()
-                    sep2 = r2f.readline()
-                    qual2 = r2f.readline().strip()                    
-
-                    sub1 = seq1[r1s:r1e]
-                    sub2 = seq2[r2s:r2e]
-                    fullread = sub1 + sub2
-                    pf.write(f'{fullread}\n')
-                    
-                    matched = False
-                    seq = fullread[-bc_length:]
-                    # id, seq, matchdict, fullseq, unmatched
-                    matched = do_match(num_handled, seq, matchdict, fullread, unmatched_file)
-                    
-                    num_handled += 1
-                    num_handled_total += 1
-
-                    # report progress...                    
-                    if not matched:
-                        num_unmatched += 1
-                        num_unmatched_total += 1                        
-                        if num_unmatched % unmatched_interval == 0:
-                            logging.debug(f'{num_unmatched} unmatched so far.')
-                    else:
-                        num_matched += 1
-                        num_matched_total += 1
-                        if num_matched % matched_interval == 0:
-                            logging.debug(f'match {num_matched}: found SSI in {fullread}!')                        
-
-                    if num_handled % seqhandled_interval == 0: 
-                        logging.info(f'handled {num_handled} reads from pair {pairshandled}. matched={num_matched} unmatched={num_unmatched}')
-                
-                except StopIteration as e:
-                    logging.debug('iteration stopped')    
-                    break
-            
-            logging.debug(f'finished with pair {pairshandled} saving pair info.')
-            sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
-            sh.add_value(f'/fastq/pair{pairshandled}','reads_matched', num_matched) 
-            sh.add_value(f'/fastq/pair{pairshandled}','reads_unmatched', num_unmatched)
-            num_unmatched_total += num_unmatched
-   
-        sh.add_value('/fastq','reads_handled', num_handled_total )
-        sh.add_value('/fastq','reads_unmatched', num_unmatched_total )
-               
-        pf.close()              
-        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs. {num_matched_total} matched. {num_unmatched_total} unmatched')
-    else:
-        logging.warn('All FASTA output exists and force=False. Not recalculating.')
-    
-    if readtsvs:
-        filelist = []
-        for bch in bclist:
-            filelist.append(bch.filename)
-        logging.info(f'Making counts dfs/TSVs for {filelist} in {outdir}')
-        make_read_counts_dfs(config, filelist, outdir)
-
-    
-    if countsplots:
-        logging.info('Making combined counts plots PDF...')
-        countsfilelist = []
-        for bch in bclist:
-            base = get_mainbase(bch.filename)   
-            of = os.path.join(dirname , f'{base}.read.counts.tsv')
-            countsfilelist.append(of)
-        make_read_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
 
 
-
-def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datestr=None, max_repeats=None, max_n_bases=None):
+def process_fastq_pairs(cp, infilelist, outfile , 
+                        force=False,  
+                        datestr=None, 
+                        max_repeats=None, 
+                        max_n_bases=None):
     '''
     parses paired-end fastq files. merges from r1 and r2 at selected positions. 
     outputs to single fasta file. 
@@ -875,9 +730,11 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
     
     QC drop all sequences with any N in them. 
     Drop all sequences with homopolymer runs > max_homopolymers
+
+    Create read-count frequency TSV and shoulder plot. <outfile>.counts.tsv <outfile>.plot.pdf
     
     '''
-    filepath = os.path.abspath(outfile)    
+    outfile = os.path.abspath(outfile)    
     outdir = os.path.dirname(outfile)
     if not os.path.exists(outdir):
         os.makedirs(outdir, exist_ok=True)
@@ -886,20 +743,22 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
 
-    sh = StatsHandler(config, outdir=outdir, datestr=datestr)  
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)  
 
-    r1s = int(config.get('fastq','r1start'))
-    r1e = int(config.get('fastq','r1end'))
-    r2s = int(config.get('fastq','r2start'))
-    r2e = int(config.get('fastq','r2end'))    
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))    
 
     if max_repeats is None:
-        max_repeats = int(config.get('fastq','max_repeats')) 
+        max_repeats = int(cp.get('fastq','max_repeats')) 
 
     if max_n_bases is None:
-        max_n_bases = int(config.get('fastq','max_n_bases'))
+        max_n_bases = int(cp.get('fastq','max_n_bases'))
         
-    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
+    seqhandled_interval = int(cp.get('fastq','seqhandled_interval')) 
+    
+    seqlist = []
     
     if ( not os.path.exists(outfile) ) or force:
         of = open(outfile, 'w')
@@ -958,6 +817,7 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
                         pass
                         #logging.debug(f'seq {num_handled_total} dropped for QC.')
                     else:
+                        seqlist.append(fullread)
                         of.write(f'>{seq_id}\n{fullread}\n')
                         seq_id += 1
 
@@ -984,9 +844,15 @@ def process_fastq_pairs_fasta(config, infilelist, outfile , force=False,  datest
         sh.add_value('/fastq','num_has_repeats', num_has_repeats )
         sh.add_value('/fastq','num_has_n', num_has_n )
         sh.add_value('/fastq','num_kept', seq_id )
-        
         logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
         logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
+        
+        logging.info(f'Creating sequence TSV.')
+        sdf = pd.DataFrame(seqlist, columns=['sequence'])
+        cdf = make_read_counts_df(cp, sdf)
+        write_tsv(cdf, f'{outfile}.counts.tsv')
+        make_read_countplot_sns(cp, cdf, f'{outfile}.countsplot.pdf' )
+    
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
         
@@ -1100,128 +966,6 @@ def process_fasta(config, infile, bclist, outdir, force=False, datestr=None):
    
 
 
-def process_fasta_old(config, sampdf, infile, bclist, outdir, force=False, countsplots=False, readtsvs=False, datestr=None):
-    '''
-    Take paired FASTA file as input rather than raw FASTQ
-    Use combined barcode sorter structure to minimize character comparisons. 
-
-    '''
-    if outdir is None:
-        outdir = "."
-    else:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-            logging.debug(f'made outdir={outdir}')
-    
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    
-    output_exists = check_output(bclist)
-    cfilename = f'{outdir}/process_fasta.config.txt'
-    bc_length=len(bclist[0].barcode)
-    unmatched = os.path.abspath(f'{outdir}/unmatched.fasta')
-    
-    seqhandled_interval = int(config.get('fastq','seqhandled_interval')) 
-    matched_interval = int(config.get('fastq','matched_interval'))
-    unmatched_interval = int(config.get('fastq','unmatched_interval'))
-    
-    logging.info(f'performing split. outdir={outdir} output_exists={output_exists} force={force} countsplots={countsplots} readtsvs={readtsvs}')
-    
-    
-    if ( not output_exists ) or force:
-        write_config(config, cfilename, timestamp=True, datestring=datestr)
-        sh = StatsHandler(config, outdir=outdir, datestr=datestr)        
-        # create structure to search for all barcode simultaneously
-        labeldict = {}
-        for bco in bclist:
-            labeldict[bco.barcode] = bco.label
-        matchdict, seqdict, unmatched_file = build_bcmatcher(bclist) 
-
-        pairshandled = 0
-        num_handled_total = 0
-        num_matched_total = 0
-        num_unmatched_total = 0
-
-        # handle all sequences in input 
-        with open(infile) as f:
-            num_handled = 0
-            num_matched = 0
-            num_unmatched = 0
-            
-            logging.debug(f'handling file {infile}')
-            while True:
-                try:
-                    line = f.readline()
-                    if line.startswith('>'):
-                        pass
-                    else:
-                        if len(line) == 0:
-                            raise StopIteration
-                        
-                        fullread = line.strip()
-                        # handle sequence
-                        matched = False
-                        seq = fullread[-bc_length:]
-                        # id, seq, matchdict, fullseq, unmatched
-                        matched = do_match(num_handled, seq, matchdict, fullread, unmatched_file)
-                        num_handled += 1
-                        num_handled_total += 1
-    
-                        # report progress...                    
-                        if not matched:
-                            num_unmatched += 1
-                            num_unmatched_total += 1                        
-                            if num_unmatched % unmatched_interval == 0:
-                                logging.debug(f'{num_unmatched} unmatched so far.')
-                        else:
-                            num_matched += 1
-                            num_matched_total += 1
-                            if num_matched % matched_interval == 0:
-                                logging.debug(f'match {num_matched}: found SSI in {fullread}!')                        
-    
-                        if num_handled % seqhandled_interval == 0: 
-                            logging.info(f'handled {num_handled} matched={num_matched} unmatched={num_unmatched}')
-                    
-                except StopIteration as e:
-                    logging.debug('iteration stopped')    
-                    break
-            
-        logging.debug(f'finished with {infile}')
-        sh.add_value('/fasta','reads_handled', num_handled_total )
-        sh.add_value('/fasta','reads_unmatched', num_unmatched_total )
-        f.close()
-        
-        matchrate = 0.0
-        if num_matched_total > 0: 
-            unmatchrate = num_unmatched_total / num_matched_total              
-            matchrate = 1.0 - unmatchrate
-        logging.info(f'handled {num_handled_total} sequences. {num_matched_total} matched. {num_unmatched_total} unmatched matchrate={matchrate}')
-    else:
-        logging.warn('All FASTA output exists and force=False. Not recalculating.')
-    
-    
-    if readtsvs:
-        filelist = []
-        for bch in bclist:
-            if os.path.exists(bch.filename):
-                filelist.append(bch.filename)
-            else:
-                logging.warning(f'missing FASTA file!: {of}')
-        logging.info(f'Making counts dfs/TSVs for {filelist} in {outdir}')
-        make_read_counts_dfs(config, filelist, outdir)
-
-    if countsplots:
-        logging.info('Making combined counts plots PDF...')
-        countsfilelist = []
-        for bch in bclist:
-            base = get_mainbase(bch.filename)   
-            of = os.path.join(outdir , f'{base}.read.counts.tsv')
-            if os.path.exists(bch.filename):
-                countsfilelist.append(of)
-            else:
-                logging.warning(f'missing countsfile needed for plot!:  {of}')
-        make_read_countsplot_combined_sns(config, sampdf, countsfilelist, outdir=outdir, expid=None )
-
 
 def make_read_counts_dfs(config, filelist, outdir):
     '''
@@ -1269,116 +1013,87 @@ def make_clustered_heatmap(df, outprefix, columns=None ):
     logging.info(f'done making {outprefix}.heatmap.pdf ')
     
 
-def make_read_countsplots(config, filelist ): 
+def make_read_countplot(config, df, outfile, title=None ): 
     '''
-    makes individual read counts plots from reads.counts.tsv files. 
+    makes individual read count plot from sequence read_count DF 
+    assumes 'sequence' and 'read_count' columns. 
     
     '''   
-    for bcfile in filelist:
-        logging.debug(f'handling {bcfile}')
-        filepath = os.path.abspath(bcfile)    
-        dirname = os.path.dirname(filepath)   
-        filename = os.path.basename(filepath)
-        (base, ext) = os.path.splitext(filename)
-        base = base.split('.')[0] 
-        
-        bcdata = pd.read_csv(bcfile, sep='\t')
-        plt.figure()
-        plt.plot(np.log10(bcdata['Unnamed: 0']), np.log10(bcdata['read_count']))
-        plt.title(base)
-        plt.xlabel("log10(BC index)")
-        plt.ylabel("log10(BC counts)")
-        plt.savefig(bcfile.replace('tsv', 'pdf'))
+    logging.debug(f'handling sequence df len={len(df)}')
+    outfile = os.path.abspath(outfile)    
+
+    if title is None:
+        title='Read count frequence plot.'
+
+    df.sort_values(by='read_count', ascending=False, inplace=True)
+    df.reset_index(inplace=True)
+    df['index'] = df['index'].astype('int64')
+
+    plt.figure()
+    plt.plot(np.log10(df['index']), np.log10(df['read_count']))
+    plt.title(title)
+    plt.xlabel("log10(index)")
+    plt.ylabel("log10(read_count)")
+    logging.info(f'Saving count plot to {outfile}')
+    plt.savefig(outfile)
 
 
-def counts_axis_plot_sns(ax, bcdata, labels):
+def make_read_countplot_sns(cp, df, outfile='plot.pdf' ):
     '''
-    Creates individual axes for single plot within figure. 
-    
+    makes two figures, one log-normalized, one straight for same counts df. 
     '''
-    bcdata['log10index'] = np.log10(bcdata.index)
-    bcdata['log10counts'] = np.log10(bcdata['read_count'])
-    sns.lineplot(ax=ax, x=bcdata['log10index'], y=bcdata['log10counts'] )
-    s = bcdata['read_count'].sum()
-    n = len(bcdata)
-    t = bcdata['read_count'].max()
-
-    title = f"{bcdata['label'][0]}"      
-    ax.set_title(title, fontsize=10)
-    ax.text(0.15, 0.2, f"site={labels['site']}\nn={n}\ntop={t}\nsum={s}\nthreshold={labels['threshold']}", fontsize=9) #add text
-    
-
-def make_read_countsplot_combined_sns(config, sampdf, filelist, outdir, expid=None ):    
-    '''
-     makes combined figure with all plots. 
-     assumes column 'label' for title. 
-     
-    '''
-    min_ssi_count = int(config.get('analysis','min_ssi_count')) 
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     
-    datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    
-    outfile = f'countsplots.{datestr}.pdf'
-    if expid is not None:
-        outfile = f'{expid}.{outfile}'
-    outfile = os.path.join(outdir, outfile)
-    
-    # do nine per figure...
-    page_dims = (11.7, 8.27)
+    df.sort_values(by='read_count', ascending=False, inplace=True)
+    df.reset_index(inplace=True)
+    df['index'] = df['index'].astype('int64')
+
+    #page_dims = 
+    #  A4 landscape   (11.69,8.27) 
+    #  A3 landscape  (16.53,11.69)
+    #  A4 portrait  (8.27, 11.69)  
+    page_dims = (8.27, 11.69)
     with pdfpages(outfile) as pdfpages:
-        #fig_n = math.ceil( math.sqrt(len(filelist)) )
-        #fig, axes = plt.subplots(nrows=fig_n, ncols=fig_n, figsize=a4_dims,  layout='constrained')
-        plots_per_page = 9
-        num_figs = float(len(filelist)) / float(plots_per_page)
-        if num_figs % 9 == 0:
-            num_figs = int(num_figs)
-        else:
-            num_figs = int(num_figs) + 1
-        logging.debug(f'with {plots_per_page} plots/page, need {num_figs} for {len(filelist)} file plots.')
-        
-        figlist = []
         axlist = []
-        for i in range(0,num_figs):
-            fig,axes = plt.subplots(nrows=3, ncols=3, figsize=page_dims,  layout='constrained') 
-            if expid is not None:
-                fig.suptitle(f'{expid} read counts frequency plots.')
-            else:
-                fig.suptitle(f'Read counts frequency plots')
-            figlist.append(fig)
-            # numpy.flatirator doesn't handle indexing
-            for a in axes.flat:
-                axlist.append(a)
-        logging.debug(f'created {len(figlist)} figures to go on {num_figs} pages. ')
-                  
-        #fig.set_xlabel("log10(BC index)")
-        #fig.set_ylabel("log10(BC counts)")
-        filelist = natsorted(filelist)
-        logging.debug(f'handling {len(filelist)} files...')            
-        for i, bcfile in enumerate(filelist):
-            logging.debug(f'handling {bcfile}')
-            bcdata = pd.read_csv(bcfile, sep='\t')
-            if len(bcdata) > min_ssi_count:
-                (rtprimer_num, site, brain, region ) = guess_site(bcfile, sampdf )           
-                count_threshold, label, clength, counts_max, counts_min = calculate_threshold(config, bcdata)
-                labels = {'rtprimer':rtprimer_num,
-                          'site':site,
-                          'brain':brain,
-                          'region': region,
-                          'threshold' : count_threshold
-                          }
-                
-                ax = axlist[i]
-                counts_axis_plot_sns(ax, bcdata, labels=labels)
-            else:
-                ax = axlist[i]
-                # make empty axis?
-        for f in figlist:
-            pdfpages.savefig(f)
-    logging.info(f'saved plot PDF to {outfile}')
+        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
+        fig.suptitle(f'Read counts frequency plots.')
+        for a in axes.flat:
+            axlist.append(a)
+        ax = axlist[0]
+        counts_axis_plot_sns(ax, df, scale=None)
+        ax = axlist[1]
+        counts_axis_plot_sns(ax, df, scale='log10')
+        
+        pdfpages.savefig(fig)
+        
+        
+def counts_axis_plot_sns(ax, df, scale=None ) :
+    '''
+    Creates individual axes for single plot within figure. 
+    scale = None | log10  | log2
     
-
-
+    
+    '''
+    s = df['read_count'].sum()
+    n = len(df)
+    t = df['read_count'].max()
+    
+    title=''
+    if scale is None:
+        sns.lineplot(ax=ax, x=df['index'], y=df['read_count'] )
+        title = 'counts frequency plot' 
+    
+    elif scale == 'log10':
+        # avoid divide by 0 runtime warning...
+        df['log10index'] = np.log10(df['index'] + 1)
+        df['log10counts'] = np.log10(df['read_count'])
+        sns.lineplot(ax=ax, x=df['log10index'], y=df['log10counts'] )
+        title = 'log10(counts) frequency plot' 
+         
+    ax.set_title(title, fontsize=10)
+    ax.text(0.15, 0.2, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
+   
+   
 
 def normalize_weight(df, weightdf, columns=None):
     '''

@@ -12,7 +12,6 @@ gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
 from mapseq.core import *
-from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
 
@@ -47,26 +46,12 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
-    parser.add_argument('-b','--barcodes', 
-                        metavar='barcodes',
-                        required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
-                        type=str, 
-                        help='barcode file space separated: label   sequence')
-
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=False,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
-
-    parser.add_argument('-O','--outdir', 
-                    metavar='outdir',
-                    required=False,
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=True,
                     default=None, 
                     type=str, 
-                    help='outdir. input file base dir if not given.')   
+                    help='Output FASTA')  
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -80,17 +65,17 @@ if __name__ == '__main__':
                     default=False, 
                     help='Recalculate even if output exists.') 
 
-    parser.add_argument('-r', '--readtsvs', 
+    parser.add_argument('-r', '--readtsv', 
                         action="store_true", 
-                        dest='readtsvs',
-                        default=False, 
-                        help='create read tsvs.' )   
+                        dest='readtsv',
+                        default=True, 
+                        help='Create read and info TSV.' )   
    
     parser.add_argument('infile',
                         metavar='infile',
                         nargs ="?",
                         type=str,
-                        help='Single FASTA file to be split by SSI')
+                        help='Single FASTA to be filtered/assessed.')
         
     args= parser.parse_args()
     
@@ -142,6 +127,8 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     process_fasta(cp, args.infile, bcolist, outdir=args.outdir, force=args.force, datestr=args.datestr)
-   
-
+    
+    #process_fasta(cp, sampdf, args.infile, bcolist, outdir=args.outdir, force=args.force, 
+    #              countsplots=args.countsplots, readtsvs=args.readtsvs, datestr=args.datestr)
+    
     

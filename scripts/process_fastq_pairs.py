@@ -125,7 +125,7 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    process_fastq_pairs_fasta(cp, infilelist, 
+    process_fastq_pairs(cp, infilelist, 
                               args.outfile, 
                               force=args.force, 
                               datestr=args.datestr, 
