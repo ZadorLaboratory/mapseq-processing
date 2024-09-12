@@ -156,7 +156,7 @@ if __name__ == '__main__':
                       datestr=args.datestr,
                       cp=cp )
     
-    logging.info(f'Writing fasta to {of}')
     of = os.path.join( args.outdir , f'collapsed.fasta')
+    logging.info(f'Writing fasta to {of}')
     write_fasta_from_df(joindf, of)
     logging.info(f'Wrote re-joined sequences to {of}')     
