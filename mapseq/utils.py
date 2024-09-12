@@ -865,6 +865,8 @@ def writelist(filepath, dlist, mode=0o644):
     finally:
         pass
 
+
+
 def log_objectinfo(obj, label):
     '''
     print info about object to the debug log 

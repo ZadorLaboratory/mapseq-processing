@@ -1,5 +1,6 @@
 import glob
 import gzip
+import json
 import logging
 import math
 import os
@@ -850,13 +851,63 @@ def process_fastq_pairs(cp, infilelist, outfile ,
         logging.info(f'Creating sequence TSV.')
         sdf = pd.DataFrame(seqlist, columns=['sequence'])
         cdf = make_read_counts_df(cp, sdf)
-        write_tsv(cdf, f'{outfile}.counts.tsv')
+        write_tsv(cdf, f'{outfile}.byreads.tsv')
         make_read_countplot_sns(cp, cdf, f'{outfile}.countsplot.pdf' )
+        
+        #
+        logging.info(f'Making sequence TSV with counts.')
+        scdf = set_counts_df(cp, sdf)
+        write_tsv(scdf, f'{outfile}.reads.tsv')        
+        
+        
     
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
+
+
+
+def filter_counts_fasta(cp, infile, 
+                        outfile, 
+                        datestr=None, 
+                        min_count = 2 ):
+    '''
+    we want to go FASTA to FASTA, but filter by read counts.  
+    '''
+    sdf = read_fasta_to_df(infile)
+    logging.debug(f'got {len(sdf)} sequences.')
+    fdf = filter_counts_df(cp, sdf, min_count)
+    logging.info(f'got {len(fdf)} filtered sequences. Writing to {outfile} FASTA.')
+    write_fasta_from_df(fdf, outfile)
+    logging.debug(f'Wrote {outfile}')
+
+
+def set_counts_df(cp, seqdf):
+    '''
+    assumed sequence column 
+    calculates duplicates and sets read_count column
+ 
+    '''
+    initlen = len(seqdf)
+    logging.debug(f'setting read counts for sequence DF len={len(seqdf)}')
+    cdf = make_read_counts_df(cp, seqdf, label=None)
+    #cdf = cdf[cdf['read_count'] >= min_count]
+    #cdf.sort_values(by='read_count', ascending=False, inplace=True)
+    #cdf.reset_index(drop=True, inplace=True)
+    #cdf.drop('read_count', axis=1, inplace=True)
+    fmap = cdf.set_index('sequence')['read_count'].to_dict()
+    seqdf['read_count'] = seqdf['sequence'].map(fmap)
+    return seqdf
         
-        
+    
+def filter_counts_df(cp, countsdf, min_count):
+    '''
+    Assumes read_count column
+    '''      
+    countsdf = countsdf[countsdf['read_count'] >= min_count]
+    countsdf.reset_index(drop=True, inplace=True)
+    logging.info(f'filtering by count: before={initlen} after={len(seqdf)} min_count={min_count} ')
+    return cdf    
+            
 
 def process_fasta(config, infile, bclist, outdir, force=False, datestr=None):
     '''
@@ -1038,12 +1089,11 @@ def make_read_countplot(config, df, outfile, title=None ):
     plt.savefig(outfile)
 
 
-def make_read_countplot_sns(cp, df, outfile='plot.pdf' ):
+def make_read_countplot_sns(cp, df, outfile='count-frequency-plot.pdf' ):
     '''
     makes two figures, one log-normalized, one straight for same counts df. 
     '''
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    
     df.sort_values(by='read_count', ascending=False, inplace=True)
     df.reset_index(inplace=True)
     df['index'] = df['index'].astype('int64')
@@ -1071,29 +1121,34 @@ def counts_axis_plot_sns(ax, df, scale=None ) :
     '''
     Creates individual axes for single plot within figure. 
     scale = None | log10  | log2
-    
-    
     '''
     s = df['read_count'].sum()
     n = len(df)
     t = df['read_count'].max()
+    r = df['index'].max()
     
     title=''
     if scale is None:
         sns.lineplot(ax=ax, x=df['index'], y=df['read_count'] )
-        title = 'counts frequency plot' 
-    
+        title = 'counts frequency plot'
+        #lx = 0.2 * t 
+        #ly = 0.2 * r
+        lx = 0.2
+        ly = 0.2
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text 
     elif scale == 'log10':
         # avoid divide by 0 runtime warning...
         df['log10index'] = np.log10(df['index'] + 1)
         df['log10counts'] = np.log10(df['read_count'])
         sns.lineplot(ax=ax, x=df['log10index'], y=df['log10counts'] )
-        title = 'log10(counts) frequency plot' 
-         
+        #lx = 0.05 * np.log10(t) 
+        #ly = 0.05 * np.log10(r)        
+        lx = 0.2
+        ly = 0.2
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
+        title = 'log10(counts) frequency plot'      
     ax.set_title(title, fontsize=10)
-    ax.text(0.15, 0.2, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
-   
-   
+       
 
 def normalize_weight(df, weightdf, columns=None):
     '''
@@ -1499,17 +1554,17 @@ https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-colum
     of = os.path.join( outdir , f'{base}.comp_count.tsv')
     ccount.to_csv(of, sep='\t') 
  
-    
-    
     components = remove_singletons(components)
     logging.debug(f'multi-element components len={len(components)}')
     sh.add_value('/collapse','n_multi_components', len(components) )
     of = os.path.join( outdir , f'{base}.multi.components.txt')
     writelist(of, components)
     
-
     logging.info(f'Collapsing {len(components)} components...')
-    newdf = collapse_by_components(fdf, udf, components)
+    newdf = collapse_by_components(fdf, udf, components, outdir=outdir)
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newdf.rename( {'sequence':'orig_seq', 'newsequence':'sequence'}, inplace=True, axis=1)
+    
     del fdf 
     del udf
     del components
@@ -1548,7 +1603,7 @@ def apply_setcompseq(row, seqmapdict ):
 
 def build_seqmapdict(udf, components):
     '''
-    Create mappings from all unique sequence to component sequence
+    Create mappings from all unique sequences to component sequence
     '''
     seqmapdict = {}
     comphandled = 0
@@ -1566,8 +1621,7 @@ def build_seqmapdict(udf, components):
     return seqmapdict
 
 
-def collapse_by_components(fulldf, uniqdf, components):
-    #
+def collapse_by_components(fulldf, uniqdf, components, outdir=None):
     #
     # *** Assumes components are multi-element components only ***
     #
@@ -1592,8 +1646,122 @@ def collapse_by_components(fulldf, uniqdf, components):
       
     # Make new full df:
     logging.info('seqmapdict built. Applying.')
-    fulldf['sequence'] =fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+    if outdir is not None:
+        outfile = f'{outdir}/seqmapdict.json'
+        logging.debug(f'outdir given. writing {outfile}')
+        with open(outfile, 'w') as fp:
+            json.dump(seqmapdict, fp)
+    
+    fulldf['newsequence'] = fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
     logging.info(f'New collapsed df = \n{fulldf}')
     log_objectinfo(fulldf, 'fulldf')
     return fulldf
 
+
+
+def align_collapse_df(df, seq_length=None, max_mismatch=None, outdir=None, datestr=None, cp=None):
+    '''
+    Assumes dataframe with sequence and read_count columns
+    
+    '''
+    # housekeeping...
+    aligner = cp.get('collapse','tool')   
+    if seq_length is None:
+        seq_length = int(cp.get('collapse', 'seq_length'))    
+    if max_mismatch is None:
+        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    if outdir is None:
+        outdir = './'
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
+    logging.debug(f'collapse: aligner={aligner} seq_length={seq_length} max_mismatch={max_mismatch} outdir={outdir}')
+    
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)      
+
+    sh.add_value('/collapse','n_full_sequences', len(df) )
+
+
+    # rename column, and split by sequence length
+    df.rename( {'sequence': 'full_read'}, inplace=True, axis=1)
+    df['sequence'] = df['full_read'].str.slice(0,seq_length)
+    df['tail'] = df['full_read'].str.slice(start=seq_length)
+
+    # get reduced dataframe of unique head sequences
+    logging.info('Getting unique DF...')    
+    udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
+    sh.add_value('/collapse','n_unique_sequences', len(udf) )    
+
+    of = os.path.join( outdir , 'unique_sequences.tsv')
+    logging.info(f'Writing unique DF to {of}')
+    udf.to_csv(of, sep='\t') 
+    
+    of = os.path.join( outdir , 'unique_sequences.fasta')
+    logging.info(f'Writing uniques as FASTA to {of}')
+    seqfasta = write_fasta_from_df(udf, outfile=of, sequence=['sequence'])    
+
+    # run allXall bowtiex
+    of = os.path.join( outdir , f'unique_sequences.bt2.sam')
+    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
+    btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
+    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
+    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
+    of = os.path.join( outdir , f'unique_sequences.btdf.tsv')
+    btdf.to_csv(of, sep='\t') 
+    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
+
+    # perform collapse...      
+    logging.info('Calculating Hamming components...')
+    edgelist = edges_from_btdf(btdf)
+    btdf = None  # help memory usage
+    sh.add_value('/collapse','n_edges', len(edgelist) )
+    
+    of = os.path.join( outdir , f'edgelist.txt')
+    writelist(of, edgelist)
+    logging.debug(f'edgelist len={len(edgelist)}')
+    
+    components = get_components(edgelist)
+    logging.debug(f'all components len={len(components)}')
+    sh.add_value('/collapse','n_components', len(components) )
+    of = os.path.join( outdir , f'components.txt')
+    writelist(of, components)
+    edgelist = None  # help memory usage    
+
+    # assess components...
+    # components is list of lists.
+    data = [ len(c) for c in components]
+    data.sort(reverse=True)
+    ccount = pd.Series(data)
+    of = os.path.join( outdir , f'component_count.tsv')
+    ccount.to_csv(of, sep='\t')            
+
+    components = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(components)}')
+    sh.add_value('/collapse','n_multi_components', len(components) )
+    of = os.path.join( outdir , f'multi_components.txt')
+    writelist(of, components)        
+
+    logging.info(f'Collapsing {len(components)} components...')
+    newdf = collapse_by_components(df, udf, components, outdir=outdir)
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newdf.rename( {'sequence':'orig_seq', 'newsequence':'new_seq'}, inplace=True, axis=1)    
+
+    of = os.path.join( outdir , f'collapsed.tsv')
+    logging.info(f'Got collapsed DF. Writing to {of}')
+    newdf.to_csv(of, sep='\t')         
+
+    logging.info('Done. Calculating fasta.')
+    of = os.path.join( outdir , f'collapsed.fasta')
+    joindf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
+    #logging.info(f'Writing fasta to {of}')
+    #write_fasta_from_df(joindf, of)
+    #logging.info(f'Wrote re-joined sequences to {of}')        
+    return joindf    
+        
+        
+        
+        
+        
+        
+        
