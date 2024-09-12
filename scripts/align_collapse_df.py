@@ -149,11 +149,14 @@ if __name__ == '__main__':
     
     df = load_df(args.infile)
      
-    align_collapse_df(df, 
+    joindf = align_collapse_df(df, 
                       seq_length=args.seq_length, 
                       max_mismatch=args.max_mismatch, 
                       outdir=args.outdir, 
                       datestr=args.datestr,
                       cp=cp )
     
-    
+    logging.info(f'Writing fasta to {of}')
+    of = os.path.join( args.outdir , f'collapsed.fasta')
+    write_fasta_from_df(joindf, of)
+    logging.info(f'Wrote re-joined sequences to {of}')     

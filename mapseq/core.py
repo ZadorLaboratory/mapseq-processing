@@ -1753,7 +1753,7 @@ def align_collapse_df(df, seq_length=None, max_mismatch=None, outdir=None, dates
 
     logging.info('Done. Calculating fasta.')
     of = os.path.join( outdir , f'collapsed.fasta')
-    joindf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
+    joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
     #logging.info(f'Writing fasta to {of}')
     #write_fasta_from_df(joindf, of)
     #logging.info(f'Wrote re-joined sequences to {of}')        
