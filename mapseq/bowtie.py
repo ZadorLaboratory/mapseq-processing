@@ -41,6 +41,7 @@ BOWTIE_2_INT_COLS= ['flagsum', 'offset', 'qual', 'mate_offset', 'fraglen', 'scor
 
 
 BOWTIE_OPT_COLS= ['score', 'next', 'n_amb', 'n_mismatch', 'n_gap', 'n_gapext', 'distance', 'md', 'yt' ]
+
 OPT_MAP = { 'score'     : 'AS',
             'next'      : 'XS',
             'n_amb'     : 'XN',
@@ -151,12 +152,15 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
 
 
 def make_bowtie_df(infile, max_mismatch=3, ignore_self=False):
+    max_mismatch = int(max_mismatch)
+    logging.debug(f'max_mismatch={max_mismatch}')
     with open(infile) as f:
         line=f.readline()
     if line.startswith('@HD'):
         logging.debug('Detected bowtie2 input.')
         df = make_bowtie2_df(infile)
-        logging.debug(f'df before max_mismatch =< {max_mismatch}')
+        logging.debug(f'df before max_mismatch =< {max_mismatch} =\n{df}')
+        logging.debug(f'dtypes={df.dtypes}')
         df = df[df['n_mismatch'] <= max_mismatch]
         # alignments to *other* sequences only
         if ignore_self:
@@ -186,7 +190,7 @@ def make_bowtie2_df(infile):
     '''
     bt1: name_read  strand  name_align  offset  seq  quals   ceil    mm_desc
     
-    bt2: name_read         name_align  offset  seq  quals   
+    bt2: name_read  name_align  offset  seq  quals   
             algn_score  next_score  n_amb  n_mm  n_gaps n_gapext  distance      
     
     parse bowtie2 output format.
@@ -197,7 +201,7 @@ def make_bowtie2_df(infile):
     filename = os.path.basename(filepath)
     (base, ext) = os.path.splitext(filename)
     outfile = os.path.join(dirname, f'{base}.btdf')
-    logging.debug(f'handling base={base}  ->  {outfile}')    
+    logging.debug(f'handling filename={filename}  ->  {outfile}')    
 
     try:
         logging.debug(f" attempting to open '{infile}'")
@@ -210,10 +214,8 @@ def make_bowtie2_df(infile):
     sumreport = 1
     suminterval = 1000000
     repthresh = sumreport * suminterval
-    
     # list of lists to hold data
     lol = []
-    
     #
     def def_value(): 
         return "None"
@@ -263,9 +265,11 @@ def make_bowtie2_df(infile):
     
     if filehandle is not None:
         filehandle.close()          
-
-    df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS )
+    logging.debug(f'making dataframe from list of lists. len={len(lol)}')
+    df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS, dtype='string[pyarrow]')
+    logging.debug('fixing column types...')    
     df = fix_columns_int(df, BOWTIE_2_INT_COLS)
+    logging.debug(f'done. returning dataframe {df.dtypes}') 
     return df
 
 

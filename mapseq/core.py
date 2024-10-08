@@ -465,6 +465,32 @@ def make_fasta_df(config, infile, ignore_n=True):
     df = pd.DataFrame(slist, columns=['sequence'] )
     return df
 
+def calc_min_umi_threshold(df, site='target-negative', cp=None):
+    '''
+    retrieve maximum umi_count value for provided site type. 
+    returns max max value...
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    
+    logging.debug(f'getting UMI threshold type={site}')
+    countlist = []
+    min_threshold = 0
+    #df['umi_count'] = df['umi_count'].astype(int)
+    tndf = df[ df['site'] == site]
+    lablist = list(tndf['label'].dropna().unique())
+    for label in lablist:
+        ldf = tndf[tndf['label'] == label]
+        if len(ldf) > 0:
+            maxumi = ldf['umi_count'].max()
+            logging.debug(f'max umi_count for label {label} = {maxumi}')
+            countlist.append( maxumi )
+    if len(countlist) > 0:
+        min_threshold = max(countlist)
+        logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
+    return min_threshold
+
 
 
 def calc_min_threshold(config, df, site='target-negative'):
@@ -694,6 +720,53 @@ def load_sample_info(config, file_name):
     return sdf
 
 
+def load_readtable(infile):
+    '''
+    very large CSV/TSV files cause some OS to kill. 
+    'vbc_read_col', 'libtag','umi','ssi', 'read_count', 'label','rtprimer','type', 'brain', 'region', 'site']
+    
+    '''
+    logging.debug(f'loading readtable TSV from {infile}')
+    STR_COLUMNS = [ 'ssi','umi','libtag','label','brain','region','site','vbc_read_col']
+    CAT_COLUMNS = ['label','site','type','brain','region','rtprimer']
+    df = pd.read_csv(infile, sep='\t', index_col=0)
+    logging.debug(f'dtypes={df.dtypes}')
+    for col in STR_COLUMNS:
+        logging.debug(f'converting {col} to string[pyarrow]')
+        df[col] = df[col].astype('string[pyarrow]')
+
+    for col in CAT_COLUMNS:
+        logging.debug(f'converting {col} to category')
+        df[col] = df[col].astype('category')    
+    log_objectinfo(df, 'readtable-df')
+    return df
+
+
+def load_collapse(infile):
+    '''
+    very large CSV/TSV files cause some OS to kill. 
+    'vbc_read_col', 'libtag','umi','ssi', 'read_count', 'label','rtprimer','type', 'brain', 'region', 'site']
+    
+    For 385610984 rows:   115GB -> 40GB
+    
+    '''
+    logging.debug(f'loading collapse table TSV from {infile}')
+    STR_COLUMNS = [ 'spikeseq', 'libtag', 'umi',  'ssi', 'vbc_read_col']
+    INT_COLUMNS = ['read_count']
+    df = pd.read_csv(infile, sep='\t', index_col=0)
+    logging.debug(f'dtypes={df.dtypes}')
+    for col in STR_COLUMNS:
+        logging.debug(f'converting {col} to string[pyarrow]')
+        df[col] = df[col].astype('string[pyarrow]')
+
+    for col in INT_COLUMNS:
+        logging.debug(f'converting {col} to integer')
+        df[col] = df[col].astype('uint32')    
+    log_objectinfo(df, 'collapse-df')
+    return df
+
+
+
 def merge_fastq_pairs(config, readfilelist, outdir):
     logging.debug(f'processing {readfilelist}')
     if outdir is None:
@@ -709,38 +782,27 @@ def merge_fastq_pairs(config, readfilelist, outdir):
         pairshandled += 1    
 
 
-
-
-def process_fastq_pairs(cp, infilelist, outfile , 
-                        force=False,  
-                        datestr=None, 
-                        max_repeats=None, 
-                        max_n_bases=None):
+def process_fastq_pairs_df( infilelist, 
+                            outdir,                         
+                            force=False, 
+                            datestr=None, 
+                            max_repeats=None,
+                            max_n_bases=None,
+                            cp = None):
     '''
-    parses paired-end fastq files. merges from r1 and r2 at selected positions. 
-    outputs to single fasta file. 
-
-    config expectation. 
-    [fastq]
-    r1start = 0
-    r1end = 32
-    r2start = 0
-    r2end = 20
-    # reporting intervals for verbose output, defines how often to log. 
-    seqhandled_interval = 1000000
-    
-    QC drop all sequences with any N in them. 
-    Drop all sequences with homopolymer runs > max_homopolymers
-
-    Create read-count frequency TSV and shoulder plot. <outfile>.counts.tsv <outfile>.plot.pdf
-    
+    returns df, calls pair handling.
     '''
-    outfile = os.path.abspath(outfile)    
-    outdir = os.path.dirname(outfile)
+    if cp is None:
+        cp = get_default_config()
+
     if not os.path.exists(outdir):
         os.makedirs(outdir, exist_ok=True)
         logging.debug(f'made outdir={outdir}')
-    
+
+    outbase = f'{outdir}/allreads'
+    outfile = f'{outbase}.fasta'
+    rcdf = None # default return
+
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
 
@@ -760,7 +822,7 @@ def process_fastq_pairs(cp, infilelist, outfile ,
     seqhandled_interval = int(cp.get('fastq','seqhandled_interval')) 
     
     seqlist = []
-    
+    logging.debug(f'FASTA outfile = {outfile} ')
     if ( not os.path.exists(outfile) ) or force:
         of = open(outfile, 'w')
         pairshandled = 0
@@ -851,6 +913,158 @@ def process_fastq_pairs(cp, infilelist, outfile ,
         logging.info(f'Creating sequence TSV.')
         sdf = pd.DataFrame(seqlist, columns=['sequence'])
         cdf = make_read_counts_df(cp, sdf)
+        write_tsv(cdf, f'{outbase}.byreads.tsv')
+        make_read_countplot_sns(cp, cdf, f'{outbase}.countsplot.pdf' )
+        
+        rcdf = set_counts_df(cp, sdf)        
+    else:
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
+    
+    return rcdf
+
+
+def process_fastq_pairs(cp, 
+                        infilelist, 
+                        outfile , 
+                        force=False,  
+                        datestr=None, 
+                        max_repeats=None, 
+                        max_n_bases=None):
+    '''
+    parses paired-end fastq files. merges from r1 and r2 at selected positions. 
+    outputs to single fasta file. 
+
+    config expectation. 
+    [fastq]
+    r1start = 0
+    r1end = 32
+    r2start = 0
+    r2end = 20
+    # reporting intervals for verbose output, defines how often to log. 
+    seqhandled_interval = 1000000
+    
+    QC drop all sequences with any N in them. 
+    Drop all sequences with homopolymer runs > max_homopolymers
+
+    Create read-count frequency TSV and shoulder plot. <outfile>.counts.tsv <outfile>.plot.pdf
+    
+    '''
+    outfile = os.path.abspath(outfile)    
+    outdir = os.path.dirname(outfile)
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        logging.debug(f'made outdir={outdir}')
+    
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)  
+
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))    
+
+    if max_repeats is None:
+        max_repeats = int(cp.get('fastq','max_repeats')) 
+
+    if max_n_bases is None:
+        max_n_bases = int(cp.get('fastq','max_n_bases'))
+        
+    seqhandled_interval = int(cp.get('fastq','seqhandled_interval')) 
+    
+    seqlist = []
+    
+    if ( not os.path.exists(outfile) ) or force:
+        of = open(outfile, 'w')
+        pairshandled = 0
+        num_handled_total = 0
+        num_has_n = 0
+        num_has_repeats = 0
+        seq_id = 0
+
+        # handle all pairs of readfiles from readfilelist
+        for (read1file, read2file) in infilelist:
+            pairshandled += 1
+            num_handled = 0
+            logging.debug(f'handling file pair {pairshandled}')
+            if read1file.endswith('.gz'):
+                r1f = gzip.open(read1file, "rt")
+            else:
+                r1f = open(read1file, 'rt')
+            
+            if read2file.endswith('.gz'):
+                r2f = gzip.open(read2file, "rt")         
+            else:
+                r2f = open(read2file, 'rt')
+        
+            while True:
+                try:
+                    meta1 = r1f.readline()
+                    if len(meta1) == 0:
+                        raise StopIteration
+                    seq1 = r1f.readline().strip()
+                    sep1 = r1f.readline()
+                    qual1 = r1f.readline().strip()
+
+                    meta2 = r2f.readline()
+                    if len(meta2) == 0:
+                        break
+                    seq2 = r2f.readline().strip()
+                    sep2 = r2f.readline()
+                    qual2 = r2f.readline().strip()                    
+
+                    sub1 = seq1[r1s:r1e]
+                    sub2 = seq2[r2s:r2e]
+                    fullread = sub1 + sub2
+                    
+                    
+                    #has_n = 'N' in fullread
+                    has_n = has_n_bases(fullread, n=max_n_bases)
+                    if has_n:
+                        num_has_n += 1
+                        
+                    has_repeats = has_base_repeats(fullread, n=max_repeats)
+                    if has_repeats:
+                        num_has_repeats +=1
+                    
+                    if has_repeats or has_n:
+                        pass
+                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
+                    else:
+                        seqlist.append(fullread)
+                        of.write(f'>{seq_id}\n{fullread}\n')
+                        seq_id += 1
+
+                    num_handled += 1
+                    num_handled_total += 1
+
+                    # report progress...                    
+                    if num_handled % seqhandled_interval == 0: 
+                        logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
+                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
+                
+                except StopIteration as e:
+                    logging.debug('iteration stopped')    
+                    break
+
+            logging.debug(f'finished with pair {pairshandled} saving pair info.')
+            # collect pair-specific stats.
+            sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
+        
+        of.close()
+        # collect global statistics..
+        sh.add_value('/fastq','reads_handled', num_handled_total )
+        sh.add_value('/fastq','max_repeats', max_repeats  )
+        sh.add_value('/fastq','num_has_repeats', num_has_repeats )
+        sh.add_value('/fastq','num_has_n', num_has_n )
+        sh.add_value('/fastq','num_kept', seq_id )
+        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
+        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
+        
+        logging.info(f'Creating sequence TSV.')
+        sdf = pd.DataFrame(seqlist, columns=['sequence'])
+        cdf = make_read_counts_df(cp, sdf)
         write_tsv(cdf, f'{outfile}.byreads.tsv')
         make_read_countplot_sns(cp, cdf, f'{outfile}.countsplot.pdf' )
         
@@ -859,11 +1073,135 @@ def process_fastq_pairs(cp, infilelist, outfile ,
         scdf = set_counts_df(cp, sdf)
         write_tsv(scdf, f'{outfile}.reads.tsv')        
         
-        
-    
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
 
+
+
+def process_fastq_pairs_pd(infilelist, 
+                            outdir,                         
+                            force=False, 
+                            datestr=None, 
+                            cp = None):
+    '''
+    only parse out read lines to pandas, then join with pandas. 
+    CPU times: user 9min 14s,
+    Output:
+        sequence    vbc_read    umi    ssi
+    
+    '''
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))
+    logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
+    df = None
+    for (read1file, read2file) in infilelist:
+        logging.debug(f'handling {read1file}, {read2file} ...')
+        if df is None:
+            logging.debug(f'making new read DF...')
+            df = pd.DataFrame(columns=['read1_seq', 'read2_seq'])
+            logging.debug(f'handling {read1file}')
+            df['read1_seq'] = read_fastq_sequence(read1file, r1s, r1e )
+            logging.debug(f'handling {read2file}')
+            df['read2_seq'] = read_fastq_sequence(read2file, r2s, r2e )
+        else:
+            logging.debug(f'making additional read DF...')
+            ndf = pd.DataFrame(columns=['read1_seq', 'read2_seq'], dtype="string[pyarrow]")
+            logging.debug(f'handling {read1file}')
+            ndf['read1_seq'] = read_fastq_sequence(read1file, r1s, r1e )
+            logging.debug(f'handling {read2file}')
+            ndf['read2_seq'] = read_fastq_sequence(read2file, r2s, r2e )
+            logging.debug(f'appending dataframes...')
+            df = df.append(ndf)
+    
+    logging.debug(f'writing read1/2 TSV for QC.')
+    of = f'{outdir}/read1read2.tsv'
+    df.to_csv(of, sep='\t')
+    
+    df['sequence'] = df['read1_seq'] + df['read2_seq']
+    df.drop(['read1_seq','read2_seq'], inplace=True, axis=1)
+    df['vbc_read'] = df['sequence'].str.slice(0,30)
+    df['spikeseq'] = df['sequence'].str.slice(24,32)
+    df['libtag'] = df['sequence'].str.slice(30,32)    
+    df['umi'] = df['sequence'].str.slice(32,44)
+    df['ssi'] = df['sequence'].str.slice(44,52)
+    logging.debug(f'df done. len={len(df)} returning...')
+    return df
+
+
+
+def filter_reads_pd(df,
+                    max_repeats=None,
+                    max_n_bases=None,
+                    column='sequence',
+                    remove=True,
+                    cp=None):
+    '''
+    Take df and add flag columns for invalid read sequences. 
+    True = valid
+    False = invalid
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if max_repeats is None:
+        max_repeats = int(cp.get('fastq','max_repeats')) 
+    if max_n_bases is None:
+        max_n_bases = int(cp.get('fastq','max_n_bases'))    
+    logging.debug(f'max_repeats = {max_repeats} max_n_bases={max_n_bases}')
+    
+    df['nb_valid'] = ~df[column].str.contains('N')
+    df['nr_valid'] = True
+    for nt in ['A','C','G','T']:
+        rnt =  nt * (max_repeats + 1)
+        logging.debug(f'checking for {rnt}')
+        rmap = ~df[column].str.contains(rnt)
+        logging.debug(f'found {len(df) - rmap.sum()} bad sequences.') 
+        df['nr_valid'] = df['nr_valid'] & rmap
+    logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
+    if remove:
+        vmap = df['nr_valid'] & df['nb_valid']
+        df = df[vmap]
+        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
+        df.reset_index(drop=True, inplace=True)
+        logging.info(f'remove=True, new len={len(df)}')
+    
+    # changes made to inbound df, but return anyway
+    return df
+
+
+
+def read_fastq_sequence(infile, start=0, end=-1 ):
+    '''
+    pull out sequence line, returns series.  
+    dtype="string[pyarrow]"
+    '''
+    slist = []
+    interval = 40000000
+    if infile.endswith('.gz'):
+        fh = gzip.open(infile, "rt")
+    else:
+        fh = open(infile, 'rt')
+    try:
+        i = 0
+        for line in fh:
+            if i % 4 == 1:
+                slist.append(line[start:end])  # strip linefeed. 
+            if i % interval == 0:
+                logging.debug(f'sequence {int(i/4)}')
+            i += 1
+    except:
+        pass
+    finally:
+        fh.close()
+    log_objectinfo(slist, 'slist')
+    ser = pd.Series(slist, dtype="string[pyarrow]")
+    logging.debug(f'series dtype={ser.dtype}')
+    log_objectinfo(ser, 'series')    
+    return ser
+            
+      
 
 
 def filter_counts_fasta(cp, infile, 
@@ -881,7 +1219,7 @@ def filter_counts_fasta(cp, infile,
     logging.debug(f'Wrote {outfile}')
 
 
-def set_counts_df(cp, seqdf):
+def set_counts_df(seqdf, column='', cp=None):
     '''
     assumed sequence column 
     calculates duplicates and sets read_count column
@@ -890,13 +1228,12 @@ def set_counts_df(cp, seqdf):
     initlen = len(seqdf)
     logging.debug(f'setting read counts for sequence DF len={len(seqdf)}')
     cdf = make_read_counts_df(cp, seqdf, label=None)
-    #cdf = cdf[cdf['read_count'] >= min_count]
-    #cdf.sort_values(by='read_count', ascending=False, inplace=True)
-    #cdf.reset_index(drop=True, inplace=True)
-    #cdf.drop('read_count', axis=1, inplace=True)
     fmap = cdf.set_index('sequence')['read_count'].to_dict()
     seqdf['read_count'] = seqdf['sequence'].map(fmap)
+    # change made to inbound df, but return anyway
     return seqdf
+
+
         
     
 def filter_counts_df(cp, countsdf, min_count):
@@ -1070,6 +1407,8 @@ def make_read_countplot(config, df, outfile, title=None ):
     assumes 'sequence' and 'read_count' columns. 
     
     '''   
+    plt.set_loglevel (level = 'warning')
+    
     logging.debug(f'handling sequence df len={len(df)}')
     outfile = os.path.abspath(outfile)    
 
@@ -1096,7 +1435,7 @@ def make_read_countplot_sns(cp, df, outfile='count-frequency-plot.pdf' ):
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     df.sort_values(by='read_count', ascending=False, inplace=True)
     df.reset_index(inplace=True)
-    df['index'] = df['index'].astype('int64')
+    df['index'] = df.index.astype('int64')
 
     #page_dims = 
     #  A4 landscape   (11.69,8.27) 
@@ -1115,7 +1454,37 @@ def make_read_countplot_sns(cp, df, outfile='count-frequency-plot.pdf' ):
         counts_axis_plot_sns(ax, df, scale='log10')
         
         pdfpages.savefig(fig)
-        
+
+
+
+def make_shoulder_plot_sns(df, title='counts frequency plot', site=None, outfile='count-frequency-plot.pdf' ):
+    '''
+    makes two figures, one log-normalized, one straight for same counts df. 
+    '''
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    
+    cdf = pd.DataFrame( df[df['site'] == site ]['read_count'].copy(), columns=['read_count'])
+    cdf.sort_values(by='read_count', ascending=False, inplace=True)
+    cdf.reset_index(inplace=True,  drop=True)
+    cdf['index'] = cdf.index.astype('int64')
+
+    #page_dims = 
+    #  A4 landscape   (11.69,8.27) 
+    #  A3 landscape  (16.53,11.69)
+    #  A4 portrait  (8.27, 11.69)  
+    page_dims = (8.27, 11.69)
+    with pdfpages(outfile) as pdfpages:
+        axlist = []
+        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
+        fig.suptitle(f'Read counts freq: site={site}')
+        for a in axes.flat:
+            axlist.append(a)
+        ax = axlist[0]
+        counts_axis_plot_sns(ax, cdf, scale=None)
+        ax = axlist[1]
+        counts_axis_plot_sns(ax, cdf, scale='log10')        
+        pdfpages.savefig(fig)
+
         
 def counts_axis_plot_sns(ax, df, scale=None ) :
     '''
@@ -1135,7 +1504,8 @@ def counts_axis_plot_sns(ax, df, scale=None ) :
         #ly = 0.2 * r
         lx = 0.2
         ly = 0.2
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text 
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
+        logging.debug(f'made axis without scale.') 
     elif scale == 'log10':
         # avoid divide by 0 runtime warning...
         df['log10index'] = np.log10(df['index'] + 1)
@@ -1146,8 +1516,10 @@ def counts_axis_plot_sns(ax, df, scale=None ) :
         lx = 0.2
         ly = 0.2
         ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
-        title = 'log10(counts) frequency plot'      
+        title = 'log10(counts) frequency plot'
+        logging.debug(f'made axis with log10 scale.')       
     ax.set_title(title, fontsize=10)
+
        
 
 def normalize_weight(df, weightdf, columns=None):
@@ -1280,6 +1652,34 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
 
+def filter_non_inj_umi(rtdf, ridf, min_inj_umi=1):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and columns from first argument (rtdf)
+    
+    '''
+    logging.info(f'filtering non-injection. min_inj_umi={min_inj_umi}')
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.umi_count >= min_inj_umi]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='vbc_read_col', right_on='vbc_read_col')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf
+
 
 
 def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
@@ -1301,44 +1701,191 @@ def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
     logging.debug(f'outdf len={len(outdf)}')
     return outdf
 
-
-def process_merged(config, infile, outdir=None, expid=None, recursion=200000, label_column='region' ):
+def process_make_readtable_pd(df,
+                          sampdf,
+                          bcfile, 
+                          outdir=None, 
+                          datestr=None,
+                          cp = None):
     '''
-     takes in combined 'all' TSVs. columns=(sequence, counts, type, label, brain, site) 
-     outputs brain-specific SSI x target matrix dataframes, with counts normalized to spikeins by target.  
-     writes all output to outdir (or current dir). 
-     
+    take split/aligned read file.
+    produce fully tagged and filtered data table.
+    -- convert SSI column to BCXXX tag. 
+    -- add optional region label
+    -- classify by site-type
+    -- set brain label
     '''
-    #sh = get_default_stats()
-    logging.debug(f'infile={infile}')
-    alldf = load_df(infile)
-    logging.debug(f'alldf=\n{alldf}')
+    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     if outdir is None:
         outdir = './'
-
-    require_injection = config.getboolean('merged','require_injection')
-    min_injection = int(config.get('merged','min_injection'))
-    min_target = int(config.get('merged','min_target'))   
-    use_target_negative=config.getboolean('merged','use_target_negative')
-    use_target_water_control=config.getboolean('merged','use_target_water_control')
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
     
-    clustermap_scale = config.get('analysis','clustermap_scale')
-      
-    if expid is None:
-        expid = 'M000'
+    # map SSIs, set unknown to unmatched.
     
-    logging.debug(f'running exp={expid} min_injection={min_injection} min_target={min_target} use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
+    logging.debug(f'getting rt labels...')
+    labels = get_rtlist(sampdf)
+    bcdict = get_barcode_dict(bcfile, labels)
+    rtdict = get_rtprimer_dict(bcfile, labels)
+    logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
 
-    alldf['brain'] = alldf['brain'].astype('string')
-    bidlist = list(alldf['brain'].dropna().unique())
+    df['label'] = df['ssi'].map(bcdict)
+    df.fillna({'label': 'nomatch'}, inplace=True)
+    
+    df['rtprimer'] = df['ssi'].map(rtdict)
+    df.fillna({'rtprimer': 'nomatch'}, inplace=True)
+    
+    # spikeins
+    # make temporary column to check spikein. 
+    # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
+    spikeseq = cp.get('readtable','spikeseq')
+    realregex = cp.get('readtable', 'realregex' )
+    loneregex = cp.get('readtable', 'loneregex' )
+    
+
+    rmap = df['libtag'].str.match('[TC][TC]$')
+    df.loc[rmap, 'type'] = 'real'
+    lmap = df['libtag'].str.match('[AG][AG]$')
+    df.loc[lmap, 'type'] = 'lone'
+
+    smap = df['spikeseq'] == spikeseq
+    df.loc[smap, 'type'] = 'spike'
+    
+    df.fillna({'type': 'nomatch'}, inplace=True)
+    df.drop(['spikeseq'], inplace=True, axis=1)
+
+    # set brain
+    bdf = sampdf[['rtprimer','brain']]
+    bdf = bdf[bdf['brain'] != '']
+    bmap = dict(zip(bdf['rtprimer'],bdf['brain']))
+    df['brain'] = df['rtprimer'].map(bmap)
+    df.fillna({'brain': ''}, inplace=True)
+    bdf = None
+    
+    # set region
+    rdf = sampdf[['rtprimer','region']]
+    rdf = rdf[rdf['region'] != '']
+    rmap = dict(zip(rdf['rtprimer'],rdf['region']))
+    df['region'] = df['rtprimer'].map(rmap)
+    df.fillna({'region': ''}, inplace=True)
+    rdf = None
+    
+    # set site
+    sdf = sampdf[['rtprimer','siteinfo']]
+    sdf = sdf[sdf['siteinfo'] != '']
+    smap = dict(zip(sdf['rtprimer'],sdf['siteinfo']))
+    df['site'] = df['rtprimer'].map(smap)
+    df.fillna({'site': ''}, inplace=True)
+    sdf = None    
+
+    # make shoulder plots. injection, target
+    make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
+    make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
+    
+    # collect stats
+    sh = StatsHandler(cp, outdir, datestr)    
+    sh.add_value('/readtable','n_full_sequences', len(df) )
+    return df
+   
+
+
+def process_make_vbctable_pd(df,
+                          outdir=None,
+                          inj_min = 3,
+                          target_min = 2, 
+                          datestr=None,
+                          cp = None):
+    '''   
+    
+    primary columns:  label, umi, type  
+    derived columns:  brain, region, rtprimer, label, ssi
+    -- remove nomatches
+    -- threshold read_count by site type
+    -- collapse by VBC sequence, calculating UMI count
+    
+    This should  be prepared for input it make VBC matrices    
+    '''
+    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
+    log_objectinfo(df, 'input-df')
+    ndf = df
+    
+    # remove unneeded columns
+    #  libtag:     we now know real/lone
+    #  ssi:        we have assigned label
+    #  rtprimer:     "  " 
+    #  vbc_read:   we have already collapsed
+    logging.info(f'dropping redundant readtable columns: libtag ssi rtprimer vbc_read  ')
+    ndf.drop(labels=['libtag','ssi','rtprimer'], axis=1, inplace=True)   
+    ndf.replace('nomatch',np.nan, inplace=True)
+    logging.debug(f'DF before removing nomatch: {len(ndf)}')
+    log_objectinfo(ndf, 'new-df')
+    ndf.dropna(inplace=True, axis=0, ignore_index=True)
+    logging.debug(f'DF after removing nomatch/NaN: {len(ndf)}')
+    log_objectinfo(ndf, 'new-df')
+    # threshold by read counts, by siteinfo, before starting... 
+    tdf = ndf[ndf['site'].str.startswith('target')]
+    tdf = tdf[tdf['read_count'] >= int(target_min)]
+    idf = ndf[ndf['site'].str.startswith('injection')]
+    idf = idf[idf['read_count'] >= int(inj_min)]    
+    thdf = pd.concat([tdf, idf])
+    thdf.reset_index(drop=True, inplace=True)
+    logging.debug(f'DF after threshold inj={inj_min} tar={target_min}: {len(thdf)}')
+    log_objectinfo(thdf, 'threshold-df')    
+    udf = thdf.groupby(['vbc_read_col','label','type']).agg( {'umi' : 'nunique',
+                                                              'read_count':'sum', 
+                                                              'brain':'first',
+                                                              'region':'first',
+                                                              'site':'first'
+                                                              } ).reset_index()
+    
+    udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
+    logging.debug(f'DF after umi/label collapse: {len(udf)}')
+    log_objectinfo(udf, 'umi-df')
+    return udf
+
+
+def process_make_matrices_pd(df,
+                          outdir=None,
+                          exp_id = 'M001',  
+                          min_inj_umi = None,
+                          min_target_umi = None, 
+                          datestr=None,
+                          label_column='label',
+                          cp = None):
+    '''
+    -- per brain, pivot real VBCs (value=umi counts)
+    -- create real, real normalized by spikein, and  
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    require_injection = cp.getboolean('matrices','require_injection')
+
+    max_negative = 1
+    max_water_control = 1
+
+    if min_inj_umi is None:
+        min_inj_umi = int(cp.get('matrices','min_inj_umi'))
+    if min_target_umi is None:
+        min_target_umi = int(cp.get('matrices','min_target_umi'))   
+
+    use_target_negative=cp.getboolean('matrices','use_target_negative')
+    use_target_water_control=cp.getboolean('matrices','use_target_water_control')    
+    clustermap_scale = cp.get('matrices','clustermap_scale')
+    logging.debug(f'running exp_id={exp_id} min_inj_umi={min_inj_umi} min_target_umi={min_target_umi} use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
+
+    df['brain'] = df['brain'].astype('string')
+    bidlist = list(df['brain'].dropna().unique())
     bidlist = [ x for x in bidlist if len(x) > 0 ]
     bidlist.sort()
     logging.debug(f'handling brain list: {bidlist}')
-    
+
     for brain_id in bidlist:
         valid = True
         logging.debug(f'handling brain_id={brain_id}')
-        bdf = alldf[alldf['brain'] == brain_id]
+        bdf = df[df['brain'] == brain_id]
                     
         # handle target areas...
         tdf = bdf[bdf['site'].str.startswith('target')]
@@ -1349,38 +1896,38 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
         # defined, use min_target and throw warning. 
         if use_target_negative:
             logging.info(f'use_target_negative is {use_target_negative}')
-            max_negative = calc_min_threshold(config, bdf, 'target-negative')
+            max_negative = calc_min_umi_threshold(bdf, 'target-negative', cp)
             logging.debug(f'target-negative UMI count = {max_negative}')
 
         if use_target_water_control:
             logging.info(f'use_target_water_control is {use_target_water_control}')
-            max_water_control = calc_min_threshold(config, bdf, 'target-water-control')
+            max_water_control = calc_min_umi_threshold(bdf, 'target-water-control',cp)
             logging.debug(f'target_water_control UMI count = {max_water_control}')
         
-        min_target = max([ min_target, max_negative, max_water_control ])
-        logging.debug(f'min_target UMI count after all constraints = {min_target}')   
+        min_target_umi = max([min_target_umi, max_negative, max_water_control ])
+        logging.debug(f'min_target UMI count after all constraints = {min_target_umi}')   
 
         # min_target is now either calculated from target-negative, or from config. 
-        if min_target > 1:
+        if min_target_umi > 1:
             before = len(rtdf)
-            frtdf = filter_all_lt(rtdf, 'sequence', 'umi_count', min_target)            
+            frtdf = filter_all_lt(rtdf, 'vbc_read_col', 'umi_count', min_target_umi)            
             if not len(frtdf) > 0:
                 valid = False
                 logging.warning(f'No VBCs passed min_target filtering! Skip brain.')
-            logging.debug(f'filtering by min_target={min_target} before={before} after={len(rtdf)}')
+            logging.debug(f'filtering by min_target_umi={min_target_umi} before={before} after={len(rtdf)}')
         else:
-            logging.debug(f'min_target={min_target} no filtering.')
+            logging.debug(f'min_target_umi={min_target_umi} no filtering.')
             frtdf = rtdf
 
         if require_injection:
             # extract and filter injection areas.
-            logging.debug(f'require_injection={require_injection} min_injection={min_injection}') 
+            logging.debug(f'require_injection={require_injection} min_inj_umi={min_inj_umi}') 
             idf = bdf[bdf['site'].str.startswith('injection')]
             ridf = idf[idf['type'] == 'real']  
             if len(ridf) == 0:
                 logging.warning('require_injection=True but no real VBCs from any injection site.')
             logging.debug(f'{len(frtdf)} real target VBCs before filtering.')      
-            frtdf = filter_non_injection(frtdf, ridf, min_injection=min_injection)
+            frtdf = filter_non_inj_umi(frtdf, ridf, min_inj_umi=min_inj_umi)
             logging.debug(f'{len(frtdf)} real target VBCs after injection filtering.')
             if not len(frtdf) > 0:
                 logging.warning(f'No VBCs passed injection filtering! Skip brain.')
@@ -1392,14 +1939,14 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
         if valid:       
             
             # raw reals
-            rbcmdf = rtdf.pivot(index='sequence', columns=label_column, values='umi_count')
+            rbcmdf = rtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             scol = natsorted(list(rbcmdf.columns))
             rbcmdf = rbcmdf[scol]
             rbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'brain={brain_id} raw real barcode matrix len={len(rbcmdf)}')            
             
             # filtered reals
-            fbcmdf = frtdf.pivot(index='sequence', columns=label_column, values='umi_count')
+            fbcmdf = frtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             scol = natsorted(list(fbcmdf.columns))
             fbcmdf = fbcmdf[scol]
             fbcmdf.fillna(value=0, inplace=True)
@@ -1407,7 +1954,7 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
 
             # spikes
             sdf = tdf[tdf['type'] == 'spike']
-            sbcmdf = sdf.pivot(index='sequence', columns=label_column, values='umi_count')
+            sbcmdf = sdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             spcol = natsorted(list(sbcmdf.columns))
             sbcmdf = sbcmdf[spcol]
             sbcmdf.fillna(value=0, inplace=True)    
@@ -1434,174 +1981,18 @@ def process_merged(config, infile, outdir=None, expid=None, recursion=200000, la
             # log-scaled normalized 
             scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
             
-        logging.info(f'done with brain={brain_id}')
-        
-        
+        logging.info(f'done with brain={brain_id}')    
 
 
-def align_collapse_fasta(config, infile, seq_length=None, max_mismatch=None, outdir=None, datestr=None):
+def process_mapseq_dir(infiles, outdir, cp):    
     '''
-    Algorithm:
-    
-    take input FASTA to FULL dataframe. ( already removed Ns and homopolymer runs ) 
-    split first seq_length part (VBC) and remainder to 2 columns. 
-    
-    get UNIQUE DF dataframe on (VBC) sequence      
-    save VBCs to fasta
-    align all to all bowtie
-    make bowtie DF
-    drop mismatch > max_mismatch
-        for each component, create map from all variants back to a single virtual parent sequence
-        (this is not necessarily the true biological parent sequence, but it doesn't matter. they just need to all
-        be the same).
-    in FULL DF, set all variant sequences to virtual parent sequence
-    re-assemble VBC + remainder sequence
-    output to adjusted FULL FASTA file ready for input to SSI splitting.  
-   
-    can use iloc and range of indices to set value for all elements of components:
-    
-    testdf = pd.DataFrame([[0, 2, 3], [0, 4, 1], [10, 20, 30]],columns=['A', 'B', 'C'])
-    testdf
-            A   B   C
-        0   0   2   3
-        1   0   4   1
-        2  10  20  30
-    testdf.iloc[[0,2],[0]] = 15
-            A   B   C
-        0  15   2   3
-        1   0   4   1
-        2  15  20  30
-
-https://stackoverflow.com/questions/46204521/pandas-get-unique-values-from-column-along-with-lists-of-row-indices-where-the
+    performs end-to-end default processing. fastq pairs to matrices
     
     '''
-    aligner = config.get('collapse','tool')
     
-    filepath = os.path.abspath(infile)    
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)   
-    head = base.split('.')[0]
-    
-    if seq_length is None:
-        seq_length = int(config.get('collapse', 'seq_length'))
-    
-    if max_mismatch is None:
-        max_mismatch = int(config.get('collapse', 'max_mismatch'))
-    
-    if outdir is None:
-        outdir = dirname    
-    os.makedirs(outdir, exist_ok=True)
-
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-
-    sh = StatsHandler(config, outdir=outdir, datestr=datestr)
-    #  sh.add_value('/collapse','n_components', len(components) )
-    
-    # need to strip to seq_length
-    logging.info(f'Reading {infile} to df...')
-    fdf = read_fasta_to_df(infile, seq_length)
-    logging.debug(f'fdf=\n{fdf}')
-    of = os.path.join( outdir , f'{base}.fulldf.tsv')
-    logging.info(f'Writing full DF to {of}')
-    fdf.to_csv(of, sep='\t')
-    sh.add_value('/collapse','n_full_sequences', len(fdf) )
-
-    # get reduced dataframe of unique sequences
-    logging.info('Getting unique DF...')    
-    udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
-    
-    sh.add_value('/collapse','n_unique_sequences', len(udf) )
-    
-    logging.debug(f'udf = \n{udf}')
-    of = os.path.join( outdir , f'{base}.udf.tsv')
-    logging.info(f'Writing unique DF to {of}')
-    udf.to_csv(of, sep='\t') 
-    
-    of = os.path.join( outdir , f'{base}.udf.fasta')
-    logging.info(f'Writing uniques as FASTA to {of}')
-    seqfasta = write_fasta_from_df(udf, outfile=of)
-    
-    # run allXall bowtiex
-    of = os.path.join( outdir , f'{base}.bt2.sam')
-    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
-    # switch to generic bowtie later... JRH
-    #afile = run_bowtie(config, seqfasta, seqfasta, of, tool=aligner)
-    btfile = run_bowtie(config, seqfasta, of, tool=aligner)
-    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
-    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
-    of = os.path.join( outdir , f'{base}.btdf.tsv')
-    btdf.to_csv(of, sep='\t') 
-    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
-    
-    # perform collapse...      
-    logging.info('Calculating Hamming components...')
-    edgelist = edges_from_btdf(btdf)
-    btdf = None  # help memory usage
-    sh.add_value('/collapse','n_edges', len(edgelist) )
-    
-    logging.debug(f'edgelist len={len(edgelist)}')
-    components = get_components(edgelist)
-    logging.debug(f'all components len={len(components)}')
-    sh.add_value('/collapse','n_components', len(components) )
-    edgelist = None  # help memory usage
-
-    # components is list of lists.
-    data = [ len(c) for c in components]
-    data.sort(reverse=True)
-    ccount = pd.Series(data)
-    of = os.path.join( outdir , f'{base}.comp_count.tsv')
-    ccount.to_csv(of, sep='\t') 
- 
-    components = remove_singletons(components)
-    logging.debug(f'multi-element components len={len(components)}')
-    sh.add_value('/collapse','n_multi_components', len(components) )
-    of = os.path.join( outdir , f'{base}.multi.components.txt')
-    writelist(of, components)
-    
-    logging.info(f'Collapsing {len(components)} components...')
-    newdf = collapse_by_components(fdf, udf, components, outdir=outdir)
-    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-    newdf.rename( {'sequence':'orig_seq', 'newsequence':'sequence'}, inplace=True, axis=1)
-    
-    del fdf 
-    del udf
-    del components
-        
-    of = os.path.join( outdir , f'{base}.collapsed.tsv')
-    logging.info(f'Got collapsed DF. Writing to {of}')
-    newdf.to_csv(of, sep='\t')     
-    logging.info('Done. Calculating fasta.')
-    of = os.path.join( outdir , f'{base}.collapsed.fasta')
-    cdf = pd.DataFrame( newdf['sequence'] + newdf['tail'], columns=['sequence'])
-    logging.info(f'Writing fasta to {of}')
-    write_fasta_from_df(cdf, of)
-    logging.info(f'Wrote re-joined sequences to {of}')
 
 
-
-def apply_setcompseq(row, seqmapdict ):
-    ''' 
-      Set Component Sequence
-      Applies mapping from old to new sequence from dict. 
-      
-      seqmapdict = { oldseq : newseq }
-      
-      Usage example:
-            df['sequence'] = df.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
-      
-    '''
-    try:
-        #logging.debug(f"getting mapping for {row['sequence']}")
-        a = seqmapdict[row['sequence']]
-    except KeyError:
-        # A KeyError means we don't want to remap, just use original value
-        a = row['sequence']
-    return a
-
-
-def build_seqmapdict(udf, components):
+def build_seqmapdict(udf, components, column='vbc_read'):
     '''
     Create mappings from all unique sequences to component sequence
     '''
@@ -1611,7 +2002,7 @@ def build_seqmapdict(udf, components):
     comp_len = len(components)
     
     for comp in components:
-        ser = list(udf['sequence'].iloc[comp])
+        ser = list(udf[column].iloc[comp])
         t = ser[0]
         for s in ser: 
             seqmapdict[s]= t    
@@ -1619,6 +2010,35 @@ def build_seqmapdict(udf, components):
             logging.debug(f'[{comphandled}/{comp_len}] t = {t}')
         comphandled += 1
     return seqmapdict
+
+
+def build_seqmapdict_pd(udf, components, column='vbc_read', pcolumn='count'):
+    '''
+    Create mappings from all unique sequences to component sequence
+    Can we do this faster? Choose most abundant variant?
+    dict should be oldsequence -> newsequence
+    
+    '''
+    seqmapdict = {}
+    comphandled = 0
+    pcolumn='count'
+    logging.debug(f'udf len={len(udf)} components len={len(components)} column={column} pcolumn={pcolumn} ')
+    comphandled_interval = 1000
+    comp_len = len(components)    
+    for i, indexlist in enumerate( components):
+        cdf = udf[[column, pcolumn]].iloc[indexlist]
+        cdf.reset_index(inplace=True, drop=True)
+        #logging.debug(f'component [{i}/{comp_len}]: len={len(cdf)}')
+        maxid = int(cdf[pcolumn].idxmax())
+        t = cdf[column].iloc[maxid]
+        for compseq in list(cdf[column]): 
+            #logging.debug(f'compseq={compseq} -> {t}')
+            seqmapdict[compseq]= t    
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'[{i}/{comp_len}]: len={len(cdf)} seq = {t} ')
+        comphandled += 1
+    return seqmapdict
+
 
 
 def collapse_by_components(fulldf, uniqdf, components, outdir=None):
@@ -1648,15 +2068,59 @@ def collapse_by_components(fulldf, uniqdf, components, outdir=None):
     logging.info('seqmapdict built. Applying.')
     if outdir is not None:
         outfile = f'{outdir}/seqmapdict.json'
-        logging.debug(f'outdir given. writing {outfile}')
+        logging.debug(f'writing seqmapdict len={len(seqmapdict)} tp {outfile}')
         with open(outfile, 'w') as fp:
-            json.dump(seqmapdict, fp)
-    
+            json.dump(seqmapdict, fp, indent=4)
+    else:
+        logging.debug(f'no outdir given.')
+    logging.info(f'applying seqmapdict...')
     fulldf['newsequence'] = fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
     logging.info(f'New collapsed df = \n{fulldf}')
     log_objectinfo(fulldf, 'fulldf')
     return fulldf
 
+def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdir=None):
+    #
+    # *** Assumes components are multi-element components only ***
+    #
+    # components consist of indices within the uniqdf. 
+    # assumes component elements are integers, as they are used as dataframe indices. 
+    # create map of indices in original full DF that correspond to all members of a (multi-)component
+    # from alignment
+    # hash key is index of first appearance of sequence in full DF (i.e. its index in uniqdf.) 
+    # 
+    # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
+    #
+    #  SETUP
+    #  infile is all reads...
+    #      fdf = read_fasta_to_df(infile, seq_length=32)
+    #      udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    #      components = remove_singletons(components)
+    
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
+    logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
+    smd = build_seqmapdict_pd(uniqdf, components,  column, pcolumn)
+      
+    # Make new full df:
+    logging.info('seqmapdict built. Applying.')
+    if outdir is not None:
+        outfile = f'{outdir}/seqmapdict.json'
+        logging.debug(f'writing seqmapdict len={len(smd)} tp {outfile}')
+        with open(outfile, 'w') as fp:
+            json.dump(smd, fp, indent=4)
+    else:
+        logging.debug(f'no outdir given.')
+    logging.info(f'applying seqmapdict...')
+    # make deep copy of original sequence column
+    fulldf.loc[:, f'{column}_col'] = fulldf.loc[:, column]    
+    # map old to new
+    fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
+    # fill in NaN with original values. 
+    fulldf['vbc_read_col'].fillna(fulldf['vbc_read'], inplace=True)
+    logging.info(f'New collapsed df = \n{fulldf}')
+    log_objectinfo(fulldf, 'fulldf')
+    return fulldf
 
 
 def align_collapse_df(df, seq_length=None, max_mismatch=None, outdir=None, datestr=None, cp=None):
@@ -1691,6 +2155,7 @@ def align_collapse_df(df, seq_length=None, max_mismatch=None, outdir=None, dates
     # get reduced dataframe of unique head sequences
     logging.info('Getting unique DF...')    
     udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
+    #udf = df['sequence'].value_counts() 
     sh.add_value('/collapse','n_unique_sequences', len(udf) )    
 
     of = os.path.join( outdir , 'unique_sequences.tsv')
@@ -1746,19 +2211,129 @@ def align_collapse_df(df, seq_length=None, max_mismatch=None, outdir=None, dates
     newdf = collapse_by_components(df, udf, components, outdir=outdir)
     # newdf has sequence and newsequence columns, rename to orig_seq and sequence
     newdf.rename( {'sequence':'orig_seq', 'newsequence':'new_seq'}, inplace=True, axis=1)    
-
-    of = os.path.join( outdir , f'collapsed.tsv')
-    logging.info(f'Got collapsed DF. Writing to {of}')
-    newdf.to_csv(of, sep='\t')         
-
-    logging.info('Done. Calculating fasta.')
-    of = os.path.join( outdir , f'collapsed.fasta')
-    joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
-    #logging.info(f'Writing fasta to {of}')
-    #write_fasta_from_df(joindf, of)
-    #logging.info(f'Wrote re-joined sequences to {of}')        
-    return joindf    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
         
+    joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
+    of = os.path.join( outdir , f'collapsed.fasta')
+    logging.info(f'Writing collapsed fasta to {of}')
+    write_fasta_from_df(joindf, of)        
+    return newdf
+
+
+def align_collapse_pd(df,
+                      column='vbc_read',
+                      pcolumn='read_count', 
+                      max_mismatch=None, 
+                      outdir=None, 
+                      datestr=None, 
+                      cp=None):
+    '''
+    Assumes dataframe with sequence and read_count columns
+    Use read_count to choose parent sequence.
+    Speed up use of pandas, map() function rather than apply()
+    
+    relationship between read_count on full_read sequences (52nt), and 
+        value_counts() on unique VBCs (30nts)
+    
+    '''
+    # housekeeping...
+    if cp is None:
+        cp = get_default_config()
+    
+    aligner = cp.get('collapse','tool')    
+    if max_mismatch is None:
+        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    else:
+        max_mismatch = int(max_mismatch)
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    if outdir is None:
+        outdir = './'
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
+    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)      
+    sh.add_value('/collapse','n_full_sequences', len(df) )
+
+    # get reduced dataframe of unique head sequences
+    logging.info('Getting unique DF...')    
+    #udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
+    udf = df[column].value_counts().reset_index() 
+    sh.add_value('/collapse','n_unique_sequences', len(udf) )    
+
+    of = os.path.join( outdir , f'{column}.unique.tsv')
+    logging.info(f'Writing unique DF to {of}')
+    udf.to_csv(of, sep='\t') 
+    
+    of = os.path.join( outdir , f'{column}.unique.fasta')
+    logging.info(f'Writing uniques as FASTA to {of}')
+    seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
+
+    of = os.path.join(outdir, f'{column}.fulldf.tsv')
+    logging.info(f'Writing slimmed full DF to {of}')    
+    df.to_csv(of, sep='\t', columns=[column, pcolumn])
+
+    # run allXall bowtiex
+    of = os.path.join( outdir , f'unique_sequences.bt2.sam')
+    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
+    btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
+    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
+    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
+    of = os.path.join( outdir , f'unique_sequences.btdf.tsv')
+    btdf.to_csv(of, sep='\t') 
+    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
+
+    # perform collapse...      
+    logging.info('Calculating Hamming components...')
+    edgelist = edges_from_btdf(btdf)
+    btdf = None  # help memory usage
+    sh.add_value('/collapse','n_edges', len(edgelist) )
+    
+    of = os.path.join( outdir , f'edgelist.txt')
+    writelist(of, edgelist)
+    logging.debug(f'edgelist len={len(edgelist)}')
+    
+    components = get_components(edgelist)
+    logging.debug(f'all components len={len(components)}')
+    sh.add_value('/collapse','n_components', len(components) )
+    of = os.path.join( outdir , f'components.txt')
+    writelist(of, components)
+    edgelist = None  # help memory usage    
+
+    # assess components...
+    # components is list of lists.
+    data = [ len(c) for c in components]
+    data.sort(reverse=True)
+    ccount = pd.Series(data)
+    of = os.path.join( outdir , f'component_count.tsv')
+    ccount.to_csv(of, sep='\t')            
+
+    mcomponents = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(mcomponents)}')
+    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
+    of = os.path.join( outdir , f'multi_components.json')
+    logging.debug(f'writing components len={len(components)} t {of}')
+    with open(of, 'w') as fp:
+        json.dump(mcomponents, fp, indent=4)
+
+    logging.info(f'Collapsing {len(components)} components...')
+    newdf = collapse_by_components_pd(df, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newcol = f'{column}_col'        
+    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
+
+    rdf = newdf[[ column, newcol, 'read_count' ]]
+    of = os.path.join( outdir , f'read_collapsed.tsv')
+    logging.info(f'Writing reduced mapping TSV to {of}')
+    rdf.to_csv(of, sep='\t')
+    
+    newdf.drop(column, inplace=True, axis=1)
+    #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
+    #of = os.path.join( outdir , f'collapsed.fasta')
+    #logging.info(f'Writing collapsed fasta to {of}')
+    #write_fasta_from_df(joindf, of)        
+    return newdf        
         
         
         

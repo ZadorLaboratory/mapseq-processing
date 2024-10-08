@@ -7,6 +7,8 @@ import sys
 from configparser import ConfigParser
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
@@ -41,6 +43,32 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-i','--min_inj_umi', 
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Minimum injection UMIs for inclusion.')
+    
+    parser.add_argument('-t','--min_target_umi', 
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Minimum target UMIs for inclusion.')
+
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
+                    required=False,
+                    default='M001',
+                    type=str, 
+                    help='Explicitly provided experiment id, e.g. M205')
+
+#    parser.add_argument('-s','--sampleinfo', 
+#                        metavar='sampleinfo',
+#                        required=True,
+#                        default=None,
+#                        type=str, 
+#                        help='XLS sampleinfo file. ')
+
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
@@ -48,33 +76,6 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
-    parser.add_argument('-a','--aligner', 
-                    metavar='aligner',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='aligner tool  [bowtie | bowtie2]')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max mismatch for barcode/SSI matching.')
-
-    parser.add_argument('-b','--seq_length', 
-                        metavar='seq_length',
-                        required=False,
-                        default=30,
-                        type=int, 
-                        help='Length of leading barcode to collapse [30]')
-
-    parser.add_argument('-r','--recursion', 
-                        metavar='recursion',
-                        required=False,
-                        default=20000,
-                        type=int, 
-                        help='Max recursion. Handle larger input to collapse() System default ~3000.')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -82,6 +83,13 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='outdir. input file base dir if not given.')   
+
+#    parser.add_argument('-o','--outfile', 
+#                    metavar='outfile',
+#                    required=False,
+#                    default=None, 
+#                    type=str, 
+#                    help='Full dataset table TSV') 
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -93,7 +101,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='TSV with sequence and read_count columns')
+                        help='Single TSV or parquet file')
         
     args= parser.parse_args()
     
@@ -104,39 +112,19 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
-    
-    if args.aligner is not None:
-        cp.set('collapse','tool', args.aligner)
-
-    if args.max_mismatch is not None:
-        cp.set('collapse','max_mismatch', str(args.max_mismatch))    
-
-    if args.seq_length is not None:
-        cp.set('collapse','seq_length', str(args.seq_length) )
-    
+       
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
-    
-    # set recursion
-    logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
-    if args.recursion is not None:
-        rlimit = int(args.recursion)
-        logging.info(f'set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)
-       
-    # set outdir
-    outdir = None
-    if args.outdir is not None:
-        outdir = os.path.abspath(args.outdir)
-        logging.debug(f'making missing outdir: {outdir} ')
-        os.makedirs(outdir, exist_ok=True)
+          
+    # set outdir / outfile
+    if args.outdir is None:
+        outdir = os.path.abspath('./')
     else:
-        filepath = os.path.abspath(args.infile)    
-        dirname = os.path.dirname(filepath)
-        outdir = dirname
-
-    logging.info(f'handling {args.infile} to outdir {args.outdir}')    
+        outdir = os.path.abspath(args.outdir)
+ 
+    os.makedirs(outdir, exist_ok=True)
+    logging.info(f'handling {args.infile} to outdir {outdir}')    
     logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
@@ -145,18 +133,25 @@ if __name__ == '__main__':
         formatter = logging.Formatter(FORMAT)
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
-        log.addHandler(logStream)
+        log.addHandler(logStream)    
     
-    df = load_df(args.infile)
-     
-    joindf = align_collapse_df(df, 
-                      seq_length=args.seq_length, 
-                      max_mismatch=args.max_mismatch, 
-                      outdir=args.outdir, 
-                      datestr=args.datestr,
-                      cp=cp )
+    if args.infile.endswith('.tsv'):
+        logging.info(f'loading {args.infile} as tsv')
+        df = load_readtable(args.infile) 
+    elif args.infile.endswith('.parquet'):
+        logging.info(f'loading {args.infile} as parquet')
+        df = pd.read_parquet(args.infile)
+    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+
+    process_make_matrices_pd(df,
+                                   exp_id = args.expid,  
+                                   min_inj_umi = args.min_inj_umi,
+                                   min_target_umi = args.min_target_umi,
+                                   outdir=outdir, 
+                                   datestr=args.datestr,
+                                   label_column='label',
+                                   cp=cp)
     
-    of = os.path.join( args.outdir , f'collapsed.fasta')
-    logging.info(f'Writing fasta to {of}')
-    write_fasta_from_df(joindf, of)
-    logging.info(f'Wrote re-joined sequences to {of}')     
+    logging.info(f'Made matrices in {outdir}...')
+
+    

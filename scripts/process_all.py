@@ -2,7 +2,7 @@
 #
 # Top level processing script. 
 # Enter into each subdirectory and run all MAPseq processing steps. 
-#
+# Assume all defaults/configs are correct. 
 #
 import argparse
 import logging
@@ -41,6 +41,14 @@ if __name__ == '__main__':
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
                         help='config file.')    
+
+    parser.add_argument('-O','--outdir', 
+                    metavar='outdir',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='outdir. output file base dir if not given.')
+
     
     parser.add_argument('-f','--force', 
                     action="store_true", 
@@ -65,8 +73,7 @@ if __name__ == '__main__':
 
     logging.debug(f'indirs={args.infiles}')
 
-    for d in args.infiles:
-        process_mapseq_dir(d, loglevel , force=args.force )
+    process_mapseq_dir(args.infiles, outdir, loglevel , force=args.force )
  
  
 

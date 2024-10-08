@@ -1154,3 +1154,69 @@ def make_read_countsplot_combined_sns(config, sampdf, filelist, outdir, expid=No
     logging.info(f'saved plot PDF to {outfile}')
     
 
+#  handling seqmandict merging...
+#fulldf['newsequence'] = fulldf.apply(apply_setcompseq, axis=1, seqmapdict=seqmapdict)
+# make deep copy of original sequence column
+fulldf.loc[:, f'{column}_col'] = fulldf.loc[:, column]
+#fulldf[f'{column}_col'] = fulldf[column]
+
+# map old to new
+fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
+# fill in NaN with original values. 
+df['vbc_read_col'].fillna(df['vbc_read'], inplace=True)
+
+
+
+# replace is *VERY* slow ?
+#fulldf[f'{column}_col'] = fulldf[column].replace(smd)
+
+def aggtest():
+    '''
+    
+    '''
+    columns = [ 'vbc', 'vbc_read_col', 'umi','label','read_count']
+    lol = [     [ 'AAA', 'AAA', 'M',  'BC1', 2],
+                [ 'AAB', 'AAA', 'M',  'BC1', 15],        
+                [ 'AAC', 'AAA', 'N',  'BC1', 4],
+                [ 'BBB', 'BBB', 'O',  'BC1', 7],
+                [ 'BBA', 'BBB', 'P',  'BC1', 3],        
+                [ 'BBC', 'BBB', 'Q',  'BC1', 2],        
+                [ 'BBC', 'BBB', 'R',  'BC2', 8],
+                [ 'BBC', 'BBB', 'R',  'BC2', 9],
+                [ 'BBC', 'BBB', 'S',  'BC2', 7],
+                [ 'CCC', 'CCC', 'O',  'BC1', 14],
+                [ 'CCA', 'CCC', 'O',  'BC1', 13],
+                [ 'CCC', 'CCC', 'O',  'BC1', 41],
+                [ 'CCC', 'CCC', 'P',  'BC1', 4],        
+                [ 'CCA', 'CCC', 'P',  'BC1', 6],        
+                [ 'CCB', 'CCC', 'Q',  'BC1', 5], 
+                [ 'CCD', 'CCC', 'R',  'BC2', 3],
+            ]
+                # does it matter if there is another column that always corresponds to an existing? 
+    columns2 = [ 'vbc', 'vbc_read_col', 'umi','label','site','read_count']
+    lol2 = [     [ 'AAA', 'AAA', 'M',  'BC1', 'target', 2],
+                [ 'AAB', 'AAA', 'M',  'BC1', 'target', 15],        
+                [ 'AAC', 'AAA', 'N',  'BC1', 'target', 4],
+                [ 'BBB', 'BBB', 'O',  'BC1', 'target', 7],
+                [ 'BBA', 'BBB', 'P',  'BC1', 'target', 3],        
+                [ 'BBC', 'BBB', 'Q',  'BC1', 'target', 2],        
+                [ 'BBC', 'BBB', 'R',  'BC2', 'injection', 8],
+                [ 'BBC', 'BBB', 'R',  'BC2', 'injection', 9],
+                [ 'BBC', 'BBB', 'S',  'BC2', 'injection', 7],
+                [ 'CCC', 'CCC', 'O',  'BC1', 'target', 14],
+                [ 'CCA', 'CCC', 'O',  'BC1', 'target', 13],
+                [ 'CCC', 'CCC', 'O',  'BC1', 'target', 41],
+                [ 'CCC', 'CCC', 'P',  'BC1', 'target', 4],        
+                [ 'CCA', 'CCC', 'P',  'BC1', 'target', 6],        
+                [ 'CCB', 'CCC', 'Q',  'BC1', 'target', 5], 
+                [ 'CCD', 'CCC', 'R',  'BC2', 'injection', 3],
+            ]    
+    df = pd.DataFrame(lol, columns=columns)
+    #df[['vbc_col','umi','label']].groupby(['label','vbc_col']).nunique().reset_index()
+    df.groupby(['label','vbc_read_col']).agg( {'umi' : 'nunique','read_count':'sum'}).reset_index()
+    
+    df2 =  pd.DataFrame(lol2, columns=columns2)
+    df2.groupby(['label','vbc_read_col']).agg( {'umi' : 'nunique','read_count':'sum', 'site':'first'}).reset_index()
+
+    # same output. 
+

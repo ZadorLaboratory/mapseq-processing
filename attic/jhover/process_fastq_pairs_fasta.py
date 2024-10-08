@@ -59,7 +59,7 @@ if __name__ == '__main__':
                     required=False,
                     default=None, 
                     type=str, 
-                    help='Combined read, read_count TSV')   
+                    help='FASTA output file. ')   
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -137,7 +137,7 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/sequences.tsv'
+            outfile = f'{outdir}/collapsed.tsv'
 
     logging.debug(f'making missing outdir: {outdir} ')
     os.makedirs(outdir, exist_ok=True)
@@ -155,32 +155,15 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
-
-    rcdf = process_fastq_pairs_pd(infilelist, 
-                                 outdir, 
+    
+    process_fastq_pairs(cp, infilelist, 
+                                 outfile, 
                                  force=args.force, 
                                  datestr=args.datestr, 
-                                 cp=cp)    
+                                 max_repeats=args.max_repeats,
+                                 max_n_bases=args.max_n_bases)    
+   
 
-    logging.debug(f'filtering by read quality. repeats. Ns.')
-    rcdf = filter_reads_pd(rcdf, 
-                           max_repeats=args.max_repeats,
-                           max_n_bases=args.max_n_bases, 
-                           column='sequence' )
-    logging.debug(f'calc/set read counts on original reads.')    
-    rcdf = set_counts_df(rcdf, column='sequence')
-    logging.info(f'dropping sequence column to slim.')
-    rcdf.drop('sequence', axis=1, inplace=True)    
-    #rcdf.drop(['sequence'], inplace=True, axis=1)
-    logging.info(f'Got dataframe len={len(rcdf)} Writing to {args.outfile}')
-    logging.debug(f'dataframe dtypes:\n{rcdf.dtypes}\n')
-    rcdf.to_csv(args.outfile, sep='\t')
-
-    dir, base, ext = split_path(args.outfile)
-    outfile = os.path.join([dir, f'{base}.parquet'])
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)    
-    
     
     
     

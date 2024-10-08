@@ -621,7 +621,6 @@ def convert_numeric(df):
 def split_path(filepath):
     '''
     dir, base, ext = split_path(filepath)
-    
     '''
     filepath = os.path.abspath(filepath)
     dirpath = os.path.dirname(filepath)
@@ -639,13 +638,14 @@ def load_df(filepath):
     filepath = os.path.expanduser(filepath)
     df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype="string[pyarrow]", comment="#")
     #df.fillna(value='', inplace=True)
-
+    logging.debug(f'initial load done. converting types...')
     df = df.convert_dtypes(convert_integer=False)
     for col in df.columns:
+        logging.debug(f'trying column {col}')
         try:
             df[col] = df[col].astype('uint32')
         except ValueError:
-            logging.debug(f'skipping column {col}')
+            logging.debug(f'column {col} not int')
     logging.debug(f'{df.dtypes}')
     return df
 

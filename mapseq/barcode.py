@@ -68,12 +68,12 @@ def split_fasta(cp, infile, barcodefile, outdir, force=False, datestr=None):
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     
-    bclist = load_barcodes(cp, 
-                            barcodefile, 
+    bclist = load_barcodes( barcodefile, 
                             labels=None, 
                             outdir=outdir, 
                             eol=True, 
-                            max_mismatch=0)
+                            max_mismatch=0,
+                            cp=config)
     logging.info(f'made list of barcode handlers, length={len(bclist)}')
     logging.debug(bclist)
     
@@ -158,6 +158,21 @@ def split_fasta(cp, infile, barcodefile, outdir, force=False, datestr=None):
         logging.info(f'handled {num_handled_total} sequences. {num_matched_total} matched. {num_unmatched_total} unmatched matchrate={matchrate}')
     else:
         logging.warn('All FASTA output exists and force=False. Not recalculating.')
+
+
+def set_ssi_df(df, column='ssi'):
+    '''
+    assumed ssi 
+    sets barcode id and label from sequence. 
+ 
+    '''
+    initlen = len(seqdf)
+    logging.debug(f'setting read counts for sequence DF len={len(seqdf)}')
+    cdf = make_read_counts_df(cp, seqdf, label=None)
+    fmap = cdf.set_index('sequence')['read_count'].to_dict()
+    seqdf['read_count'] = seqdf['sequence'].map(fmap)
+    # change made to inbound df, but return anyway
+    return seqdf
     
 
 def build_bcmatcher(bclist):
@@ -399,29 +414,34 @@ class BarcodeHandler(object):
         return alldf
 
 
-def load_barcodes(config, bcfile, labels = None, outdir=None, eol=True, max_mismatch=0):
+def load_barcodes(bcfile, 
+                  labels=None, 
+                  outdir=None, 
+                  eol=True, 
+                  max_mismatch=0,
+                  cp=None):
     '''
      labellist is a python list of ids. barcode labels will be checked against
      <id> from labellist. 
     '''
+    if cp is None:
+        cp = get_default_config()
     if labels is not None:
         codelist = [ f'{x}' for x in labels]
         logging.debug(f'codelist={codelist}')
+    bcdict = get_barcode_dict(bcfile)
     bclist = []
-    with open(bcfile) as fh:
-        logging.debug(f"opened barcode file {bcfile}")
-        while True:
-            ln = fh.readline()
-            if len(ln) < 2:
-                break
-            (label, bcseq) = ln.split()
-            logging.debug(f'handling label={label} and barcode={bcseq}')
-            
-            if labels is None or label in codelist:
+    #codelist = list(bcdict.values())
+    for bcseq in bcdict.keys():
+        label = bcdict[bcseq]
+        logging.debug(f'handling label={label} and barcode={bcseq}')        
+        if labels is None or label in codelist:
                 bch = BarcodeHandler(label, bcseq, outdir, eol, max_mismatch)
                 bclist.append(bch)
     logging.debug(f'made list of {len(bclist)} barcode handlers.')
     return bclist
+
+
 
 def check_output(bclist):
     '''
@@ -452,3 +472,47 @@ def check_output(bclist):
     else:
         logging.info('all output exists.')
     return output_exists
+
+
+def get_rtprimer_dict(bcfile, labels=None):
+    '''
+    read barcode file, parse into dict. 
+    optionally include only labels in provided list. 
+    '''
+    rtdict = {}  # map from seq to primer number
+    with open(bcfile) as fh:
+        logging.debug(f"opened barcode file {bcfile}")
+        while True:
+            ln = fh.readline()
+            if len(ln) < 2:
+                break
+            (label, bcseq) = ln.split()
+            rtn = label.replace('BC','')
+            if labels is None or label in labels: 
+                rtdict[bcseq] = rtn
+                logging.debug(f'label={label} rtn={rtn} barcode={bcseq}')    
+    logging.debug(f'got dict len={len(rtdict)}')
+    return rtdict
+
+def get_barcode_dict(bcfile, labels=None):
+    '''
+    read barcode file, parse into dict. 
+    optionally include only labels in provided list. 
+    '''
+    bcdict = {}  # map from seq to barcode label
+    with open(bcfile) as fh:
+        logging.debug(f"opened barcode file {bcfile}")
+        while True:
+            ln = fh.readline()
+            if len(ln) < 2:
+                break
+            (label, bcseq) = ln.split()
+            rtn = label.replace('BC','')
+            if labels is None or label in labels: 
+                bcdict[bcseq] = label
+                logging.debug(f'label={label} rtn={rtn} barcode={bcseq}')    
+    logging.debug(f'got dict len={len(bcdict)}')
+    return bcdict
+
+
+

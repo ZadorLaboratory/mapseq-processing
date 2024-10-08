@@ -39,7 +39,6 @@ conda config --add channels bioconda
  
 ```
 
-
 * Clone the mapseq-processing software from the repository to the standard location. (This assumes you already have git installed. If not, install it first). 
 
 ```
@@ -47,7 +46,7 @@ mkdir ~/git
 git clone https://github.com/ZadorLaboratory/mapseq-processing.git 
 ```
 All the code is currently organized so it is run directly from the git directory (rather than installed). 
-* Create a working directory for your experiment, and copy in a metadata file and the fastq sequencing data files, and the default configuration file. 
+* Create a working directory for your experiment, and copy in a metadata file and the fastq sequencing data files, and optionally the default configuration file. 
 
 ```
 mkdir \~/mapseq/M205 ; cd ~/mapseq/M205
@@ -56,7 +55,7 @@ cp /some/path/EXP_sampleinfo.xlsx ./
 cp \~/git/mapseq-processing/etc/mapseq.conf ./
 ```
 
-## Experiment Metadata, Initial Configuration
+## Experiment Metadata, Initial Configuration, Default Behavior
 All the commands in the pipeline look up metadata about the experiment from an Excel spreadsheet. We have provided the relevant spreadsheet for our example data. All that is absolutely required for the pipeline to work is that there be a worksheet entitled "Sample Information", and that there be columns titled:
 "RT primers for MAPseq", 
 "Brain", 
@@ -64,7 +63,7 @@ All the commands in the pipeline look up metadata about the experiment from an E
 "Our Tube #", 
 "Site information"
 
-The Site information column should indicate whether the dissected area is a target or injection, and additionally whether it is a negative (biological control) or control (water). 
+The Site information column should indicate whether the dissected area is a target or injection, and additionally whether it is a negative from a test brain (biological control), negative from a non-test brain, or control (water). 
 Region and Brain should be obvious. Note that the region labels will be used (if available) for the default plots.  
 
 An example spreadsheet is included in 
@@ -75,17 +74,22 @@ The RT primer barcode table is included in the software, as ~/git/mapseq-process
 By default, commands in the pipeline will take their defaults from a single configuration file, included in the distribution ~/git/mapseq-processing/etc/mapseq.conf.
 Often, these can be overridden from the command line. You can also copy the default configuration file, edit it, and use it from each command with the -c <configfile> switch. 
 
-For each command, there are typical arguments. Additional arguments may be supported. Run the -h switch to see the full usage help. 
+For each command, there are typical arguments. Additional arguments may be supported. Run the -h switch to see the full usage help.
+
+Note that for version 2, all the commands automatically generate Parquet file output (in addition to the standard TSV format). For full-sized datasets on moderate-memory systems (less than 128G) TSV files become problematic, causing out of memory errors. In those cases, the parquet file should be used as the input for the next step, as it will load faster and use less memory.  
+
+For most of the commands, specifying the output file (with subdirectory) should be sensible. The programs will make needed sub-directories.  
+ 
 
 ### process_fastq_pairs.py
 
 ```
 ~/git/mapseq-processing/scripts/process_fastq_pairs.py 
 	-v  				# give verbose output.  
-	-o fastq.out/M211.all.fasta 	# write to FASTA file
-	fastq/M211_HZ_S1_R*.fastq	# paired-end input FASTQs. 
+	-o fastq.out/M253.reads.tsv 	# write to TSV file
+	fastq/M253_CR_S1_R*.fastq	# paired-end input FASTQs. 
 ```
-process_fastq_pairs.py pulls out sequences lines from both read files, trims, and combines them. Some QC filtering is done at this step, with removal of long stretches of homo-polymers and removal of any sequences with low-confidence base calls ('N' bases).
+process_fastq_pairs.py pulls out sequences lines from both read files, trims, and combines them. Some QC filtering is done at this step, with removal of long stretches of homo-polymers and removal of any sequences with low-confidence base calls ('N' bases). Note that input files can be fastq or fastq.gz--the program will decompress on the fly if needed. 
 
 For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minutes on a new Mac M3). 
   
@@ -94,67 +98,72 @@ For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minute
 
 ```
 ~/git/mapseq-processing/scripts/align_collapse.py
-	-v 				# give verbose output
-	-b 30 				# viral barcode length=30
-	-m 3 				# maximum Hamming distance of 3 
-	-O collapse.out		# output directory
-	fastq.out/M211.all.fasta	# input FASTA
+	-v 					# give verbose output
+	-m 3 					# maximum Hamming distance of 3 
+	-o collapse.out/M253.collapsed.tsv 	# output TSV 
+	fastq.out/M253.reads.tsv		# input TSV (or parquet)
 ```
 
-align_collapse.py separates out the viral barcode part of the data, and partitions them into groups where all the members are within a Hamming distance of 3 of each other. It  then sets all members of the partitions to have the same sequence. (This sequence is a randomly chosen one from the original partition, because it doesn't matter what the exact sequence is, as long as they all share it, and it is unique within the data). 
+This program takes the viral barcode part of the reads, and partitions them into groups where all the members are within a Hamming distance of 3 of each other. It does this by running an all-by-all alignment of all unique viral barcode sequences. Self-matches are discarded. The remainder are used to create an edge graph (nodes are sequences, edges are between sequences less than 3 edits apart). This is then given to Tarjan's algorithm to determine "components", sets of sequences connected by edges. It then sets all members of the components to have the same sequence. (This sequence is the one in the original set with the most reads, but it shouldn't matter what the exact sequence is, as long as they all share it, and it is unique within the data). 
 
-This is necessary because there is a fair amount of mutation that occurs during viral replication. We don't worry about mismatches in the other components of the sequence (SSI barcode, UMI sequence) because these are added during sample processing and thus have lower error rates.
+This processing step is necessary because there is a fair amount of mutation that occurs during viral replication. We don't worry about mismatches in the other components of the sequence (SSI barcode, UMI sequence) because these are added during sample processing and thus have lower error rates.
 
-For a standard ~400M read experiment, this takes about 90 minutes on a high-memory (192GB RAM) node. (Or 50 minutes on a new Mac M3, 96GB RAM).  
+For a standard ~400M read experiment, this takes about 70 minutes on a high-memory (192GB RAM) node. (Or 50 minutes on a new Mac M3, 96GB RAM).  
 
-### process_fasta.py
+### make_readtable.py
 
 ```
-~/git/mapseq-processing/scripts/process_fasta.py 
+~/git/mapseq-processing/scripts/make_readtable.py 
 	-v						# give verbose output
-	-s M211_sampleinfo.xlsx 			# sample metadata
-	-O fasta.out 					# output directory 
-	collapse.out/M205.all.collapsed.fasta	# adjusted FASTA
+	-s M253_sampleinfo.xlsx 			# sample metadata
+	-o readtable.out/M253.readtable.tsv 		# output TSV 
+	collapse.out/M253.collapsed.tsv		# collapsed reads/counts (or parquet)
 ```
 
-Now we break the data into region by separating based on the SSI barcode.
+Now we break the data into useful sequence regions, and fill in addtional relevant information. 
+We also create site-specific read count shoulder plots, in order to confirm that our read count thresholds are reasonable. 
 
-This takes about 50 minutes for 400M reads and 10 SSI barcodes. (Or 8 minutes on Mac M3)  
+Takes about 45 minutes. 
+  
 
-### process_ssifasta.py
-This program actually calls a sub-program that handles each SSI  barcode in a separate process, allowing you to leverage all the CPUs on your system and finish faster. 
+### make_vbctable.py
+ 
 
 ```
 ~/git/mapseq-processing/scripts/process_ssifasta.py 
-	-v				# give verbose output
-	-t 6				# processes to use 
-	-s M211_sampleinfo.xlsx 	# sample metadata 
-	-o M211.merged.all.tsv		# output file for all VBCs 
-	-O ./ssifasta.out 		# output directory
-	fasta.out/BC*.fasta		# input FASTA, one for each SSI barcode 
+	-v					# give verbose output
+	-o vbctable.out/M253.vbctable.tsv 	# output file for all VBCs 
+	readtable.out/M253.readtable.tsv 	# fully populated read table. 
 ```
-
-This reads in all the separate SSI barcode FASTAs, and further separates out real VBC (viral barcodes), spike-ins (used for normalization), and L1s (used to detect template switching--a QC measure). These are all then merged and labelled into a single TSV with all the data. This includes molecule counts per VBC
+Consumes the readtable, drops all reads with missing/unmatched tags/sequences, drops reads that do not meet the read count threshold for the site type. It then collapses by viral barcode, calculating UMI count for each VBC.
+Outputs a VBC-oriented table. 
 
 This typically takes about 12 minutes. (3 minutes on Mac M3)
 
-### process_merged.py
+### make_matrices.py
 ```
-~/git/mapseq-processing/scripts/process_merged.py 
+~/git/mapseq-processing/scripts/make_matrices.py 
 	-v 
-	-s M211_sampleinfo.xlsx  
-	-e M211.gac 
-	-O merged.out 
-	ssifasta.out/M211.merged.all.tsv
+	-e M253 
+	-O matrices.out 
+	vbctable.out/M253.vbctable.tsv
 ```
 
-This program produces, for each brain, three matrices of viral barcodes by dissected region. This is the step at which (optionally) various threshold can be applied. 
--- Minimum UMI count in target and/or injection areas (min_target, min_injection)
--- Filter out VBCs not present in the injection (require_injection)
--- Minimum original read count (min_counts)
+This program produces, for each brain, several matrices of viral barcodes by dissected region. This is the step at which (optionally) various threshold can be applied. 
+-- Minimum UMI count in target and/or injection areas (min_target_umi, min_inj_umi)
+-- Filter out VBCs not present in the injection site (require_injection)
 
-The three matrices are a real barcode matrix (rbcm), a real barcode matrix normalized by spike-ins (nbcm), and a scaled+normalized barcode matrix (scbcm). The real barcode matrix contains raw numbers of molecules (UMIs) for each VBC. The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. A third, normalized+scaled matrix is useful for drawing heatmaps, since all values are scaled back to values from 0.0 to 1.0 so they can be represented by color intensity.      
+The matrices produced are: 
 
-These matrices, the all.merged.tsv file, and various statistics gathered along the way are the full output of the processing phase, implemented in the mapseq-processing project. Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
+A real barcode matrix (rbcm). The real barcode matrix contains raw numbers of molecules (UMIs) for each VBC.
+
+A spike-in barcode matrix (sbcm). Contains raw numbers of spike-in molecules for each site. 
+
+A real barcode matrix normalized by spike-ins (nbcm). The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. For most further analysis, this can be considered the canonical processing output file. 
+
+A scaled+normalized barcode matrix (scbcm). This normalized+scaled matrix is useful for drawing heatmaps, since all values are scaled back to values from 0.0 to 1.0 so they can be represented by color intensity.      
+
+
+Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
 	[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 
 

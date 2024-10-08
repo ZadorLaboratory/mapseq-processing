@@ -18,15 +18,18 @@ Enable additional Conda repositories:
 	conda config --add channels bioconda
 
 Create an environment for the MAPseq pipeline:
-	conda create -n mapseq python==3.9 
+	conda create -n mapseq python==3.12 
 
 Activate the environment:
 	conda activate mapseq
 
-
 Install dependencies, useful tools:
+
+	For version 2, we drop bowtie version one. 
+
+
 	For Linux and Intel MacOS
-	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl bowtie bowtie2 natsort git fastx_toolkit  
+	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl bowtie2 natsort git 
 	conda install cmake?
     
     For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )

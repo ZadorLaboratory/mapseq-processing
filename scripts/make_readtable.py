@@ -7,6 +7,8 @@ import sys
 from configparser import ConfigParser
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
@@ -15,6 +17,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
+
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -40,45 +43,21 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-r','--max_repeats', 
-                        metavar='max_repeats',
+
+    parser.add_argument('-b','--barcodes', 
+                        metavar='barcodes',
                         required=False,
-                        default=7,
-                        type=int, 
-                        help='Max homopolymer runs. [7]')
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
+                        type=str, 
+                        help='barcode file space separated: label   sequence')
 
-    parser.add_argument('-n','--max_n_bases', 
-                        metavar='max_n_bases',
-                        required=False,
-                        default=0,
-                        type=int, 
-                        help='Max number of ambiguous bases.')
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
 
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='Combined read, read_count TSV')   
-
-    parser.add_argument('-O','--outdir', 
-                    metavar='outdir',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='outdir. output file base dir if not given.')
-
-    parser.add_argument('-D','--datestr', 
-                    metavar='datestr',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='Include datestr in relevant files.')
-
-    parser.add_argument('-f','--force', 
-                    action="store_true", 
-                    default=False, 
-                    help='Recalculate even if output exists.') 
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -86,14 +65,34 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='Logfile for subprocess.')
+
+
+    parser.add_argument('-O','--outdir', 
+                    metavar='outdir',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='outdir. input file base dir if not given.')   
+
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Full dataset table TSV') 
+
+    parser.add_argument('-D','--datestr', 
+                    metavar='datestr',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Include datestr in relevant files.')
    
-    parser.add_argument('infiles' ,
-                        metavar='infiles', 
+    parser.add_argument('infile',
+                        metavar='infile',
                         type=str,
-                        nargs='+',
-                        default=None, 
-                        help='Read1 and Read2 [Read1B  Read2B ... ] fastq files')
-       
+                        help='Single TSV or Parquet file with collapsed vbc_read.')
+        
     args= parser.parse_args()
     
     if args.debug:
@@ -103,19 +102,14 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
+       
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
-
-    # check nargs. 
-    if (len(args.infiles) < 2)  or (len(args.infiles) % 2 != 0 ):
-        parser.print_help()
-        print('error: the following arguments are required: 2 or multiple of 2 infiles')
-        sys.exit(1)
-       
+    logging.debug(f'infiles={args.infile}')
+          
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/collapsed.tsv'
+    outfile = f'{outdir}/read.table.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -137,16 +131,13 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/sequences.tsv'
+            outfile = f'{outdir}/read.table.tsv'
 
-    logging.debug(f'making missing outdir: {outdir} ')
+    outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
-    logging.info(f'outdir={outdir} outfile={outfile}')
 
-    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
-    infilelist = package_pairfiles(args.infiles)   
-    
-    logging.debug(f'infilelist = {infilelist}')
+    logging.info(f'handling {args.infile} to outdir {outdir}')    
+    logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
         log = logging.getLogger()
@@ -155,32 +146,29 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
+    
+    logging.debug(f'loading sample DF...')
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    
+    logging.info(f'loading {args.infile}') 
+    if args.infile.endswith('.tsv'):
+        df = load_collapse(args.infile) 
+    elif args.infile.endswith('.parquet'):
+        df = pd.read_parquet(args.infile)
+    
+    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    df = process_make_readtable_pd(df,
+                                   sampdf, 
+                                   args.barcodes, 
+                                   outdir=outdir, 
+                                   datestr=args.datestr,
+                                   cp=cp)
 
-    rcdf = process_fastq_pairs_pd(infilelist, 
-                                 outdir, 
-                                 force=args.force, 
-                                 datestr=args.datestr, 
-                                 cp=cp)    
-
-    logging.debug(f'filtering by read quality. repeats. Ns.')
-    rcdf = filter_reads_pd(rcdf, 
-                           max_repeats=args.max_repeats,
-                           max_n_bases=args.max_n_bases, 
-                           column='sequence' )
-    logging.debug(f'calc/set read counts on original reads.')    
-    rcdf = set_counts_df(rcdf, column='sequence')
-    logging.info(f'dropping sequence column to slim.')
-    rcdf.drop('sequence', axis=1, inplace=True)    
-    #rcdf.drop(['sequence'], inplace=True, axis=1)
-    logging.info(f'Got dataframe len={len(rcdf)} Writing to {args.outfile}')
-    logging.debug(f'dataframe dtypes:\n{rcdf.dtypes}\n')
-    rcdf.to_csv(args.outfile, sep='\t')
-
-    dir, base, ext = split_path(args.outfile)
-    outfile = os.path.join([dir, f'{base}.parquet'])
+    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    df.to_csv(outfile, sep='\t')
+    dir, base, ext = split_path(outfile)
+    outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)    
-    
-    
-    
-    
