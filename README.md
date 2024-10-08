@@ -89,7 +89,9 @@ For most of the commands, specifying the output file (with subdirectory) should 
 	-o fastq.out/M253.reads.tsv 	# write to TSV file
 	fastq/M253_CR_S1_R*.fastq	# paired-end input FASTQs. 
 ```
-process_fastq_pairs.py pulls out sequences lines from both read files, trims, and combines them. Some QC filtering is done at this step, with removal of long stretches of homo-polymers and removal of any sequences with low-confidence base calls ('N' bases). Note that input files can be fastq or fastq.gz--the program will decompress on the fly if needed. 
+process_fastq_pairs.py pulls out sequences lines from both read files, trims, and combines them. Some QC filtering is done at this step, with removal of long stretches of homo-polymers and removal of any sequences with low-confidence base calls ('N' bases). Note that input files can be fastq or fastq.gz--the program will decompress on the fly if needed.
+
+Program will accept an even-number set of inputs. Just be sure that they are in the correct read1-read2-read1'-reqd2' order.  
 
 For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minutes on a new Mac M3). 
   
@@ -123,7 +125,7 @@ For a standard ~400M read experiment, this takes about 70 minutes on a high-memo
 Now we break the data into useful sequence regions, and fill in addtional relevant information. 
 We also create site-specific read count shoulder plots, in order to confirm that our read count thresholds are reasonable. 
 
-Takes about 45 minutes. 
+Takes about 45 minutes for 400M reads on MacBook Pro M3 
   
 
 ### make_vbctable.py
