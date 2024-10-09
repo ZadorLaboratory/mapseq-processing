@@ -43,13 +43,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-i','--min_inj_umi', 
+    parser.add_argument('-i','--inj_min_umi', 
                         required=False,
                         default=None,
                         type=int, 
                         help='Minimum injection UMIs for inclusion.')
     
-    parser.add_argument('-t','--min_target_umi', 
+    parser.add_argument('-t','--target_min_umi', 
                         required=False,
                         default=None,
                         type=int, 
@@ -61,13 +61,6 @@ if __name__ == '__main__':
                     default='M001',
                     type=str, 
                     help='Explicitly provided experiment id, e.g. M205')
-
-#    parser.add_argument('-s','--sampleinfo', 
-#                        metavar='sampleinfo',
-#                        required=True,
-#                        default=None,
-#                        type=str, 
-#                        help='XLS sampleinfo file. ')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -145,8 +138,8 @@ if __name__ == '__main__':
 
     process_make_matrices_pd(df,
                                    exp_id = args.expid,  
-                                   min_inj_umi = args.min_inj_umi,
-                                   min_target_umi = args.min_target_umi,
+                                   inj_min_umi = args.inj_min_umi,
+                                   target_min_umi = args.target_min_umi,
                                    outdir=outdir, 
                                    datestr=args.datestr,
                                    label_column='label',

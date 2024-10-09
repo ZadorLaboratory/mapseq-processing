@@ -184,7 +184,7 @@ if __name__ == '__main__':
     df.to_csv(outfile, sep='\t')
     
     dir, base, ext = split_path(outfile)
-    outfile = os.path.join([dir, f'{base}.parquet'])
+    outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)
     

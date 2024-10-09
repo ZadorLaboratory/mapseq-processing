@@ -40,22 +40,15 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-#    parser.add_argument('-s','--sampleinfo', 
-#                        metavar='sampleinfo',
-#                        required=True,
-#                        default=None,
-#                        type=str, 
-#                        help='XLS sampleinfo file. ')
-
     parser.add_argument('-i','--inj_min_reads', 
                         required=False,
-                        default=2,
+                        default=None,
                         type=int, 
                         help='Minimum injection reads for inclusion.')
     
     parser.add_argument('-t','--target_min_reads', 
                         required=False,
-                        default=2,
+                        default=None,
                         type=int, 
                         help='Minimum target reads for inclusion.')
 
@@ -135,7 +128,6 @@ if __name__ == '__main__':
 
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
-
     logging.info(f'handling {args.infile} to outdir {outdir}')    
     logging.debug(f'infile = {args.infile}')
     
@@ -147,10 +139,16 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    #logging.debug(f'loading sample DF...')
-    #sampdf = load_sample_info(cp, args.sampleinfo)
-    #logging.debug(f'\n{sampdf}')
-    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    if args.inj_min_reads is None:
+        inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
+    else:
+        inj_min_reads = args.inj_min_reads
+
+    if args.target_min_reads is None:
+        target_min_reads = int(cp.get('vbctable','target_min_reads'))
+    else:
+        target_min_reads = args.target_min_reads
+
      
     if args.infile.endswith('.tsv'):
         logging.info(f'loading {args.infile} as tsv')
@@ -165,8 +163,8 @@ if __name__ == '__main__':
     logging.debug(f'args={args}')
     df = process_make_vbctable_pd(df,
                                outdir=outdir,
-                               inj_min = args.inj_min_reads,
-                               target_min = args.target_min_reads, 
+                               inj_min_reads = inj_min_reads,
+                               target_min_reads = target_min_reads, 
                                datestr=args.datestr,
                                cp=cp)
 

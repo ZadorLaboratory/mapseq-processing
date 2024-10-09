@@ -49,7 +49,7 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
                         type=str, 
-                        help='barcode file space separated: label   sequence')
+                        help='barcode file space separated: label sequence')
 
     parser.add_argument('-s','--sampleinfo', 
                         metavar='sampleinfo',

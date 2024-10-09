@@ -40,7 +40,29 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='config file.')    
+                        help='config file.')
+    
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')  
+
+
+    parser.add_argument('-b','--barcodes', 
+                        metavar='barcodes',
+                        required=False,
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
+                        type=str, 
+                        help='barcode file space separated: label sequence')  
+
+    parser.add_argument('-e','--expid', 
+                    metavar='expid',
+                    required=False,
+                    default='EXP',
+                    type=str, 
+                    help='Explicitly provided experiment id, e.g. M205')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -72,8 +94,19 @@ if __name__ == '__main__':
         loglevel = 'info'
 
     logging.debug(f'indirs={args.infiles}')
+    
+    cp = ConfigParser()
+    cp.read(args.config)
+    cdict = format_config(cp)
+    logging.debug(f'Running with config. {args.config}: {cdict}')
+    logging.debug(f'infiles={args.infiles}')
 
-    process_mapseq_dir(args.infiles, outdir, loglevel , force=args.force )
+    process_mapseq_all(args.infiles, 
+                       sampleinfo=args.sampleinfo, 
+                       bcfile=args.barcodes, 
+                       outdir=args.outdir, 
+                       expid=args.expid, 
+                       cp=cp )
  
  
 
