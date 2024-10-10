@@ -156,25 +156,25 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
 
-    rcdf = process_fastq_pairs_pd(infilelist, 
+    df = process_fastq_pairs_pd(infilelist, 
                                  outdir, 
                                  force=args.force, 
                                  datestr=args.datestr, 
                                  cp=cp)    
 
     logging.debug(f'filtering by read quality. repeats. Ns.')
-    rcdf = filter_reads_pd(rcdf, 
+    df = filter_reads_pd(df, 
                            max_repeats=args.max_repeats,
                            max_n_bases=args.max_n_bases, 
                            column='sequence' )
     logging.debug(f'calc/set read counts on original reads.')    
-    rcdf = set_counts_df(rcdf, column='sequence')
+    df = set_counts_df(df, column='sequence')
     logging.info(f'dropping sequence column to slim.')
-    rcdf.drop('sequence', axis=1, inplace=True)    
-    #rcdf.drop(['sequence'], inplace=True, axis=1)
-    logging.info(f'Got dataframe len={len(rcdf)} Writing to {args.outfile}')
-    logging.debug(f'dataframe dtypes:\n{rcdf.dtypes}\n')
-    rcdf.to_csv(args.outfile, sep='\t')
+    df.drop('sequence', axis=1, inplace=True)    
+    #df.drop(['sequence'], inplace=True, axis=1)
+    logging.info(f'Got dataframe len={len(df)} Writing to {args.outfile}')
+    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
+    df.to_csv(args.outfile, sep='\t')
 
     dir, base, ext = split_path(args.outfile)
     outfile = os.path.join(dir, f'{base}.parquet')

@@ -1795,7 +1795,7 @@ def process_mapseq_all(infiles, sampleinfo, bcfile=None, outdir=None, expid=None
     logging.info(f'align_collapse done.')
     
     # make_readtable
-
+    outfile = f'{outdir}/{expid}.readtable.tsv'
     logging.debug(f'loading sample DF...')
     sampdf = load_sample_info(cp, sampleinfo)
     logging.debug(f'\n{sampdf}')
@@ -1816,6 +1816,7 @@ def process_mapseq_all(infiles, sampleinfo, bcfile=None, outdir=None, expid=None
     logging.info(f'make_readtable done.')    
 
     # make_vbctable
+    outfile = f'{outdir}/{expid}.vbctable.tsv'
     df = process_make_vbctable_pd(df,
                                outdir=outdir,
                                cp=cp)
