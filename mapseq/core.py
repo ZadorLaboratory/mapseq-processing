@@ -947,7 +947,7 @@ def process_fastq_pairs_pd(infilelist,
     logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
     df = None
     for (read1file, read2file) in infilelist:
-        logging.debug(f'handling {read1file}, {read2file} ...')
+        logging.info(f'handling {read1file}, {read2file} ...')
         if df is None:
             logging.debug(f'making new read DF...')
             df = pd.DataFrame(columns=['read1_seq', 'read2_seq'])
@@ -976,7 +976,7 @@ def process_fastq_pairs_pd(infilelist,
     df['libtag'] = df['sequence'].str.slice(30,32)    
     df['umi'] = df['sequence'].str.slice(32,44)
     df['ssi'] = df['sequence'].str.slice(44,52)
-    logging.debug(f'df done. len={len(df)} returning...')
+    logging.info(f'df done. len={len(df)} returning...')
     return df
 
 
@@ -1027,6 +1027,7 @@ def read_fastq_sequence(infile, start=0, end=-1 ):
     pull out sequence line, returns series.  
     dtype="string[pyarrow]"
     '''
+    logging.info(f'handling FASTQ {infile}')
     slist = []
     interval = 40000000
     if infile.endswith('.gz'):
@@ -1039,7 +1040,7 @@ def read_fastq_sequence(infile, start=0, end=-1 ):
             if i % 4 == 1:
                 slist.append(line[start:end])  # strip linefeed. 
             if i % interval == 0:
-                logging.debug(f'sequence {int(i/4)}')
+                logging.info(f'sequence {int(i/4)}')
             i += 1
     except:
         pass
@@ -1048,7 +1049,8 @@ def read_fastq_sequence(infile, start=0, end=-1 ):
     log_objectinfo(slist, 'slist')
     ser = pd.Series(slist, dtype="string[pyarrow]")
     logging.debug(f'series dtype={ser.dtype}')
-    log_objectinfo(ser, 'series')    
+    log_objectinfo(ser, 'series')
+    logging.info(f'done. {len(ser)} sequences extracted.')    
     return ser
             
       
@@ -1458,7 +1460,7 @@ def process_make_readtable_pd(df,
     -- classify by site-type
     -- set brain label
     '''
-    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
+    logging.info(f'inbound df len={len(df)} columns={df.columns}')
     if outdir is None:
         outdir = './'
     outdir = os.path.abspath(outdir)    
@@ -1521,6 +1523,7 @@ def process_make_readtable_pd(df,
     sdf = None    
 
     # make shoulder plots. injection, target
+    logging.info('making shoulder plots...')
     logging.getLogger('matplotlib.font_manager').disabled = True
     make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
     make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   

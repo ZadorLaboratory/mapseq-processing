@@ -40,7 +40,11 @@ Clone the mapseq-processing software from the repository to the standard locatio
 
 	mkdir -p ~/git ; cd ~/git
 	git clone https://github.com/ZadorLaboratory/mapseq-processing.git
-	export PATH=~/git/mapseq-processing/scripts:$PATH 
+	export PATH=~/git/mapseq-processing/scripts:$PATH
+	
+Optionally also clone the mapseq-analysis package similarly:
+	git clone https://github.com/ZadorLaboratory/mapseq-analysis.git
+	export PATH=~/git/mapseq-analysis/scripts:$PATH 
 
 All the code is currently organized so it can be run directly from the git directory (rather than installed). 
 
