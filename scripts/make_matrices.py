@@ -134,8 +134,11 @@ if __name__ == '__main__':
     elif args.infile.endswith('.parquet'):
         logging.info(f'loading {args.infile} as parquet')
         df = pd.read_parquet(args.infile)
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
+    
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-
     process_make_matrices_pd(df,
                                    exp_id = args.expid,  
                                    inj_min_umi = args.inj_min_umi,

@@ -171,7 +171,16 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.info(f'loading {args.infile}') 
-    df = load_df(args.infile) 
+    if args.infile.endswith('.tsv'):
+        logging.info(f'loading {args.infile} as tsv')
+        df = load_readtable(args.infile) 
+    elif args.infile.endswith('.parquet'):
+        logging.info(f'loading {args.infile} as parquet')
+        df = pd.read_parquet(args.infile)
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
+    
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = align_collapse_pd(df, 
                            column=args.column,

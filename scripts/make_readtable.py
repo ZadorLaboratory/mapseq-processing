@@ -157,6 +157,9 @@ if __name__ == '__main__':
         df = load_collapse(args.infile) 
     elif args.infile.endswith('.parquet'):
         df = pd.read_parquet(args.infile)
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = process_make_readtable_pd(df,
