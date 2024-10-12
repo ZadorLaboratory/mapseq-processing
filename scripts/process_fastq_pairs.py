@@ -155,11 +155,14 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
+        
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr) 
 
     df = process_fastq_pairs_pd(infilelist, 
                                  outdir, 
                                  force=args.force, 
-                                 datestr=args.datestr, 
                                  cp=cp)    
 
     logging.debug(f'filtering by read quality. repeats. Ns.')

@@ -77,12 +77,6 @@ if __name__ == '__main__':
                     type=str, 
                     help='outdir. input file base dir if not given.')   
 
-#    parser.add_argument('-o','--outfile', 
-#                    metavar='outfile',
-#                    required=False,
-#                    default=None, 
-#                    type=str, 
-#                    help='Full dataset table TSV') 
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -137,6 +131,10 @@ if __name__ == '__main__':
     else:
         logging.error('input file must have relevant extension .tsv or .parquet')
         sys.exit(1)
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     process_make_matrices_pd(df,
@@ -144,7 +142,6 @@ if __name__ == '__main__':
                                    inj_min_umi = args.inj_min_umi,
                                    target_min_umi = args.target_min_umi,
                                    outdir=outdir, 
-                                   datestr=args.datestr,
                                    label_column='label',
                                    cp=cp)
     

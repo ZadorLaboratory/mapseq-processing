@@ -1,3 +1,159 @@
+
+
+
+def process_fastq_pairs(cp, 
+                        infilelist, 
+                        outfile , 
+                        force=False,  
+                        max_repeats=None, 
+                        max_n_bases=None):
+    '''
+    parses paired-end fastq files. merges from r1 and r2 at selected positions. 
+    outputs to single fasta file. 
+
+    config expectation. 
+    [fastq]
+    r1start = 0
+    r1end = 32
+    r2start = 0
+    r2end = 20
+    # reporting intervals for verbose output, defines how often to log. 
+    seqhandled_interval = 1000000
+    
+    QC drop all sequences with any N in them. 
+    Drop all sequences with homopolymer runs > max_homopolymers
+
+    Create read-count frequency TSV and shoulder plot. <outfile>.counts.tsv <outfile>.plot.pdf
+    
+    '''
+    outfile = os.path.abspath(outfile)    
+    outdir = os.path.dirname(outfile)
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        logging.debug(f'made outdir={outdir}')
+     
+    sh = get_default_stats()
+
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))    
+
+    if max_repeats is None:
+        max_repeats = int(cp.get('fastq','max_repeats')) 
+
+    if max_n_bases is None:
+        max_n_bases = int(cp.get('fastq','max_n_bases'))
+        
+    seqhandled_interval = int(cp.get('fastq','seqhandled_interval')) 
+    
+    seqlist = []
+    
+    if ( not os.path.exists(outfile) ) or force:
+        of = open(outfile, 'w')
+        pairshandled = 0
+        num_handled_total = 0
+        num_has_n = 0
+        num_has_repeats = 0
+        seq_id = 0
+
+        # handle all pairs of readfiles from readfilelist
+        for (read1file, read2file) in infilelist:
+            pairshandled += 1
+            num_handled = 0
+            logging.debug(f'handling file pair {pairshandled}')
+            if read1file.endswith('.gz'):
+                r1f = gzip.open(read1file, "rt")
+            else:
+                r1f = open(read1file, 'rt')
+            
+            if read2file.endswith('.gz'):
+                r2f = gzip.open(read2file, "rt")         
+            else:
+                r2f = open(read2file, 'rt')
+        
+            while True:
+                try:
+                    meta1 = r1f.readline()
+                    if len(meta1) == 0:
+                        raise StopIteration
+                    seq1 = r1f.readline().strip()
+                    sep1 = r1f.readline()
+                    qual1 = r1f.readline().strip()
+
+                    meta2 = r2f.readline()
+                    if len(meta2) == 0:
+                        break
+                    seq2 = r2f.readline().strip()
+                    sep2 = r2f.readline()
+                    qual2 = r2f.readline().strip()                    
+
+                    sub1 = seq1[r1s:r1e]
+                    sub2 = seq2[r2s:r2e]
+                    fullread = sub1 + sub2
+                    
+                    
+                    #has_n = 'N' in fullread
+                    has_n = has_n_bases(fullread, n=max_n_bases)
+                    if has_n:
+                        num_has_n += 1
+                        
+                    has_repeats = has_base_repeats(fullread, n=max_repeats)
+                    if has_repeats:
+                        num_has_repeats +=1
+                    
+                    if has_repeats or has_n:
+                        pass
+                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
+                    else:
+                        seqlist.append(fullread)
+                        of.write(f'>{seq_id}\n{fullread}\n')
+                        seq_id += 1
+
+                    num_handled += 1
+                    num_handled_total += 1
+
+                    # report progress...                    
+                    if num_handled % seqhandled_interval == 0: 
+                        logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
+                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
+                
+                except StopIteration as e:
+                    logging.debug('iteration stopped')    
+                    break
+
+            logging.debug(f'finished with pair {pairshandled} saving pair info.')
+            # collect pair-specific stats.
+            sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
+        
+        of.close()
+        # collect global statistics..
+        sh.add_value('/fastq','reads_handled', num_handled_total )
+        sh.add_value('/fastq','max_repeats', max_repeats  )
+        sh.add_value('/fastq','num_has_repeats', num_has_repeats )
+        sh.add_value('/fastq','num_has_n', num_has_n )
+        sh.add_value('/fastq','num_kept', seq_id )
+        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
+        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
+        
+        logging.info(f'Creating sequence TSV.')
+        sdf = pd.DataFrame(seqlist, columns=['sequence'])
+        cdf = make_read_counts_df(cp, sdf)
+        write_tsv(cdf, f'{outfile}.byreads.tsv')
+        make_read_countplot_sns(cp, cdf, f'{outfile}.countsplot.pdf' )
+        
+        #
+        logging.info(f'Making sequence TSV with counts.')
+        scdf = set_counts_df(cp, sdf)
+        write_tsv(scdf, f'{outfile}.reads.tsv')        
+        
+    else:
+        logging.warn('All FASTA output exists and force=False. Not recalculating.')
+
+
+
+
+
 def process_ssifasta(config, infile, outdir=None, site=None, datestr=None):
     '''
     by default, outdir will be same dir as infile

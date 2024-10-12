@@ -161,14 +161,17 @@ if __name__ == '__main__':
         sys.exit(1)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-       
+    
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)    
+    
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
     df = process_make_vbctable_pd(df,
                                outdir=outdir,
                                inj_min_reads = inj_min_reads,
                                target_min_reads = target_min_reads, 
-                               datestr=args.datestr,
                                cp=cp)
 
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')

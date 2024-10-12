@@ -14,8 +14,9 @@ from configparser import ConfigParser
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
+from mapseq.core import *
 from mapseq.utils import *
-from mapseq.core import *  
+from mapseq.stats import *  
 
 
 if __name__ == '__main__':
@@ -101,10 +102,20 @@ if __name__ == '__main__':
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
 
+    # set outdir / outfile
+    if args.outdir is None:
+        outdir = os.path.abspath('./')
+    else:
+        outdir = os.path.abspath(args.outdir)
+    os.makedirs(outdir, exist_ok=True)
+    
+    datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)
+
     process_mapseq_all(args.infiles, 
                        sampleinfo=args.sampleinfo, 
                        bcfile=args.barcodes, 
-                       outdir=args.outdir, 
+                       outdir=outdir, 
                        expid=args.expid, 
                        cp=cp )
  

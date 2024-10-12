@@ -91,16 +91,16 @@ def get_default_stats():
     if MYSTATS is not None:
         return MYSTATS
     else:
-        raise Exception('Stats not initialized yet. Do so. ')
-        #cp = get_default_config()
-        #sh = StatsHandler(cp)
-        #MYSTATS = sh
-        #return sh
+        #raise Exception('Stats not initialized yet. Do so. ')
+        logging.debug(f'creating new StatsHandler')
+        cp = get_default_config()
+        sh = StatsHandler(cp)
+        MYSTATS = sh
+        return sh
 
 def make_stats_handler(config, outdir=None, datestr = None ):
     sh = StatsHandler(config, outdir, datestr )
     return sh
-
 
 
 def old_get_stats_object():    

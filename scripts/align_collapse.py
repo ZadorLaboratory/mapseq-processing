@@ -180,6 +180,10 @@ if __name__ == '__main__':
     else:
         logging.error('input file must have relevant extension .tsv or .parquet')
         sys.exit(1)
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr) 
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = align_collapse_pd(df, 
@@ -187,7 +191,6 @@ if __name__ == '__main__':
                            pcolumn=args.parent_column,
                            max_mismatch=args.max_mismatch,
                            outdir=outdir, 
-                           datestr=args.datestr,
                            cp=cp)
     logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
     df.to_csv(outfile, sep='\t')

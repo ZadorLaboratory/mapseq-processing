@@ -160,13 +160,16 @@ if __name__ == '__main__':
     else:
         logging.error('input file must have relevant extension .tsv or .parquet')
         sys.exit(1)
+ 
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = process_make_readtable_pd(df,
                                    sampdf, 
                                    args.barcodes, 
                                    outdir=outdir, 
-                                   datestr=args.datestr,
                                    cp=cp)
 
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
