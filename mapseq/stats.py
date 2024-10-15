@@ -27,9 +27,8 @@ def def_dict_value():
 
 class StatsHandler(object):
     
-    def __init__(self, config, outdir=None, datestr = None, outfile=None ):
+    def __init__(self, outdir=None, datestr = None, outfile=None ):
         global MYSTATS
-        self.config = config
         if outdir is None:
             outdir = "./"
         self.outdir = outdir
@@ -93,13 +92,12 @@ def get_default_stats():
     else:
         #raise Exception('Stats not initialized yet. Do so. ')
         logging.debug(f'creating new StatsHandler')
-        cp = get_default_config()
-        sh = StatsHandler(cp)
+        sh = StatsHandler()
         MYSTATS = sh
         return sh
 
-def make_stats_handler(config, outdir=None, datestr = None ):
-    sh = StatsHandler(config, outdir, datestr )
+def make_stats_handler( outdir=None, datestr = None ):
+    sh = StatsHandler( outdir, datestr )
     return sh
 
 

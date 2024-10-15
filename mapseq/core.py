@@ -517,7 +517,7 @@ def load_sample_info(config, file_name):
             
             except Exception as ex:
                 logging.error(f'error while handling {ecol} ')
-                logging.warning(traceback.format_exc(None))
+                logging.info(traceback.format_exc(None))
                 
         logging.debug(f"rtprimer = {sdf['rtprimer']} dtype={sdf['rtprimer'].dtype}")
         
@@ -540,7 +540,7 @@ def load_sample_info(config, file_name):
             try:
                 ser = sdf[scol]
             except KeyError as ke:
-                logging.warn(f'no column {scol}, required. Creating...')
+                logging.info(f'no column {scol}, required. Creating...')
                 if scol == 'samplename':
                     sdf[scol] = sdf['ourtube']
                 elif scol == 'region':
@@ -632,147 +632,6 @@ def merge_fastq_pairs(config, readfilelist, outdir):
         pairshandled += 1    
 
 
-def process_fastq_pairs_df( infilelist, 
-                            outdir,                         
-                            force=False, 
-                            datestr=None, 
-                            max_repeats=None,
-                            max_n_bases=None,
-                            cp = None):
-    '''
-    returns df, calls pair handling.
-    '''
-    if cp is None:
-        cp = get_default_config()
-
-    if not os.path.exists(outdir):
-        os.makedirs(outdir, exist_ok=True)
-        logging.debug(f'made outdir={outdir}')
-
-    outbase = f'{outdir}/allreads'
-    outfile = f'{outbase}.fasta'
-    rcdf = None # default return
-
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-
-    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)  
-
-    r1s = int(cp.get('fastq','r1start'))
-    r1e = int(cp.get('fastq','r1end'))
-    r2s = int(cp.get('fastq','r2start'))
-    r2e = int(cp.get('fastq','r2end'))    
-
-    if max_repeats is None:
-        max_repeats = int(cp.get('fastq','max_repeats')) 
-
-    if max_n_bases is None:
-        max_n_bases = int(cp.get('fastq','max_n_bases'))
-        
-    seqhandled_interval = int(cp.get('fastq','seqhandled_interval')) 
-    
-    seqlist = []
-    logging.debug(f'FASTA outfile = {outfile} ')
-    if ( not os.path.exists(outfile) ) or force:
-        of = open(outfile, 'w')
-        pairshandled = 0
-        num_handled_total = 0
-        num_has_n = 0
-        num_has_repeats = 0
-        seq_id = 0
-
-        # handle all pairs of readfiles from readfilelist
-        for (read1file, read2file) in infilelist:
-            pairshandled += 1
-            num_handled = 0
-            logging.debug(f'handling file pair {pairshandled}')
-            if read1file.endswith('.gz'):
-                r1f = gzip.open(read1file, "rt")
-            else:
-                r1f = open(read1file)
-            
-            if read2file.endswith('.gz'):
-                r2f = gzip.open(read2file, "rt")         
-            else:
-                r2f = open(read2file)
-        
-            while True:
-                try:
-                    meta1 = r1f.readline()
-                    if len(meta1) == 0:
-                        raise StopIteration
-                    seq1 = r1f.readline().strip()
-                    sep1 = r1f.readline()
-                    qual1 = r1f.readline().strip()
-
-                    meta2 = r2f.readline()
-                    if len(meta2) == 0:
-                        break
-                    seq2 = r2f.readline().strip()
-                    sep2 = r2f.readline()
-                    qual2 = r2f.readline().strip()                    
-
-                    sub1 = seq1[r1s:r1e]
-                    sub2 = seq2[r2s:r2e]
-                    fullread = sub1 + sub2
-                    
-                    
-                    #has_n = 'N' in fullread
-                    has_n = has_n_bases(fullread, n=max_n_bases)
-                    if has_n:
-                        num_has_n += 1
-                        
-                    has_repeats = has_base_repeats(fullread, n=max_repeats)
-                    if has_repeats:
-                        num_has_repeats +=1
-                    
-                    if has_repeats or has_n:
-                        pass
-                        #logging.debug(f'seq {num_handled_total} dropped for QC.')
-                    else:
-                        seqlist.append(fullread)
-                        of.write(f'>{seq_id}\n{fullread}\n')
-                        seq_id += 1
-
-                    num_handled += 1
-                    num_handled_total += 1
-
-                    # report progress...                    
-                    if num_handled % seqhandled_interval == 0: 
-                        logging.info(f'handled {num_handled} reads from pair {pairshandled}.')
-                        logging.info(f'QC: num_has_n={num_has_n} has_repeats={num_has_repeats}')
-                
-                except StopIteration as e:
-                    logging.debug('iteration stopped')    
-                    break
-
-            logging.debug(f'finished with pair {pairshandled} saving pair info.')
-            # collect pair-specific stats.
-            sh.add_value(f'/fastq/pair{pairshandled}','reads_total', num_handled)
-        
-        of.close()
-        # collect global statistics..
-        sh.add_value('/fastq','reads_handled', num_handled_total )
-        sh.add_value('/fastq','max_repeats', max_repeats  )
-        sh.add_value('/fastq','num_has_repeats', num_has_repeats )
-        sh.add_value('/fastq','num_has_n', num_has_n )
-        sh.add_value('/fastq','num_kept', seq_id )
-        logging.info(f'handled {num_handled_total} sequences. {pairshandled} pairs.')
-        logging.info(f'QC dropped num_has_n={num_has_n} has_repeats={num_has_repeats} total={num_handled_total} left={seq_id}')
-        
-        logging.info(f'Creating sequence TSV.')
-        sdf = pd.DataFrame(seqlist, columns=['sequence'])
-        cdf = make_read_counts_df(cp, sdf)
-        write_tsv(cdf, f'{outbase}.byreads.tsv')
-        make_read_countplot_sns(cp, cdf, f'{outbase}.countsplot.pdf' )
-        
-        rcdf = set_counts_df(cp, sdf)        
-    else:
-        logging.warn('All FASTA output exists and force=False. Not recalculating.')
-    
-    return rcdf
-
-
 
 
 def process_fastq_pairs_pd(infilelist, 
@@ -846,7 +705,7 @@ def filter_reads_pd(df,
         max_repeats = int(cp.get('fastq','max_repeats')) 
     if max_n_bases is None:
         max_n_bases = int(cp.get('fastq','max_n_bases'))    
-    logging.debug(f'max_repeats = {max_repeats} max_n_bases={max_n_bases}')
+    logging.info(f'max_repeats = {max_repeats} max_n_bases={max_n_bases}')
     num_initial = str(len(df))
     
     sh = get_default_stats()
@@ -875,11 +734,11 @@ def filter_reads_pd(df,
         df.reset_index(drop=True, inplace=True)
         logging.info(f'remove=True, new len={len(df)}')
 
-    sh.add_value('/fastq','num_initial', num_initial )
-    sh.add_value('/fastq','max_repeats', max_repeats )
-    sh.add_value('/fastq','num_has_repeats', num_has_repeats )
-    sh.add_value('/fastq','num_has_n', num_has_n )
-    sh.add_value('/fastq','num_kept', str(len(df)) )
+    sh.add_value('/fastq_filter','num_initial', num_initial )
+    sh.add_value('/fastq_filter','max_repeats', max_repeats )
+    sh.add_value('/fastq_filter','num_has_repeats', num_has_repeats )
+    sh.add_value('/fastq_filter','num_has_n', num_has_n )
+    sh.add_value('/fastq_filter','num_kept', str(len(df)) )
     # changes made to inbound df, but return anyway
     return df
 
@@ -1289,7 +1148,6 @@ def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1):
     return mdf
 
 
-
 def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
     '''
     filter dataframe where *all* are less than a threshold. 
@@ -1387,8 +1245,14 @@ def process_make_readtable_pd(df,
     # make shoulder plots. injection, target
     logging.info('making shoulder plots...')
     logging.getLogger('matplotlib.font_manager').disabled = True
-    make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
-    make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
+    if len(df[df['site'] == 'injection'] ) > 1:
+        make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
+    else:
+        logging.info(f'no injection sites, so no plot.')
+    if len(df[df['site'] == 'target'] ) > 1:    
+        make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
+    else:
+        logging.info(f'no target sites, so no plot.')
     
     # calc/ collect stats
     sh = get_default_stats()    
@@ -1445,19 +1309,21 @@ def process_make_vbctable_pd(df,
     ndf.drop(labels=['libtag','ssi','rtprimer'], axis=1, inplace=True)   
     ndf.replace('nomatch',np.nan, inplace=True)
     #ndf = df.replace('nomatch' ,np.nan)
-    logging.debug(f'DF before removing nomatch: {len(ndf)}')
+    logging.info(f'DF before removing nomatch: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
-    logging.debug(f'DF after removing nomatch/NaN: {len(ndf)}')
+    logging.info(f'DF after removing nomatch/NaN: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
-    # threshold by read counts, by siteinfo, before starting... 
+    
+    # threshold by read counts, by siteinfo, before starting...
+    logging.info(f'thresholding by read count. inj={inj_min_reads} target={target_min_reads} len={len(ndf)}') 
     tdf = ndf[ndf['site'].str.startswith('target')]
     tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
     idf = ndf[ndf['site'].str.startswith('injection')]
     idf = idf[idf['read_count'] >= int(inj_min_reads)]    
     thdf = pd.concat([tdf, idf])
     thdf.reset_index(drop=True, inplace=True)
-    logging.debug(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
+    logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
     udf = thdf.groupby(['vbc_read_col','label','type']).agg( {'umi' : 'nunique',
                                                               'read_count':'sum', 
@@ -1467,7 +1333,7 @@ def process_make_vbctable_pd(df,
                                                               } ).reset_index()
     
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
-    logging.debug(f'DF after umi/label collapse: {len(udf)}')
+    logging.info(f'DF after umi/label collapse: {len(udf)}')
     
     sh = get_default_stats()
     sh.add_value('/vbctable','n_vbcs', len(udf) )    
@@ -1515,6 +1381,8 @@ def process_make_matrices_pd(df,
     logging.debug(f'handling brain list: {bidlist}')
     
     sh = get_default_stats()
+
+    norm_dict = {}
 
     for brain_id in bidlist:
         valid = True
@@ -1599,6 +1467,7 @@ def process_make_matrices_pd(df,
             
             nbcmdf = normalize_weight(fbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            norm_dict[brain_id] = nbcmdf
             
             scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
             scbcmdf.fillna(value=0, inplace=True)
@@ -1625,6 +1494,8 @@ def process_make_matrices_pd(df,
             sh.add_value(f'/matrices/brain_{brain_id}','valid', 'False' )
             
         logging.info(f'done with brain={brain_id}')    
+    logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
+    return norm_dict
 
 
 def process_mapseq_all(infiles, sampleinfo, bcfile=None, outdir=None, expid=None, cp=None):    
