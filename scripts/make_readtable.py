@@ -163,7 +163,7 @@ if __name__ == '__main__':
  
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)
+    sh = StatsHandler(outdir=outdir, datestr=datestr)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = process_make_readtable_pd(df,

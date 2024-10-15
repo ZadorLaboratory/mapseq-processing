@@ -103,14 +103,13 @@ if __name__ == '__main__':
     logging.debug(f'infiles={args.infiles}')
 
     # set outdir / outfile
-    if args.outdir is None:
-        outdir = os.path.abspath('./')
-    else:
+    outdir = os.path.abspath('./')
+    if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)
     os.makedirs(outdir, exist_ok=True)
     
     datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)
+    sh = StatsHandler(outdir=outdir, datestr=datestr)
 
     process_mapseq_all(args.infiles, 
                        sampleinfo=args.sampleinfo, 
@@ -120,6 +119,5 @@ if __name__ == '__main__':
                        cp=cp )
  
  
-
 
    

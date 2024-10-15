@@ -164,7 +164,7 @@ if __name__ == '__main__':
     
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    sh = StatsHandler(cp, outdir=outdir, datestr=datestr)    
+    sh = StatsHandler(outdir=outdir, datestr=datestr)    
     
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
