@@ -569,6 +569,25 @@ def load_sample_info(config, file_name):
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
 
+def load_readstsv(infile):
+    '''
+    handle reads output of process_fastq_pairs. 
+    '''
+    logging.debug(f'loading reads TSV from {infile}')
+    STR_COLUMNS = [ 'vbc_read','spikeseq', 'ssi','umi','libtag']
+    INT_COLUMNS = ['read_count']
+    df = pd.read_csv(infile, sep='\t', index_col=0)
+    logging.debug(f'dtypes={df.dtypes}')
+    for col in STR_COLUMNS:
+        logging.debug(f'converting {col} to string[pyarrow]')
+        df[col] = df[col].astype('string[pyarrow]')
+
+    for col in INT_COLUMNS:
+        logging.debug(f'converting {col} to category')
+        df[col] = df[col].astype('uint32')    
+    log_objectinfo(df, 'reads-df')
+    return df
+
 
 def load_readtable(infile):
     '''
@@ -589,6 +608,32 @@ def load_readtable(infile):
         logging.debug(f'converting {col} to category')
         df[col] = df[col].astype('category')    
     log_objectinfo(df, 'readtable-df')
+    return df
+
+def load_vbctable(infile):
+    '''
+    very large CSV/TSV files cause some OS to kill. 
+    vbc_read_col    label    type    umi_count    read_count    brain    region    site   
+    '''
+    logging.debug(f'loading vbctable TSV from {infile}')
+    STR_COLUMNS = [ 'vbc_read_col']
+    CAT_COLUMNS = ['label','site','type','brain','region']
+    INT_COLUMNS = ['read_count','umi_count']
+    df = pd.read_csv(infile, sep='\t', index_col=0)
+    logging.debug(f'dtypes={df.dtypes}')
+    for col in STR_COLUMNS:
+        logging.debug(f'converting {col} to string[pyarrow]')
+        df[col] = df[col].astype('string[pyarrow]')
+
+    for col in CAT_COLUMNS:
+        logging.debug(f'converting {col} to category')
+        df[col] = df[col].astype('category')
+
+    for col in INT_COLUMNS:
+        logging.debug(f'converting {col} to category')
+        df[col] = df[col].astype('uint32')
+              
+    log_objectinfo(df, 'vbctable-df')
     return df
 
 

@@ -173,7 +173,7 @@ if __name__ == '__main__':
     logging.info(f'loading {args.infile}') 
     if args.infile.endswith('.tsv'):
         logging.info(f'loading {args.infile} as tsv')
-        df = load_readtable(args.infile) 
+        df = load_readstsv(args.infile) 
     elif args.infile.endswith('.parquet'):
         logging.info(f'loading {args.infile} as parquet')
         df = pd.read_parquet(args.infile)
@@ -181,8 +181,10 @@ if __name__ == '__main__':
         logging.error('input file must have relevant extension .tsv or .parquet')
         sys.exit(1)
 
-    if datestr is None:
+    if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    else:
+        datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 

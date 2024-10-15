@@ -162,9 +162,11 @@ if __name__ == '__main__':
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     
-    if datestr is None:
+    if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    sh = StatsHandler(outdir=outdir, datestr=datestr)    
+    else:
+        datestr = args.datestr
+    sh = StatsHandler(outdir=outdir, datestr=datestr)  
     
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')

@@ -156,8 +156,10 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
         
-    if datestr is None:
+    if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    else:
+        datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
     df = process_fastq_pairs_pd(infilelist, 
