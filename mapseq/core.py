@@ -389,16 +389,19 @@ def get_read_count_threshold(config, cdf, site=None):
     return count_threshold
 
 
-def calc_freq_threshold(df, fraction, column):
+def calc_freq_threshold(df, fraction=0.9, column = 'read_count'):
     '''
     sorts column of input column
     calculates index of point at which <fraction> of data points are less 
-    returns column value at that point. 
+    returns column value at that point + 1 
     '''
     ser = df[column].copy()
     ser.sort_values(ascending = False, inplace=True)
-    return 122
-
+    ser.reset_index(drop=True, inplace=True)
+    idx = int(len(ser) * fraction)
+    t = int( ser.iloc[idx] + 1 )    
+    return t
+        
 
 def threshold_read_counts(config, df, threshold=1):
     '''
@@ -1010,13 +1013,14 @@ def counts_axis_plot_sns(ax, df, scale=None ) :
     
     title=''
     if scale is None:
+        h = calc_freq_threshold(df, fraction=0.9, column = 'read_count')
         sns.lineplot(ax=ax, x=df['index'], y=df['read_count'] )
         title = 'counts frequency plot'
         #lx = 0.2 * t 
         #ly = 0.2 * r
-        lx = 0.2
-        ly = 0.2
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
+        lx = 1.0
+        ly = 1.0
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nestimated_threshold={h}", fontsize=11) #add text
         logging.debug(f'made axis without scale.') 
     elif scale == 'log10':
         # avoid divide by 0 runtime warning...
@@ -1027,7 +1031,7 @@ def counts_axis_plot_sns(ax, df, scale=None ) :
         #ly = 0.05 * np.log10(r)        
         lx = 0.2
         ly = 0.2
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=9) #add text
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=11) #add text
         title = 'log10(counts) frequency plot'
         logging.debug(f'made axis with log10 scale.')       
     ax.set_title(title, fontsize=10)

@@ -25,16 +25,19 @@ Activate the environment:
 
 Install dependencies, useful tools:
 
-	For version 2, we drop bowtie version one. 
-
-
+	Note for version 2, we drop bowtie version one. 
+ 
 	For Linux and Intel MacOS
-	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl bowtie2 natsort git 
-	conda install cmake?
+	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster openpyxl bowtie2 natsort git paramiko 
     
-    For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )
-    conda install -y pandas ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy matplotlib openpyxl natsort
+    For MacOS with MX chips
+    bowtie v1 not made
+    git is part of x-code
+    bowtie2 only available via brew ( https://brew.sh/ )
+    
+    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy openpyxl natsort paramiko
 	brew install bowtie2
+
 
 Clone the mapseq-processing software from the repository to the standard location:
 
@@ -47,5 +50,3 @@ Optionally also clone the mapseq-analysis package similarly:
 	export PATH=~/git/mapseq-analysis/scripts:$PATH 
 
 All the code is currently organized so it can be run directly from the git directory (rather than installed). 
-
-
