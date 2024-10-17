@@ -7,6 +7,8 @@ bash ./Miniconda3-latest-Linux-x86_64.sh -b -u
 ~/miniconda/bin/conda init bash
 wget https://raw.githubusercontent.com/ZadorLaboratory/mapseq-processing/refs/heads/main/misc/htna2024/setup2.sh
 chmod +x setup2.sh
+wget https://raw.githubusercontent.com/ZadorLaboratory/mapseq-processing/refs/heads/main/misc/htna2024/setup3.sh
+chmod +x setup3.sh
 exit
 
 
