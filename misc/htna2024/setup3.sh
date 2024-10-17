@@ -3,5 +3,5 @@ conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib se
 mkdir -p ~/git ; cd ~/git
 git clone https://github.com/ZadorLaboratory/mapseq-processing.git
 git clone https://github.com/ZadorLaboratory/mapseq-analysis.git
-cd ~/mapseq
-wget 
+cd 
+echo "run jupyter notebook, copy URL into browser, navigate to git/mapseq-processing/notebooks"
