@@ -4,3 +4,4 @@ mkdir -p ~/git ; cd ~/git
 git clone https://github.com/ZadorLaboratory/mapseq-processing.git
 git clone https://github.com/ZadorLaboratory/mapseq-analysis.git
 cd ~/mapseq
+wget 
