@@ -27,8 +27,9 @@ Install dependencies, useful tools:
 
 	Note for version 2, we drop bowtie version one. 
  
-	For Linux and Intel MacOS
+	For Linux, WSL, and Intel MacOS
 	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster openpyxl bowtie2 natsort git paramiko 
+    
     
     For MacOS with MX chips
     bowtie v1 not made
@@ -37,6 +38,15 @@ Install dependencies, useful tools:
     
     conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy openpyxl natsort paramiko
 	brew install bowtie2
+
+    # For printing notebook as PDF
+    # See https://gist.github.com/peterhurford/75957ba9335e755013b87254ec85fab1
+    #  conda install pandoc 
+    #  Install global MacTeX 2024/TexLive from 
+    #  http://www.texts.io/support/0001/   i.e. https://tug.org/mactex/mactex-download.html
+    #  sudo tlmgr update --self
+    #  sudo tlmgr install texliveonfly adjustbox tcolorbox collectbox ucs environ trimspaces titling enumitem rsfs 
+    #
 
 
 Clone the mapseq-processing software from the repository to the standard location:
