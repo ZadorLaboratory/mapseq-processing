@@ -812,13 +812,19 @@ def read_fastq_sequence_pd(infile, start=0, end=-1 ):
         fh = open(infile, 'rt')
     try:
         logging.info(f'reading sequence lines of FASTQ file')
-        df = pd.read_csv(infile, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]" )
-        logging.debug(f'got sequence df len={len(df)} slicing...')
+        # investigate engine=pyarrow  (once it supports skiprows lambda
+        # investigate low_memory = False for high-memory nodes
+        # investigate memory_map effects on performance.         
+        df = pd.read_csv(infile, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]")
+        logging.info(f'got sequence df len={len(df)} slicing...')
         df[0] = df[0].str.slice(start, end)
         logging.debug(f'done. pulling series...') 
         ser = df[0]
+        logging.debug(f'series defined.')
     except Exception as ex:
         logging.warning(f'exception thrown: {ex} ')
+        logging.info(traceback.format_exc(None))
+
     finally:
         fh.close()
         
