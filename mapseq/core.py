@@ -706,16 +706,16 @@ def process_fastq_pairs_pd(infilelist,
             logging.debug(f'making new read DF...')
             df = pd.DataFrame(columns=['read1_seq', 'read2_seq'])
             logging.debug(f'handling {read1file}')
-            df['read1_seq'] = read_fastq_sequence(read1file, r1s, r1e )
+            df['read1_seq'] = read_fastq_sequence_pd(read1file, r1s, r1e )
             logging.debug(f'handling {read2file}')
-            df['read2_seq'] = read_fastq_sequence(read2file, r2s, r2e )
+            df['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
         else:
             logging.debug(f'making additional read DF...')
             ndf = pd.DataFrame(columns=['read1_seq', 'read2_seq'], dtype="string[pyarrow]")
             logging.debug(f'handling {read1file}')
-            ndf['read1_seq'] = read_fastq_sequence(read1file, r1s, r1e )
+            ndf['read1_seq'] = read_fastq_sequence_pd(read1file, r1s, r1e )
             logging.debug(f'handling {read2file}')
-            ndf['read2_seq'] = read_fastq_sequence(read2file, r2s, r2e )
+            ndf['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
             logging.debug(f'appending dataframes...')
             df = df.append(ndf)
     
@@ -766,22 +766,23 @@ def filter_reads_pd(df,
     df['nr_valid'] = True
     for nt in ['A','C','G','T']:
         rnt =  nt * (max_repeats + 1)
-        logging.debug(f'checking for {rnt}')
+        logging.info(f'checking for {rnt}')
         rmap = ~df[column].str.contains(rnt)
         n_bad = len(df) - rmap.sum()
-        logging.debug(f'found {n_bad} max_repeat sequences for {nt}') 
+        logging.info(f'found {n_bad} max_repeat sequences for {nt}') 
         sh.add_value('/fastq',f'n_repeat_{nt}', str(n_bad) )
         df['nr_valid'] = df['nr_valid'] & rmap
         
     logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
     num_has_repeats = str( len(df) - df['nr_valid'].sum() )
-    if remove:
-        vmap = df['nr_valid'] & df['nb_valid']
-        df = df[vmap]
-        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
-        df.reset_index(drop=True, inplace=True)
-        logging.info(f'remove=True, new len={len(df)}')
-
+    
+    #if remove:
+    #    validmap = df['nr_valid'] & df['nb_valid']
+    #    df = df[validmap]
+    #    df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
+    #    df.reset_index(drop=True, inplace=True)
+    #    logging.info(f'remove=True, new len={len(df)}')
+    #logging.debug(f'types = {df.dtypes()}')
     sh.add_value('/fastq_filter','num_initial', num_initial )
     sh.add_value('/fastq_filter','max_repeats', max_repeats )
     sh.add_value('/fastq_filter','num_has_repeats', num_has_repeats )
@@ -789,6 +790,36 @@ def filter_reads_pd(df,
     sh.add_value('/fastq_filter','num_kept', str(len(df)) )
     # changes made to inbound df, but return anyway
     return df
+
+
+def read_fastq_sequence_pd(infile, start=0, end=-1 ):
+    '''
+    pull out sequence line, returns series.  
+    dtype="string[pyarrow]"
+    '''
+    logging.info(f'handling FASTQ {infile}')
+    ser = None
+    if infile.endswith('.gz'):
+        fh = gzip.open(infile, "rt")
+        logging.debug('handling gzipped file...')
+    else:
+        fh = open(infile, 'rt')
+    try:
+        logging.info(f'reading sequence lines of FASTQ file')
+        df = pd.read_csv(infile, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]" )
+        logging.debug(f'got sequence df len={len(df)} slicing...')
+        df[0] = df[0].str.slice(start, end)
+        logging.debug(f'done. pulling series...') 
+        ser = df[0]
+    except Exception as ex:
+        logging.warning(f'exception thrown: {ex} ')
+    finally:
+        fh.close()
+        
+    logging.debug(f'series dtype={ser.dtype}')
+    log_objectinfo(ser, 'series')
+    logging.info(f'done. {len(ser)} sequences extracted.')    
+    return ser
 
 
 
