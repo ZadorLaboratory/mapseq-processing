@@ -159,7 +159,10 @@ if __name__ == '__main__':
             logging.debug(f'outdir specified. outfile not specified.')
             outfile = f'{outdir}/collapsed.tsv'
 
-    logging.info(f'handling {args.infile} to outdir {outdir}')    
+    logging.debug(f'making missing outdir: {outdir} ')
+    os.makedirs(outdir, exist_ok=True)
+    logging.info(f'outdir={outdir} outfile={outfile}')
+      
     logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:

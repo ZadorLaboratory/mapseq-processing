@@ -222,9 +222,11 @@ def make_bowtie2_df(infile):
     
     # BOWTIE_2_COLS=['name_read', 'flagsum', 'name_align','offset', 'qual', 'cigar', 'mate', 'mate_offset', 'fraglen', 'seq', 'quals', 
     # 'score', 'next_score', 'n_amb', 'n_mismatch', 'n_gaps', 'n_gapext', 'distance','md','yt' ]
+    line_no = 0
     try:
         while True:
             line = filehandle.readline()
+            line_no += 1
             if line == '':
                 break
             if line.startswith("@HD"):
@@ -235,8 +237,7 @@ def make_bowtie2_df(infile):
                 pass
             else:
                 allfields = [x.strip() for x in line.split('\t')]
-                mands = allfields[0:11]
-                flist = mands
+                flist = allfields[0:11]
                 optfields = allfields[11:]
                 #logging.debug(f'allfields length={len(allfields)} mands len={len(mands)} opts len={len(optfields)}')
                 #logging.debug(f'mands=\n{mands}')
@@ -257,14 +258,17 @@ def make_bowtie2_df(infile):
                 lol.append(flist)
                 current += 1                        
                 if current >= repthresh:
-                    logging.info(f"Processed {current} entries... ")
+                    logging.info(f"Processed {current} entries. Last line+no={line_no}")
                     sumreport +=1
                     repthresh = sumreport * suminterval
+                    
     except Exception as e:
+        logging.error(f'exception while parsing. line={line_no}')
         traceback.print_exc(file=sys.stdout)                
     
     if filehandle is not None:
-        filehandle.close()          
+        filehandle.close()
+                  
     logging.debug(f'making dataframe from list of lists. len={len(lol)}')
     df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS, dtype='string[pyarrow]')
     logging.debug('fixing column types...')    

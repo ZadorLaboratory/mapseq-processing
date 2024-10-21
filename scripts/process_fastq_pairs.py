@@ -115,7 +115,7 @@ if __name__ == '__main__':
        
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/collapsed.tsv'
+    outfile = f'{outdir}/reads.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -137,7 +137,7 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/sequences.tsv'
+            outfile = f'{outdir}/reads.tsv'
 
     logging.debug(f'making missing outdir: {outdir} ')
     os.makedirs(outdir, exist_ok=True)
@@ -162,11 +162,14 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
-    df = process_fastq_pairs_pd(infilelist, 
+    dir, base, ext = split_path(outfile)
+
+    df = process_fastq_pairs_pd( infilelist, 
                                  outdir, 
                                  force=args.force, 
                                  cp=cp)    
-
+    
+    logging.info(f'done with FASTQ parsing.')
     logging.debug(f'filtering by read quality. repeats. Ns.')
     df = filter_reads_pd(df, 
                            max_repeats=args.max_repeats,
@@ -176,12 +179,11 @@ if __name__ == '__main__':
     df = set_counts_df(df, column='sequence')
     logging.info(f'dropping sequence column to slim.')
     df.drop('sequence', axis=1, inplace=True)    
-    #df.drop(['sequence'], inplace=True, axis=1)
     logging.info(f'Got dataframe len={len(df)} Writing to {args.outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(args.outfile, sep='\t')
 
-    dir, base, ext = split_path(args.outfile)
+
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)    

@@ -4,7 +4,7 @@ SCRIPTDIR=~/git/mapseq-processing/scripts
 EXP='M205.htna24'
 EXPTAG='M205'
 OUTROOT=~/project/mapseq/$EXP
-SIF=$OUTROOT/M205_sampleinfo.xlsx
+SIF=$OUTROOT/$EXPTAG_sampleinfo.xlsx
 #DEBUG='$DEBUG'
 DEBUG='-v'
 

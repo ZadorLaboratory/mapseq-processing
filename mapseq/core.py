@@ -719,12 +719,18 @@ def process_fastq_pairs_pd(infilelist,
             logging.debug(f'appending dataframes...')
             df = df.append(ndf)
     
-    logging.debug(f'writing read1/2 TSV for QC.')
     of = f'{outdir}/read1read2.tsv'
+    logging.debug(f'writing read1/2 TSV {of} for QC.')
     df.to_csv(of, sep='\t')
-    
+  
     df['sequence'] = df['read1_seq'] + df['read2_seq']
     df.drop(['read1_seq','read2_seq'], inplace=True, axis=1)
+    
+    of = f'{outdir}/fullread.tsv'
+    logging.debug(f'writing fullread TSV {of} for QC.')
+    df.to_csv(of, sep='\t')
+    
+    logging.info(f'pulling out MAPseq fields...')
     df['vbc_read'] = df['sequence'].str.slice(0,30)
     df['spikeseq'] = df['sequence'].str.slice(24,32)
     df['libtag'] = df['sequence'].str.slice(30,32)    
@@ -776,13 +782,13 @@ def filter_reads_pd(df,
     logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
     num_has_repeats = str( len(df) - df['nr_valid'].sum() )
     
-    #if remove:
-    #    validmap = df['nr_valid'] & df['nb_valid']
-    #    df = df[validmap]
-    #    df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
-    #    df.reset_index(drop=True, inplace=True)
-    #    logging.info(f'remove=True, new len={len(df)}')
-    #logging.debug(f'types = {df.dtypes()}')
+    if remove:
+        validmap = df['nr_valid'] & df['nb_valid']
+        df = df[validmap]
+        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
+        df.reset_index(drop=True, inplace=True)
+        logging.info(f'remove=True, new len={len(df)}')
+    logging.debug(f'types = {df.dtypes}')
     sh.add_value('/fastq_filter','num_initial', num_initial )
     sh.add_value('/fastq_filter','max_repeats', max_repeats )
     sh.add_value('/fastq_filter','num_has_repeats', num_has_repeats )

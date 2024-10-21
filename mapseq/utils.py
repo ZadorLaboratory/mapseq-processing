@@ -230,7 +230,6 @@ def fix_columns_int(df, columns):
     forces column in dataframe to be an integer. NaNs become '0'
     Only floating points can be NaN. No good solution for integers...
     '''
-    
     for col in columns:
         with np.errstate(invalid='raise'):
             try:
@@ -247,6 +246,9 @@ def fix_columns_int(df, columns):
             
             except FloatingPointError:
                 logging.debug(f'invalid cast value in {col}')
+                
+            except TypeError:
+                logging.debug(f'invalid type in {col}')
     return df
 
 
