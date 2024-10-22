@@ -4,9 +4,11 @@ SCRIPTDIR=~/git/mapseq-processing/scripts
 EXP='M205.htna24'
 EXPTAG='M205'
 OUTROOT=~/project/mapseq/$EXP
-SIF=$OUTROOT/$EXPTAG_sampleinfo.xlsx
+SIF=$OUTROOT/${EXPTAG}_sampleinfo.xlsx
 #DEBUG='$DEBUG'
 DEBUG='-v'
+
+echo "SIF=$SIF"
 
 echo time $SCRIPTDIR/process_fastq_pairs.py $DEBUG -o $OUTROOT/fastq.out/$EXP.reads.tsv  $OUTROOT/fastq/$EXPTAG*
 time $SCRIPTDIR/process_fastq_pairs.py $DEBUG -o $OUTROOT/fastq.out/$EXP.reads.tsv  $OUTROOT/fastq/$EXPTAG*
