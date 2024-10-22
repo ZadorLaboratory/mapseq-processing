@@ -1261,9 +1261,10 @@ def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
 
 def process_make_readtable_pd(df,
                           sampdf,
-                          bcfile, 
+                          bcfile=None, 
                           outdir=None, 
-                          cp = None):
+                          cp = None,
+                          make_plots=True):
     '''
     take split/aligned read file.
     produce fully tagged and filtered data table.
@@ -1278,32 +1279,48 @@ def process_make_readtable_pd(df,
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
     
+    if cp is None:
+        cp = get_default_config()
+    
+    spikeseq = cp.get('readtable','spikeseq')
+    realregex = cp.get('readtable', 'realregex' )
+    loneregex = cp.get('readtable', 'loneregex' )
+    
+    if bcfile is None:
+        bcfile = cp.get('barcodes','ssifile')    
+    
+    logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile}')
+    
     # map SSIs, set unknown to unmatched.
     logging.debug(f'getting rt labels...')
     labels = get_rtlist(sampdf)
+    logging.debug(f'rtlabels={labels}')
     bcdict = get_barcode_dict(bcfile, labels)
     rtdict = get_rtprimer_dict(bcfile, labels)
     logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
-
+    logging.info('filling in labels by SSI sequences...')
     df['label'] = df['ssi'].map(bcdict)
+    logging.info('labelling unmatched...')
     df.fillna({'label': 'nomatch'}, inplace=True)
-    
+
+    logging.info('filling in rtprimer number by SSI sequences...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
+    logging.info('labelling unmatched...')
     df.fillna({'rtprimer': 'nomatch'}, inplace=True)
     
     # spikeins
     # make temporary column to check spikein. 
     # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
-    spikeseq = cp.get('readtable','spikeseq')
-    realregex = cp.get('readtable', 'realregex' )
-    loneregex = cp.get('readtable', 'loneregex' )
-    
-
+   
+    logging.info('identifying reals by libtag...')
     rmap = df['libtag'].str.match('[TC][TC]$')
     df.loc[rmap, 'type'] = 'real'
+    
+    logging.info('identifying L1s by libtag...')
     lmap = df['libtag'].str.match('[AG][AG]$')
     df.loc[lmap, 'type'] = 'lone'
 
+    logging.info('identifying spikeins by spikeseq matching...')
     smap = df['spikeseq'] == spikeseq
     df.loc[smap, 'type'] = 'spike'
     
@@ -1334,17 +1351,8 @@ def process_make_readtable_pd(df,
     df.fillna({'site': ''}, inplace=True)
     sdf = None    
 
-    # make shoulder plots. injection, target
-    logging.info('making shoulder plots...')
-    logging.getLogger('matplotlib.font_manager').disabled = True
-    if len(df[df['site'] == 'injection'] ) > 1:
-        make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
-    else:
-        logging.info(f'no injection sites, so no plot.')
-    if len(df[df['site'] == 'target'] ) > 1:    
-        make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
-    else:
-        logging.info(f'no target sites, so no plot.')
+    if make_plots:
+        make_shoulder_plots(df, outdir = outdir)
     
     # calc/ collect stats
     sh = get_default_stats()    
@@ -1365,12 +1373,24 @@ def process_make_readtable_pd(df,
     sh.add_value('/readtable', 'n_lone', str(n_lone) )      
     sh.add_value('/readtable', 'n_real', str(n_real) )     
     sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
-    
-    
-    
-    
-    
+
     return df
+
+
+def make_shoulder_plots(df, outdir=None):
+    # make shoulder plots. injection, target
+    logging.info('making shoulder plots...')
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    logging.getLogger('matplotlib.font_manager').disabled = True
+    if len(df[df['site'] == 'injection'] ) > 1:
+        make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
+    else:
+        logging.info(f'no injection sites, so no plot.')
+    if len(df[df['site'] == 'target'] ) > 1:    
+        make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
+    else:
+        logging.info(f'no target sites, so no plot.')
    
 
 def process_make_vbctable_pd(df,
