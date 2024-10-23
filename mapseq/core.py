@@ -1275,7 +1275,7 @@ def process_make_readtable_pd(df,
     '''
     logging.info(f'inbound df len={len(df)} columns={df.columns}')
     if outdir is None:
-        outdir = './'
+        outdir = os.path.abspath('./')
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
     
@@ -1366,12 +1366,19 @@ def process_make_readtable_pd(df,
     # get rid of nans, and calculate template switching value. 
     ndf = df.replace('nomatch',np.nan)
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
-    tswitch_map = ((ndf['type'] == 'lone') & (ndf['site'] == 'target'))
-    n_tswitch = tswitch_map.sum() 
 
+    # find and remove ( at least) known template-switch rows from dataframe. 
+    tsdf = ndf[ ((ndf['type'] == 'lone') & (ndf['site'].str.startswith('target')) & (ndf['site'] != 'target-control'))]
+    of = os.path.join(outdir, 'template_switch.tsv') 
+    logging.info(f'Writing template switch DF len={len(df)} Writing to {of}')
+    tsdf.to_csv(of, sep='\t')
+    n_tswitch = len(tsdf)
+    
+    ndf.drop(tsdf.index, inplace=True)
+    ndf.reset_index(drop=True, inplace=True)
+     
     # label tswitch tswitch and filter from final...
     # 
-    # df['site'] = df['rtpr'].map(smap)
 
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     sh.add_value('/readtable', 'n_spike', str(n_spike) )     
