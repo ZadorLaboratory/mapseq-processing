@@ -1366,7 +1366,12 @@ def process_make_readtable_pd(df,
     # get rid of nans, and calculate template switching value. 
     ndf = df.replace('nomatch',np.nan)
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
-    n_tswitch = ((ndf['type'] == 'lone') & (ndf['site'] == 'target')).sum() 
+    tswitch_map = ((ndf['type'] == 'lone') & (ndf['site'] == 'target'))
+    n_tswitch = tswitch_map.sum() 
+
+    # label tswitch tswitch and filter from final...
+    # 
+    # df['site'] = df['rtpr'].map(smap)
 
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     sh.add_value('/readtable', 'n_spike', str(n_spike) )     
@@ -1576,7 +1581,7 @@ def process_make_matrices_pd(df,
     
             (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
             
-            
+        
             nbcmdf = normalize_weight(fbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
             norm_dict[brain_id] = nbcmdf
