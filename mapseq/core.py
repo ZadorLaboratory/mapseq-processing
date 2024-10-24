@@ -1943,6 +1943,52 @@ def align_collapse_pd(df,
     #write_fasta_from_df(joindf, of)        
     return newdf        
         
+
+def collapse_only_pd(fdf, udf, mcomponents, column, pcolumn, outdir, cp ):
+    '''
+    Handle partially completed align-collapse. 
+    Inputs:
+       fulldf TSV
+       uniqudf TSV
+       multi-components list. 
+    
+    Output:
+        collapsed DF. 
+        df = collapse_pd(fulldf,
+                     uniquedf,
+                     mcomponents,   
+                     column=args.column,
+                     pcolumn=args.parent_column,
+                     outdir=outdir, 
+                     cp=cp)
+    '''
+  
+    # assess components...
+    sh = get_default_stats()
+    logging.debug(f'multi-element components len={len(mcomponents)}')
+    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
+
+    logging.info(f'Collapsing {len(mcomponents)} mcomponents...')
+    newdf = collapse_by_components_pd(fdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
+
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newcol = f'{column}_col'        
+    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
+
+    rdf = newdf[[ column, newcol, 'read_count' ]]
+    of = os.path.join( outdir , f'read_collapsed.tsv')
+    logging.info(f'Writing reduced mapping TSV to {of}')
+    rdf.to_csv(of, sep='\t')
+    logging.debug(f'dropping {column}')
+    newdf.drop(column, inplace=True, axis=1)   
+    return newdf        
+
+
+
+
+
+
         
         
         
