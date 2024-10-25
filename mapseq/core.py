@@ -717,7 +717,7 @@ def process_fastq_pairs_pd(infilelist,
             logging.debug(f'handling {read2file}')
             ndf['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
             logging.debug(f'appending dataframes...')
-            df = df.append(ndf)
+            df = pd.concat([df, ndf], copy=False, ignore_index=True)
     
     of = f'{outdir}/read1read2.tsv'
     logging.debug(f'writing read1/2 TSV {of} for QC.')
