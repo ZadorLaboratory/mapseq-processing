@@ -583,11 +583,18 @@ def load_readstsv(infile):
     logging.debug(f'dtypes={df.dtypes}')
     for col in STR_COLUMNS:
         logging.debug(f'converting {col} to string[pyarrow]')
-        df[col] = df[col].astype('string[pyarrow]')
-
+        try:
+            df[col] = df[col].astype('string[pyarrow]')
+        except KeyError:
+            logging.warning(f'no {col} column. continue...')
+        
     for col in INT_COLUMNS:
         logging.debug(f'converting {col} to category')
-        df[col] = df[col].astype('uint32')    
+        try:
+            df[col] = df[col].astype('uint32')    
+        except KeyError:
+            logging.warning(f'no {col} column. continue...')
+            
     log_objectinfo(df, 'reads-df')
     return df
 
