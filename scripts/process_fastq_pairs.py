@@ -40,32 +40,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-r','--max_repeats', 
-                        metavar='max_repeats',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max homopolymer runs. [7]')
-
-    parser.add_argument('-n','--max_n_bases', 
-                        metavar='max_n_bases',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max number of ambiguous bases.')
-
-    parser.add_argument('-F', '--filter', 
-                        action="store_true",
-                        default=True, 
-                        dest='filter', 
-                        help='do N/Repeat filtering during this step.')
-
-    parser.add_argument('-S', '--split_fields', 
-                        action="store_true",
-                        default=True, 
-                        dest='split_fields', 
-                        help='Split into MAPseq fields.')
-
     parser.add_argument('-m','--min_reads', 
                         metavar='min_reads',
                         required=False,
@@ -124,7 +98,7 @@ if __name__ == '__main__':
     cp.read(args.config)
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
+    logging.debug(f'force={args.force} infiles={args.infiles}')
 
     # check nargs. 
     if (len(args.infiles) < 2)  or (len(args.infiles) % 2 != 0 ):
@@ -187,13 +161,9 @@ if __name__ == '__main__':
                             infilelist, 
                             outdir,                         
                             force=args.force,
-                            max_repeats=args.max_repeats,
-                            max_n_bases=args.max_n_bases,
                             min_reads=args.min_reads,
-                            column='sequence',
-                            split=True,
-                            drop=True, 
                             cp = cp)
+    
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(outfile, sep='\t')

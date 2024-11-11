@@ -27,12 +27,13 @@ from Bio.SeqRecord import SeqRecord
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
+from dask.dataframe import from_pandas
+import dask.dataframe as dd
+
 from mapseq.utils import *
 from mapseq.bowtie import *
 from mapseq.barcode import *
 from mapseq.stats import *
-
-
 
 
 def get_default_config():
@@ -752,11 +753,7 @@ def process_fastq_pairs_pd(infilelist,
 def process_fastq_pairs(infilelist, 
                         outdir,                         
                         force=True,
-                        filter = True,
-                        max_repeats=None,
-                        max_n_bases=None,
                         min_reads=None,
-                        column='sequence',
                         split=True, 
                         drop=True,  
                         cp = None  ):
@@ -795,15 +792,6 @@ def process_fastq_pairs(infilelist,
                                       cp=cp)    
     logging.info(f'done with FASTQ parsing.')
 
-    if filter:
-        logging.info(f'Filtering by read quality. Repeats. Ns.')
-        df = filter_reads_pd(df, 
-                           max_repeats=max_repeats,
-                           max_n_bases=max_n_bases, 
-                           column=column )
-    else:
-        logging.info('Skipping filtering.')    
-
     if  min_reads is None:
         min_reads = int( cp.get('fastq','min_reads'))
     
@@ -814,15 +802,8 @@ def process_fastq_pairs(infilelist,
         df.reset_index(inplace=True, drop=True)
         logging.info(f'Length after read_count threshold={len(df)}')    
     else:
-        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')    
+        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
 
-    if split:
-        logging.debug(f'splitting out MAPseq fields')
-        df =  split_mapseq_fields(df, pcolumn=column, drop=drop, cp=cp)
-    else:
-        logging.info('skipping splitting fields.')
-
-    logging.debug(f'Got dataframe len={len(df)} Returning...')
     return df
 
 
@@ -909,10 +890,12 @@ def process_fastq_pairs_pd_chunked(infilelist,
     r2e = int(cp.get('fastq','r2end'))
     
     chunksize = int(cp.get('fastq','chunksize'))
-    
+    logging.info(f'chunksize={chunksize} lines.')
     logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
     df = None
     sh = get_default_stats()
+    pairnum = 1
+    chunknum = 1
 
     for (read1file, read2file) in infilelist:
         logging.info(f'handling {read1file}, {read2file} ...')
@@ -933,27 +916,35 @@ def process_fastq_pairs_pd_chunked(infilelist,
             chunk2 = dfi2.get_chunk()
             logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
             if df is None:
-                logging.debug(f'making new read DF...')
+                logging.debug(f'making new read sequence DF...')
                 df = pd.DataFrame(columns=['sequence'])
                 logging.info(f'got chunk len={len(chunk1)} slicing...')
                 df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
                 logging.info(f'chunk df type={df.dtypes}')           
             else:
-                logging.debug(f'making additional read DF...')
+                logging.debug(f'making additional read sequence DF...')
                 ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
                 logging.info(f'got chunk len={len(chunk1)} slicing...')
                 ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
                 logging.info(f'chunk df type={ndf.dtypes}')                
                 df = pd.concat([df, ndf], copy=False, ignore_index=True)
+            logging.debug(f'handled chunk number {chunknum}')
+            chunknum += 1
 
+        logging.debug(f'handled pair number {pairnum}')
+        pairnum += 1
 
     log_objectinfo(df, 'sequencedf')
     of = f'{outdir}/sequence.tsv'
     logging.debug(f'writing sequence TSV {of} for QC.')
     df.to_csv(of, sep='\t')
+
+    of = f'{outdir}/sequence.parquet'
+    logging.debug(f'writing sequence parquet {of} for QC.')
+    df.to_parquet(of)
     
     logging.info(f'aggregating by sequence, adding counts')    
-    df = aggregate_reads_pd(df, pcolumn='sequence')  
+    df = aggregate_reads_dd(df, pcolumn='sequence', chunksize=chunksize)  
     of = f'{outdir}/sequencecounts.tsv'
     logging.debug(f'writing with counts TSV {of} for QC.')
     df.to_csv(of, sep='\t')
@@ -1007,11 +998,33 @@ def oldsnippet():
     return df    
 
 
+def filter_split_pd(df, 
+                    max_repeats=None,
+                    max_n_bases=None,
+                    column='sequence',
+                    drop=True,
+                    ):
+    '''
+    filter sequence by repeats, Ns. 
+    split into MAPseq fields
+    optionally drop sequence column
+    
+    '''
+    
+    if cp is None:
+        cp = get_default_config()
 
+    logging.info(f'Filtering by read quality. Repeats. Ns.')
+    df = filter_reads_pd(df, 
+                       max_repeats=max_repeats,
+                       max_n_bases=max_n_bases, 
+                       column=column )
+    logging.info(f'Filtering by read quality. Repeats. Ns.')    
+    df = split_mapseq_fields(df, 
+                             drop=True)
 
-
-
-
+    return df
+ 
 def split_mapseq_fields(df, pcolumn='sequence', drop=False, cp=None):
     '''
     spike_st=24
@@ -1218,6 +1231,16 @@ def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     ndf = ndf.reset_index()
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     return ndf
+
+def aggregate_reads_dd(seqdf, pcolumn='sequence',chunksize=50000000):
+    initlen = len(seqdf)
+    logging.debug(f'collapsing with read counts for sequence DF len={len(seqdf)}')
+    ddf = from_pandas(seqdf, chunksize=chunksize) 
+    ndf = ddf['sequence'].value_counts().compute()
+    ndf = ndf.reset_index()
+    ndf.rename({'count':'read_count'}, inplace=True, axis=1)
+    return ndf
+
     
 def filter_counts_df(cp, countsdf, min_count):
     '''

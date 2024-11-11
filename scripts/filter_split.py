@@ -43,7 +43,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
@@ -168,12 +167,13 @@ if __name__ == '__main__':
     df = filter_reads_pd(df, 
                            max_repeats=args.max_repeats,
                            max_n_bases=args.max_n_bases, 
-                           column='sequence' )
+                           column='sequence',
+                           cp=cp)
     
-    logging.debug(f'calc/set read counts on original reads.')    
-    df = set_counts_df(df, column='sequence')
-    logging.info(f'dropping sequence column to slim.')
-    df.drop('sequence', axis=1, inplace=True)    
+    df = split_mapseq_fields(df, 
+                             pcolumn = 'sequence',
+                             drop = True,
+                             cp=cp)
 
     dir, base, ext = split_path(outfile)
 
