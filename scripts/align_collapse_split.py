@@ -7,6 +7,8 @@ import sys
 from configparser import ConfigParser
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
@@ -15,6 +17,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
+
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -40,52 +43,75 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-r','--max_repeats', 
-                        metavar='max_repeats',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max homopolymer runs. [7]')
-
-    parser.add_argument('-n','--max_n_bases', 
-                        metavar='max_n_bases',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Max number of ambiguous bases.')
-
-    parser.add_argument('-F', '--filter', 
-                        action="store_true",
-                        default=True, 
-                        dest='filter', 
-                        help='do N/Repeat filtering during this step.')
-
-    parser.add_argument('-S', '--split_fields', 
-                        action="store_true",
-                        default=True, 
-                        dest='split_fields', 
-                        help='Split into MAPseq fields.')
-
-    parser.add_argument('-m','--min_reads', 
-                        metavar='min_reads',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Min reads to retain initial full read.')
-
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='Combined read, read_count TSV')   
+                    help='Logfile for subprocess.')
+
+    parser.add_argument('-a','--aligner', 
+                    metavar='aligner',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='aligner tool  [bowtie | bowtie2]')
+
+    parser.add_argument('-C','--column', 
+                    metavar='column',
+                    required=False,
+                    default='sequence', 
+                    type=str, 
+                    help='column to split.')
+
+    parser.add_argument('-N','--new_column', 
+                    metavar='new_column',
+                    required=False,
+                    default='vbc_read', 
+                    type=str, 
+                    help='new column with substring')
+    
+    parser.add_argument('-P','--parent_column', 
+                    metavar='parent_column',
+                    required=False,
+                    default='read_count', 
+                    type=str, 
+                    help='how to choose sequence [read_count]')    
+
+    parser.add_argument('-b','--n_bases', 
+                        metavar='n_bases',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Bases to split from column')
+
+    parser.add_argument('-m','--max_mismatch', 
+                        metavar='max_mismatch',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Max mismatch for collapse.')
+
+    parser.add_argument('-r','--recursion', 
+                        metavar='recursion',
+                        required=False,
+                        default=20000,
+                        type=int, 
+                        help='Max recursion. Handle larger input to collapse() System default ~3000.')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. output file base dir if not given.')
+                    help='outdir. input file base dir if not given.')   
+
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Combined read, read_count TSV') 
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -93,26 +119,12 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='Include datestr in relevant files.')
-
-    parser.add_argument('-f','--force', 
-                    action="store_true", 
-                    default=False, 
-                    help='Recalculate even if output exists.') 
-
-    parser.add_argument('-L','--logfile', 
-                    metavar='logfile',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='Logfile for subprocess.')
    
-    parser.add_argument('infiles' ,
-                        metavar='infiles', 
+    parser.add_argument('infile',
+                        metavar='infile',
                         type=str,
-                        nargs='+',
-                        default=None, 
-                        help='Read1 and Read2 [Read1B  Read2B ... ] fastq files')
-       
+                        help='Single TSV with column to be collapsed.')
+        
     args= parser.parse_args()
     
     if args.debug:
@@ -122,19 +134,21 @@ if __name__ == '__main__':
 
     cp = ConfigParser()
     cp.read(args.config)
+       
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infiles}')
-
-    # check nargs. 
-    if (len(args.infiles) < 2)  or (len(args.infiles) % 2 != 0 ):
-        parser.print_help()
-        print('error: the following arguments are required: 2 or multiple of 2 infiles')
-        sys.exit(1)
+    logging.debug(f'infiles={args.infile}')
+    
+    # set recursion
+    logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
+    if args.recursion is not None:
+        rlimit = int(args.recursion)
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)
        
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/reads.tsv'
+    outfile = f'{outdir}/collapsed.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -156,16 +170,13 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/reads.tsv'
+            outfile = f'{outdir}/collapsed.tsv'
 
     logging.debug(f'making missing outdir: {outdir} ')
     os.makedirs(outdir, exist_ok=True)
     logging.info(f'outdir={outdir} outfile={outfile}')
-
-    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
-    infilelist = package_pairfiles(args.infiles)   
-    
-    logging.debug(f'infilelist = {infilelist}')
+      
+    logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
         log = logging.getLogger()
@@ -174,31 +185,38 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
-        
+    
+    logging.info(f'loading {args.infile}') 
+    if args.infile.endswith('.tsv'):
+        logging.info(f'loading {args.infile} as tsv')
+        df = load_readstsv(args.infile) 
+    elif args.infile.endswith('.parquet'):
+        logging.info(f'loading {args.infile} as parquet')
+        df = pd.read_parquet(args.infile)
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
+
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
-
-    dir, base, ext = split_path(outfile)
-
-    df = process_fastq_pairs(
-                            infilelist, 
-                            outdir,                         
-                            force=args.force,
-                            max_repeats=args.max_repeats,
-                            max_n_bases=args.max_n_bases,
-                            min_reads=args.min_reads,
-                            column='sequence',
-                            split=True,
-                            drop=True, 
-                            cp = cp)
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
+    
+    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    df = align_collapse_split_pd(df, 
+                           column=args.column,
+                           n_column=args.new_column,
+                           p_column=args.parent_column,
+                           max_mismatch=args.max_mismatch,
+                           n_bases = args.n_bases, 
+                           outdir=outdir, 
+                           cp=cp)
+    logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
     df.to_csv(outfile, sep='\t')
     
+    dir, base, ext = split_path(outfile)
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)  
+    df.to_parquet(outfile)
     

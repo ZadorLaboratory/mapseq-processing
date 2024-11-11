@@ -749,6 +749,311 @@ def process_fastq_pairs_pd(infilelist,
 
 
 
+def process_fastq_pairs(infilelist, 
+                        outdir,                         
+                        force=True,
+                        filter = True,
+                        max_repeats=None,
+                        max_n_bases=None,
+                        min_reads=None,
+                        column='sequence',
+                        split=True, 
+                        drop=True,  
+                        cp = None  ):
+    '''
+    Top-level command entry point to simplify comman line script. 
+    
+    Pull out relevant leading sections of read1 and read2, join them  
+    df = process_fastq_pairs_pd_join( infilelist, 
+                                      outdir, 
+                                      force=args.force, 
+                                      cp=cp) 
+    
+    QC filter
+    df = filter_reads_pd(df, 
+                           max_repeats=args.max_repeats,
+                           max_n_bases=args.max_n_bases, 
+                           column='sequence' )
+
+    Read count filter
+    filter by minimum reads if desired. 
+    
+    Split out MAPseq columns, optionally drop parent. 
+    df =  split_mapseq_fields(df, pcolumn='sequence', cp=cp)
+
+    Return 
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    
+    logging.info('Handling FASTQ parsing...')
+    df = process_fastq_pairs_pd_chunked( infilelist,
+    #df = process_fastq_pairs_agg( infilelist, 
+                                      outdir, 
+                                      force=force, 
+                                      cp=cp)    
+    logging.info(f'done with FASTQ parsing.')
+
+    if filter:
+        logging.info(f'Filtering by read quality. Repeats. Ns.')
+        df = filter_reads_pd(df, 
+                           max_repeats=max_repeats,
+                           max_n_bases=max_n_bases, 
+                           column=column )
+    else:
+        logging.info('Skipping filtering.')    
+
+    if  min_reads is None:
+        min_reads = int( cp.get('fastq','min_reads'))
+    
+    if min_reads > 1:
+        logging.debug(f'Dropping reads with less than {min_reads} read_count.')
+        logging.info(f'Length before read_count threshold={len(df)}')
+        df = df[df['read_count'] >= min_reads]
+        df.reset_index(inplace=True, drop=True)
+        logging.info(f'Length after read_count threshold={len(df)}')    
+    else:
+        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')    
+
+    if split:
+        logging.debug(f'splitting out MAPseq fields')
+        df =  split_mapseq_fields(df, pcolumn=column, drop=drop, cp=cp)
+    else:
+        logging.info('skipping splitting fields.')
+
+    logging.debug(f'Got dataframe len={len(df)} Returning...')
+    return df
+
+
+
+def process_fastq_pairs_pd_agg(infilelist, 
+                                    outdir,                         
+                                    force=False, 
+                                    cp = None):
+    '''
+    only parse out read lines to pandas, then join with pandas. 
+    also AGGREGATE by identical read to minimize data. read_count column is counts of full sequence. 
+
+    Output:
+        sequence    read_count
+    
+    '''
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))
+    logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
+    df = None
+    sh = get_default_stats()
+    for (read1file, read2file) in infilelist:
+        logging.info(f'handling {read1file}, {read2file} ...')
+        if df is None:
+            logging.debug(f'making new read DF...')
+            df = pd.DataFrame(columns=['read1_seq', 'read2_seq'])
+            logging.debug(f'handling {read1file}')
+            df['read1_seq'] = read_fastq_sequence_pd(read1file, r1s, r1e )
+            logging.debug(f'handling {read2file}')
+            df['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
+        else:
+            logging.debug(f'making additional read DF...')
+            ndf = pd.DataFrame(columns=['read1_seq', 'read2_seq'], dtype="string[pyarrow]")
+            logging.debug(f'handling {read1file}')
+            ndf['read1_seq'] = read_fastq_sequence_pd(read1file, r1s, r1e )
+            logging.debug(f'handling {read2file}')
+            ndf['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
+            logging.debug(f'appending dataframes...')
+            df = pd.concat([df, ndf], copy=False, ignore_index=True)
+    
+    #of = f'{outdir}/read1read2.tsv'
+    #logging.debug(f'writing read1/2 TSV {of} for QC.')
+    #df.to_csv(of, sep='\t')
+ 
+    df['sequence'] = df['read1_seq'] + df['read2_seq']
+    df.drop(['read1_seq','read2_seq'], inplace=True, axis=1)
+    sh.add_value('/fastq','reads_handled', len(df) )  
+    
+    df = aggregate_reads_pd(df, pcolumn='sequence')  
+    of = f'{outdir}/fullreadcounts.tsv'
+    logging.debug(f'writing fullreadcounts TSV {of} for QC.')
+    df.to_csv(of, sep='\t')
+    return df    
+
+
+
+
+def process_fastq_pairs_pd_chunked(infilelist, 
+                                    outdir,                         
+                                    force=False, 
+                                    cp = None):
+    '''
+    only parse out read lines to pandas, then join with pandas. 
+    also AGGREGATE by identical read to minimize data. read_count column is counts of full sequence. 
+    handle files with chunking so that strings can be squished to pyarrow. 
+
+    Output:
+        sequence    read_count
+    
+    df = pd.read_csv(fh, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]")
+    df_iter = pd.read_csv(fh, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]", chunksize=1000000)
+    
+    https://pythonspeed.com/articles/chunking-pandas/
+    
+    DASK??
+    https://saturncloud.io/blog/how-to-efficiently-read-large-csv-files-in-python-pandas/
+
+    '''
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))
+    
+    chunksize = int(cp.get('fastq','chunksize'))
+    
+    logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
+    df = None
+    sh = get_default_stats()
+
+    for (read1file, read2file) in infilelist:
+        logging.info(f'handling {read1file}, {read2file} ...')
+        fh1 = get_fh(read1file)
+        dfi1 = pd.read_csv(fh1, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize) 
+        fh2 = get_fh(read2file)
+        dfi2 = pd.read_csv(fh2, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize)
+        
+        for chunk1 in dfi1:
+            chunk2 = dfi2.get_chunk()
+            logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
+            if df is None:
+                logging.debug(f'making new read DF...')
+                df = pd.DataFrame(columns=['sequence'])
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={df.dtypes}')           
+            else:
+                logging.debug(f'making additional read DF...')
+                ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={ndf.dtypes}')                
+                df = pd.concat([df, ndf], copy=False, ignore_index=True)
+
+
+    log_objectinfo(df, 'sequencedf')
+    of = f'{outdir}/sequence.tsv'
+    logging.debug(f'writing sequence TSV {of} for QC.')
+    df.to_csv(of, sep='\t')
+    
+    logging.info(f'aggregating by sequence, adding counts')    
+    df = aggregate_reads_pd(df, pcolumn='sequence')  
+    of = f'{outdir}/sequencecounts.tsv'
+    logging.debug(f'writing with counts TSV {of} for QC.')
+    df.to_csv(of, sep='\t')
+    return df          
+
+        
+def get_fh(infile):
+    '''
+    Opens compressed/uncompressed file as appropriate... 
+    '''
+    if infile.endswith('.gz'):
+        fh = gzip.open(infile, "rt")
+        logging.debug('handling gzipped file...')
+    else:
+        fh = open(infile, 'rt')
+    return fh    
+
+
+def oldsnippet():      
+    for (read1file, read2file) in infilelist:
+        logging.info(f'handling {read1file}, {read2file} ...')
+        if df is None:
+            logging.debug(f'making new read DF...')
+            df = pd.DataFrame(columns=['read1_seq', 'read2_seq'])
+            logging.debug(f'handling {read1file}')
+            df['read1_seq'] = read_fastq_sequence_pd(read1file, r1s, r1e )
+            logging.debug(f'handling {read2file}')
+            df['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
+        else:
+            logging.debug(f'making additional read DF...')
+            ndf = pd.DataFrame(columns=['read1_seq', 'read2_seq'], dtype="string[pyarrow]")
+            logging.debug(f'handling {read1file}')
+            ndf['read1_seq'] = read_fastq_sequence_pd(read1file, r1s, r1e )
+            logging.debug(f'handling {read2file}')
+            ndf['read2_seq'] = read_fastq_sequence_pd(read2file, r2s, r2e )
+            logging.debug(f'appending dataframes...')
+            df = pd.concat([df, ndf], copy=False, ignore_index=True)
+    
+    #of = f'{outdir}/read1read2.tsv'
+    #logging.debug(f'writing read1/2 TSV {of} for QC.')
+    #df.to_csv(of, sep='\t')
+ 
+    df['sequence'] = df['read1_seq'] + df['read2_seq']
+    df.drop(['read1_seq','read2_seq'], inplace=True, axis=1)
+    sh.add_value('/fastq','reads_handled', len(df) )  
+    
+    df = aggregate_reads_pd(df, pcolumn='sequence')  
+    of = f'{outdir}/fullreadcounts.tsv'
+    logging.debug(f'writing fullreadcounts TSV {of} for QC.')
+    df.to_csv(of, sep='\t')
+    return df    
+
+
+
+
+
+
+
+def split_mapseq_fields(df, pcolumn='sequence', drop=False, cp=None):
+    '''
+    spike_st=24
+    spike_end = 32
+    libtag_st=30
+    libtag_end=32
+    umi_st = 32
+    umi_end = 44
+    ssi_st = 44
+    ssi_end = 52
+    '''    
+    logging.info(f'pulling out MAPseq fields...')
+    if cp is None:
+        cp = get_default_config()
+    vbc_st = int(cp.get('mapseq', 'vbc_st'))
+    vbc_end = int(cp.get('mapseq', 'vbc_end'))        
+    spike_st=int(cp.get('mapseq', 'spike_st'))
+    spike_end = int(cp.get('mapseq', 'spike_end'))
+    libtag_st= int(cp.get('mapseq', 'libtag_st'))
+    libtag_end= int(cp.get('mapseq', 'libtag_end'))
+    umi_st = int(cp.get('mapseq', 'umi_st'))
+    umi_end = int(cp.get('mapseq', 'umi_end'))
+    ssi_st = int(cp.get('mapseq', 'ssi_st'))
+    ssi_end = int(cp.get('mapseq', 'ssi_end'))
+    
+    df['vbc_read'] = df[pcolumn].str.slice(vbc_st,vbc_end)    
+    df['spikeseq'] = df[pcolumn].str.slice(spike_st,spike_end)
+    df['libtag'] = df[pcolumn].str.slice(libtag_st,libtag_end)    
+    df['umi'] = df[pcolumn].str.slice(umi_st,umi_end)
+    df['ssi'] = df[pcolumn].str.slice(ssi_st,ssi_end)
+    sh = get_default_stats()
+    
+    if drop:
+        logging.info(f'dropping {pcolumn} column to slim.')
+        df.drop( pcolumn, axis=1, inplace=True)
+    else:
+        logging.info(f'drop is false. keeping {pcolumn} column.')
+    logging.info(f'df done. len={len(df)} returning...')
+    # changes in-place, but return as well. 
+    return df
+
+
 def filter_reads_pd(df,
                     max_repeats=None,
                     max_n_bases=None,
@@ -817,12 +1122,13 @@ def read_fastq_sequence_pd(infile, start=0, end=-1 ):
         logging.debug('handling gzipped file...')
     else:
         fh = open(infile, 'rt')
+    
     try:
         logging.info(f'reading sequence lines of FASTQ file')
-        # investigate engine=pyarrow  (once it supports skiprows lambda
+        # investigate engine=pyarrow  (once it supports skiprows lambda)
         # investigate low_memory = False for high-memory nodes
         # investigate memory_map effects on performance.         
-        df = pd.read_csv(infile, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]")
+        df = pd.read_csv(fh, header=None, skiprows = lambda x: x % 4 != 1, dtype="string[pyarrow]")
         logging.info(f'got sequence df len={len(df)} slicing...')
         df[0] = df[0].str.slice(start, end)
         logging.debug(f'done. pulling series...') 
@@ -905,8 +1211,13 @@ def set_counts_df(seqdf, column='', cp=None):
     # change made to inbound df, but return anyway
     return seqdf
 
-
-        
+def aggregate_reads_pd(seqdf, pcolumn='sequence'):
+    initlen = len(seqdf)
+    logging.debug(f'collapsing with read counts for sequence DF len={len(seqdf)}')
+    ndf = seqdf.value_counts()
+    ndf = ndf.reset_index()
+    ndf.rename({'count':'read_count'}, inplace=True, axis=1)
+    return ndf
     
 def filter_counts_df(cp, countsdf, min_count):
     '''
@@ -1826,11 +2137,21 @@ def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdi
     # map old to new
     fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
     # fill in NaN with original values. 
-    fulldf['vbc_read_col'].fillna(fulldf['vbc_read'], inplace=True)
+    # /Users/hover/git/mapseq-processing/mapseq/core.py:1930: FutureWarning: A value is trying to 
+    # be set on a copy of a DataFrame or Series through chained assignment using an inplace method.
+    # The behavior will change in pandas 3.0. This inplace method will never work because the 
+    # intermediate object on which we are setting values always behaves as a copy.
+    # For example, when doing 'df[col].method(value, inplace=True)', try using 'df.method({col: value}, inplace=True)' 
+    #  or df[col] = df[col].method(value) instead, to perform the operation inplace on the original object.
+    # fulldf['vbc_read_col'].fillna(fulldf['vbc_read'], inplace=True)
+    
+    # initial method:
+    #  fulldf['vbc_read_col'].fillna(fulldf['vbc_read'], inplace=True)
+    
+    fulldf.fillna( { 'vbc_read_col' : fulldf['vbc_read'] }, inplace=True)    
     logging.info(f'New collapsed df = \n{fulldf}')
     log_objectinfo(fulldf, 'fulldf')
     return fulldf
-
 
 
 
@@ -1949,6 +2270,139 @@ def align_collapse_pd(df,
     #logging.info(f'Writing collapsed fasta to {of}')
     #write_fasta_from_df(joindf, of)        
     return newdf        
+
+
+def align_collapse_split_pd(df,
+                      column='sequence',
+                      n_column='vbc_read',
+                      p_column='read_count', 
+                      max_mismatch=None,
+                      n_bases=None, 
+                      outdir=None, 
+                      datestr=None, 
+                      cp=None):
+    '''
+    Assumes dataframe with unique sequence and read_count columns. 
+    Use read_count to choose parent sequence.
+    Split out initial <vbc_bases> for alignment/collapse. Save as 'ncolumn'
+    Speed up use of pandas, map() function rather than apply()
+    
+    relationship between read_count on full_read sequences (52nt), and 
+        value_counts() on unique VBCs (30nts)
+    
+    '''
+    # housekeeping...
+    if cp is None:
+        cp = get_default_config()
+    
+    aligner = cp.get('collapse','tool')    
+    if max_mismatch is None:
+        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    else:
+        max_mismatch = int(max_mismatch)
+    
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    
+    if n_bases is None:
+        n_bases = int(cp.get('collapse', 'n_bases'))
+    else:
+        n_bases = int(n_bases)
+    
+    if outdir is None:
+        outdir = './'
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
+    logging.debug(f'collapse: aligner={aligner} n_bases={n_bases} max_mismatch={max_mismatch} outdir={outdir}')    
+    
+    sh = get_default_stats()      
+    sh.add_value('/collapse','n_full_sequences', len(df) )
+    sh.add_value('/collapse','n_bases', n_bases )
+
+    # split out vbc_read 
+    df[n_column] = df[column].str.slice(0,n_bases)
+
+    # get reduced dataframe of unique head sequences
+    logging.info('Getting unique DF...')    
+    #udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
+    udf = df[n_column].value_counts().reset_index() 
+    sh.add_value('/collapse','n_unique_sequences', len(udf) )    
+
+
+
+    of = os.path.join( outdir , f'{n_column}.unique.tsv')
+    logging.info(f'Writing unique DF to {of}')
+    udf.to_csv(of, sep='\t') 
+    
+    of = os.path.join( outdir , f'{n_column}.unique.fasta')
+    logging.info(f'Writing uniques as FASTA to {of}')
+    seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[n_column])    
+
+    of = os.path.join(outdir, f'{n_column}.fulldf.tsv')
+    logging.info(f'Writing slimmed full DF to {of}')    
+    df.to_csv(of, sep='\t', columns=[n_column, p_column])
+
+    # run allXall bowtiex
+    of = os.path.join( outdir , f'unique_sequences.bt2.sam')
+    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
+    btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
+    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
+    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
+    of = os.path.join( outdir , f'unique_sequences.btdf.tsv')
+    btdf.to_csv(of, sep='\t') 
+    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
+
+    # perform collapse...      
+    logging.info('Calculating Hamming components...')
+    edgelist = edges_from_btdf(btdf)
+    btdf = None  # help memory usage
+    sh.add_value('/collapse','n_edges', len(edgelist) )
+    
+    of = os.path.join( outdir , f'edgelist.txt')
+    writelist(of, edgelist)
+    logging.debug(f'edgelist len={len(edgelist)}')
+    
+    components = get_components(edgelist)
+    logging.debug(f'all components len={len(components)}')
+    sh.add_value('/collapse','n_components', len(components) )
+    of = os.path.join( outdir , f'components.txt')
+    writelist(of, components)
+    edgelist = None  # help memory usage    
+
+    # assess components...
+    # components is list of lists.
+    data = [ len(c) for c in components]
+    data.sort(reverse=True)
+    ccount = pd.Series(data)
+    of = os.path.join( outdir , f'component_count.tsv')
+    ccount.to_csv(of, sep='\t')            
+
+    mcomponents = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(mcomponents)}')
+    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
+    of = os.path.join( outdir , f'multi_components.json')
+    logging.debug(f'writing components len={len(components)} t {of}')
+    with open(of, 'w') as fp:
+        json.dump(mcomponents, fp, indent=4)
+
+    logging.info(f'Collapsing {len(components)} components...')
+    newdf = collapse_by_components_pd(df, udf, mcomponents, column=n_column, pcolumn=p_column, outdir=outdir)
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newcol = f'{n_column}_col'        
+    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
+
+    rdf = newdf[[ n_column, newcol, 'read_count' ]]
+    of = os.path.join( outdir , f'read_collapsed.tsv')
+    logging.info(f'Writing reduced mapping TSV to {of}')
+    rdf.to_csv(of, sep='\t')
+    
+    # newdf.drop(column, inplace=True, axis=1)
+    #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
+    #of = os.path.join( outdir , f'collapsed.fasta')
+    #logging.info(f'Writing collapsed fasta to {of}')
+    #write_fasta_from_df(joindf, of)        
+    return newdf    
         
 
 def collapse_only_pd(fdf, udf, mcomponents, column, pcolumn, outdir, cp ):
