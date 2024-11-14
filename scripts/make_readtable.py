@@ -170,6 +170,7 @@ if __name__ == '__main__':
                                    cp=cp)
 
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(outfile, sep='\t')
     logging.info('Done with TSV.')
     dir, base, ext = split_path(outfile)

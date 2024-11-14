@@ -140,7 +140,7 @@ if __name__ == '__main__':
                                    outdir=outdir, 
                                    label_column='label',
                                    cp=cp)
-    
+
     logging.info(f'Made matrices in {outdir}...')
 
     

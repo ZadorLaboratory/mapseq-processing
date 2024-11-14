@@ -153,7 +153,6 @@ if __name__ == '__main__':
     df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
        
-   
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
@@ -170,6 +169,7 @@ if __name__ == '__main__':
 
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(outfile, sep='\t')
     
     dir, base, ext = split_path(outfile)

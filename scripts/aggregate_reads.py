@@ -159,6 +159,7 @@ if __name__ == '__main__':
                            outdir=outdir
                            )
     logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
+    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(outfile, sep='\t')
     
     dir, base, ext = split_path(outfile)
