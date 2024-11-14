@@ -1,60 +1,42 @@
-Could use more Python native alignments:
-https://www.youtube.com/watch?v=_cTbADrGLCQ
-mafft?
+Developer Notes for MAPseq pipeline
+============================================
 
-stage one: 8 hours for  
+Key principles:
 
-2022-11-11 03:41:07,016 (UTC) [ INFO ] process_fastq.py:103 root.process_fastq_pair(): handled 391 564 348 read sequences. 34 109 287 unmatched
-real    524m43.817s
+Code is modularized to allow usage from several layers: as library, interactively 
+from ipython/Jupyter, and via command-line scripts. 
 
-400M sequences, 35M unmatched. 
+Configuration is handled via ConfigParser objects, with built-in package defaults, 
+explicit values in function calls, and overrides from CLI scripts.  
 
-FASTQ
-@ identifiers   
-<sequence>
-+ ...
-<quality per base indicator>
+Efforts made to parameterize wherever possible, to allow modification of things like 
+nucleotide field lengths/location.  
 
-<instrument> : <runid> : <flowid>        :  <laneid> : <tile> : <x-coord> : <y-coord> 
-@M00970		 :  70     : 000000000-KKRV9 : 1         : 1101   :  15788    :  1331  
+Pandas and/or Dask using vectorized functions where possible. 
 
-<pair>  :  <filtered?> : <cntrlbits> : <indexseq>
-   1 	:		N 	   :	 0       :     1
+Abstracted out calls to bowtie/bowtie2 to enable swap out of tools. 
 
-
-E.g. 
-@M00970:70:000000000-KKRV9:1:1101:15788:1331 1:N:0:1
-AAGCGCCTGTTTTTTGTGGGGCTAATTCGGTCGTAC
-+
-ABAAAD3AAFFFGGGGGGGGGGEHFHHHGHGGEAGF
-
-
-Fastq quality values (better to right):
-!"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
-
-
-bowtie2 (SAM) output format.
-@SQ sequence name, length
-@PG program information 
-
-QNAME	  FLG     RNAME   POS     MAPQ    CIGAR   RNEXT   PNEXZT  TLEN    SEQ
-0       0       0       1       32      32M     *       0       0       CTACAGGTTCTTATGAGGACGGGACTTGTGTC        
-
-QUAL   
-IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII        AS:i:0  XS:i:-6 
-XN:i:0  XM:i:0  XO:i:0  XG:i:0  NM:i:0  MD:Z:32 YT:Z:UU
-
-
-For bowtie -v  <max-mismatches>
-
-For bowtie2   no max specified on command line. 
-Filter after alignemnt on   XM:i:<n_mismatches>
-See  https://www.biostars.org/p/75438/
+As experiment size has increased (1B+ reads coming) this has forced efforts to maximize memory and space 
+efficiency. One example is switch to using pyarrow strings vs. native Python strings, and the 
+usage of parquet as a binary storage format (since reading/writing data and assigning types to data 
+read in from TSV becomes cumbersome. Reading files in chunks and doing piecewise processing
+is another example. More generally, Dask allows trading time and temporary storage space for memory.  
 
 
 
+Stage-specific Notes
+==========================================
+
+process_fastq_pairs
+
+We use Pandas read_csv with a lambda to pull out every fourth line of FASTQ. This is chunked to minimize
+memory.  
+
+aggregate_reads
+
+
+filter_split
 
 
 
-
-
+ 

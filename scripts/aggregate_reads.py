@@ -43,29 +43,12 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-
-    parser.add_argument('-b','--barcodes', 
-                        metavar='barcodes',
-                        required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
-                        type=str, 
-                        help='barcode file space separated: label sequence')
-
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=True,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
-
-
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
                     default=None, 
                     type=str, 
                     help='Logfile for subprocess.')
-
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -79,7 +62,21 @@ if __name__ == '__main__':
                     required=False,
                     default=None, 
                     type=str, 
-                    help='Full dataset table TSV') 
+                    help='Combined read, read_count TSV') 
+
+    parser.add_argument('-m','--min_reads', 
+                        metavar='min_reads',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Min reads to retain initial full read.')
+
+    parser.add_argument('-C','--column', 
+                    metavar='column',
+                    required=False,
+                    default='sequence', 
+                    type=str, 
+                    help='Read column to aggregate.')
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -91,7 +88,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single TSV or Parquet file with collapsed vbc_read.')
+                        help='Single TSV with column to be collapsed.')
         
     args= parser.parse_args()
     
@@ -106,10 +103,11 @@ if __name__ == '__main__':
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
-          
+    
+      
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/read.table.tsv'
+    outfile = f'{outdir}/collapsed.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -131,12 +129,12 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/read.table.tsv'
+            outfile = f'{outdir}/collapsed.tsv'
 
-    outdir = os.path.abspath(outdir)    
+    logging.debug(f'making missing outdir: {outdir} ')
     os.makedirs(outdir, exist_ok=True)
-
-    logging.info(f'handling {args.infile} to outdir {outdir}')    
+    logging.info(f'outdir={outdir} outfile={outfile}')
+      
     logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
@@ -147,33 +145,24 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    logging.debug(f'loading sample DF...')
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-    
-    logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='collapsed', use_dask=False)
-    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
- 
+    df = load_mapseq_df( args.infile, fformat='reads', use_dask=True)
+
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
         datestr = args.datestr
-    sh = StatsHandler(outdir=outdir, datestr=datestr)
+    sh = StatsHandler(outdir=outdir, datestr=datestr) 
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    df = process_make_readtable_pd(df,
-                                   sampdf, 
-                                   args.barcodes, 
-                                   outdir=outdir, 
-                                   cp=cp)
-
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    df = aggregate_reads_dd(df, 
+                           column=args.column,
+                           outdir=outdir
+                           )
+    logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
     df.to_csv(outfile, sep='\t')
-    logging.info('Done with TSV.')
+    
     dir, base, ext = split_path(outfile)
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)
-    logging.info('Done with Parquet.')    
+    

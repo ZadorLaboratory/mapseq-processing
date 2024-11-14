@@ -149,19 +149,11 @@ if __name__ == '__main__':
     else:
         target_min_reads = args.target_min_reads
 
-     
-    if args.infile.endswith('.tsv'):
-        logging.info(f'loading {args.infile} as tsv')
-        df = load_readtable(args.infile) 
-    elif args.infile.endswith('.parquet'):
-        logging.info(f'loading {args.infile} as parquet')
-        df = pd.read_parquet(args.infile)
-    else:
-        logging.error('input file must have relevant extension .tsv or .parquet')
-        sys.exit(1)
-    
-    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    
+    logging.info(f'loading {args.infile}') 
+    df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
+    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+       
+   
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:

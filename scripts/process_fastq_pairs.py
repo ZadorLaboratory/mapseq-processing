@@ -40,13 +40,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-m','--min_reads', 
-                        metavar='min_reads',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Min reads to retain initial full read.')
-
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=False,
@@ -161,7 +154,6 @@ if __name__ == '__main__':
                             infilelist, 
                             outdir,                         
                             force=args.force,
-                            min_reads=args.min_reads,
                             cp = cp)
     
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')

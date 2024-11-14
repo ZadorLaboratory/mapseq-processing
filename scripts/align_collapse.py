@@ -174,23 +174,15 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.info(f'loading {args.infile}') 
-    if args.infile.endswith('.tsv'):
-        logging.info(f'loading {args.infile} as tsv')
-        df = load_readstsv(args.infile) 
-    elif args.infile.endswith('.parquet'):
-        logging.info(f'loading {args.infile} as parquet')
-        df = pd.read_parquet(args.infile)
-    else:
-        logging.error('input file must have relevant extension .tsv or .parquet')
-        sys.exit(1)
-
+    df = load_mapseq_df( args.infile, fformat='filtered', use_dask=False)
+    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+    
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
         datestr = args.datestr
-    sh = StatsHandler(outdir=outdir, datestr=datestr) 
     
-    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    sh = StatsHandler(outdir=outdir, datestr=datestr) 
     df = align_collapse_pd(df, 
                            column=args.column,
                            pcolumn=args.parent_column,

@@ -64,6 +64,13 @@ if __name__ == '__main__':
                         type=int, 
                         help='Max number of ambiguous bases.')
 
+    parser.add_argument('-m','--min_reads', 
+                        metavar='min_reads',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Min reads to retain initial full read.')
+
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -147,13 +154,7 @@ if __name__ == '__main__':
    
     logging.info(f'loading {args.infile}') 
 
-    if args.infile.endswith('.tsv'):
-        df = load_readstsv(args.infile)   
-    elif args.infile.endswith('.parquet'):
-        df = pd.read_parquet(args.infile)
-    else:
-        logging.error('input file must have relevant extension .tsv or .parquet')
-        sys.exit(1)
+    df = load_mapseq_df( args.infile, fformat='aggregated', use_dask=False)
  
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
@@ -161,12 +162,13 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr)
     
-    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
 
     logging.debug(f'filtering by read quality. repeats. Ns.')
     df = filter_reads_pd(df, 
                            max_repeats=args.max_repeats,
-                           max_n_bases=args.max_n_bases, 
+                           max_n_bases=args.max_n_bases,
+                           min_reads=args.min_reads,  
                            column='sequence',
                            cp=cp)
     
