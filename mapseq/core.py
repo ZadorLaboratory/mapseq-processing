@@ -28,6 +28,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
 from dask.dataframe import from_pandas
+import dask
 import dask.dataframe as dd
 
 from mapseq.utils import *
@@ -819,11 +820,11 @@ def split_mapseq_fields(df, pcolumn='sequence', drop=False, cp=None):
     ssi_st = int(cp.get('mapseq', 'ssi_st'))
     ssi_end = int(cp.get('mapseq', 'ssi_end'))
     
-    df['vbc_read'] = df[pcolumn].str.slice(vbc_st,vbc_end)    
-    df['spikeseq'] = df[pcolumn].str.slice(spike_st,spike_end)
-    df['libtag'] = df[pcolumn].str.slice(libtag_st,libtag_end)    
-    df['umi'] = df[pcolumn].str.slice(umi_st,umi_end)
-    df['ssi'] = df[pcolumn].str.slice(ssi_st,ssi_end)
+    df['vbc_read'] = df[pcolumn].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
+    df['spikeseq'] = df[pcolumn].str.slice(spike_st,spike_end).astype('string[pyarrow]')
+    df['libtag'] = df[pcolumn].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
+    df['umi'] = df[pcolumn].str.slice(umi_st,umi_end).astype('string[pyarrow]')
+    df['ssi'] = df[pcolumn].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
     sh = get_default_stats()
     
     if drop:
@@ -948,11 +949,15 @@ def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     return ndf
 
-def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunksize=50000000):
+def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunksize=50000000, dask_temp=None):
     '''
     ASSUMES INPUT IS DASK DATAFRAME
     
     '''
+    if dask_temp is not None:
+        logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
+        dask.config.set(temporary_directory=os.path.expanduser(dask_temp))
+        
     initlen = len(seqdf)
     logging.debug(f'collapsing with read counts for col={column} len={len(seqdf)}')
     ndf = seqdf[column].value_counts().compute()
@@ -1847,7 +1852,6 @@ def build_seqmapdict_pd(udf, components, column='vbc_read', pcolumn='count'):
             logging.debug(f'[{i}/{comp_len}]: len={len(cdf)} seq = {t} ')
         comphandled += 1
     return seqmapdict
-
 
 
 def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdir=None):
