@@ -32,10 +32,10 @@ conda config --add channels bioconda
 
 ```
 # For Linux and Intel MacOS
-	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl bowtie bowtie2 natsort git fastx_toolkit  
-	conda install cmake?  
+	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl bowtie bowtie2 natsort git dask  
+ 
 # For MacOS with MX chips, bowtie not made, git part of x-code, and bowtie2 only available via brew ( https://brew.sh/ )
-    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl natsort
+    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster matplotlib openpyxl natsort dask
  
 ```
 
@@ -94,6 +94,30 @@ process_fastq_pairs.py pulls out sequences lines from both read files, trims, an
 Program will accept an even-number set of inputs. Just be sure that they are in the correct read1-read2-read1'-reqd2' order.  
 
 For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minutes on a new Mac M3). 
+
+### aggregate_reads.py
+
+```
+~/git/mapseq-processing/scripts/aggregate_reads.py 
+	-v  						# give verbose output.
+	-t ~/scratch					# Local, fast, roomy place for DASK to put temp files.
+	-m 2						# Minimum reads to retain data.    
+	-o aggregated.out/M253.aggregated.tsv 	# write to TSV file
+	fastq.out/M253.reads.tsv			# all reads merged to single sequence 
+```
+aggregate_reads.py takes all the assembled paired end reads (typically 52 nucleotides), and aggregates them by exact sequence, and sets a read_count column to the count of that unique sequence. Optionally can threshold by read count. 
+
+This step is isolated from others because it uses Dask, a Python framework to allow working on very large datasets with limited amounts of memory. It leverages disk space for temporary storage instead of loading all data into memory. 
+
+### filter_split.py
+
+```
+~/git/mapseq-processing/scripts/filter_split.py 
+	-v  					# give verbose output.  
+	-o filtered.out/M253.filtered.tsv 	# write to TSV file
+	aggregated.out/M253.aggregated.tsv	# aggregated full reads (with read_count). TSV or Parquet 
+```
+filter_split.py performs sequence-level QC, removing reads that are likely to be erroneous. And it splits the reads into columns that are relevant for the MAPseq protocol.  
   
 
 ### align_collapse.py
@@ -103,14 +127,15 @@ For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minute
 	-v 					# give verbose output
 	-m 3 					# maximum Hamming distance of 3 
 	-o collapse.out/M253.collapsed.tsv 	# output TSV 
-	fastq.out/M253.reads.tsv		# input TSV (or parquet)
+	filtered.out/M253.filtered.tsv	# Filtered and split data. TSV or Parquet 
 ```
 
-This program takes the viral barcode part of the reads, and partitions them into groups where all the members are within a Hamming distance of 3 of each other. It does this by running an all-by-all alignment of all unique viral barcode sequences. Self-matches are discarded. The remainder are used to create an edge graph (nodes are sequences, edges are between sequences less than 3 edits apart). This is then given to Tarjan's algorithm to determine "components", sets of sequences connected by edges. It then sets all members of the components to have the same sequence. (This sequence is the one in the original set with the most reads, but it shouldn't matter what the exact sequence is, as long as they all share it, and it is unique within the data). 
+This program takes the viral barcode part of the reads (vbc_read column), and partitions them into groups where all the members are within a Hamming distance of 3 of each other. It does this by running an all-by-all alignment of all unique viral barcode sequences. Self-matches are discarded. The remainder are used to create an edge graph (nodes are sequences, edges are between sequences less than 3 edits apart). This is then given to Tarjan's algorithm to determine "components", sets of sequences connected by edges. It then sets all members of the components to have the same sequence. (This sequence is the one in the original set with the most reads, but it shouldn't matter what the exact sequence is, as long as they all share it, and it is unique within the data). 
 
 This processing step is necessary because there is a fair amount of mutation that occurs during viral replication. We don't worry about mismatches in the other components of the sequence (SSI barcode, UMI sequence) because these are added during sample processing and thus have lower error rates.
 
 For a standard ~400M read experiment, this takes about 70 minutes on a high-memory (192GB RAM) node. (Or 50 minutes on a new Mac M3, 96GB RAM).  
+
 
 ### make_readtable.py
 
@@ -122,14 +147,14 @@ For a standard ~400M read experiment, this takes about 70 minutes on a high-memo
 	collapse.out/M253.collapsed.tsv		# collapsed reads/counts (or parquet)
 ```
 
-Now we break the data into useful sequence regions, and fill in addtional relevant information. 
+Now we break the data into useful sequence regions, and fill in addtional relevant information. Note that this is the only command that requires the sample information from the Excel spreadsheet (or derived TSV). 
+ 
 We also create site-specific read count shoulder plots, in order to confirm that our read count thresholds are reasonable. 
 
 Takes about 45 minutes for 400M reads on MacBook Pro M3 
   
 
 ### make_vbctable.py
- 
 
 ```
 ~/git/mapseq-processing/scripts/process_ssifasta.py 
