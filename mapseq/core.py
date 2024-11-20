@@ -1337,8 +1337,7 @@ def process_make_readtable_pd(df,
                           sampdf,
                           bcfile=None, 
                           outdir=None, 
-                          cp = None,
-                          make_plots=True):
+                          cp = None):
     '''
     take split/aligned read file.
     produce fully tagged and filtered data table.
@@ -1346,6 +1345,9 @@ def process_make_readtable_pd(df,
     -- add optional region label
     -- classify by site-type
     -- set brain label
+    
+    aggregate and sum read and UMI counts by type, libtag, and ssi. 
+    
     '''
     logging.info(f'inbound df len={len(df)} columns={df.columns}')
     if outdir is None:
@@ -1424,18 +1426,15 @@ def process_make_readtable_pd(df,
     df['site'] = df['rtprimer'].map(smap)
     df.fillna({'site': ''}, inplace=True)
     sdf = None    
-
-    if make_plots:
-        make_shoulder_plots(df, outdir = outdir)
     
     # calc/ collect stats
     sh = get_default_stats()    
     sh.add_value('/readtable','n_full_sequences', str(len(df)) )
     
-    n_spike = (df['type'] == 'spike').sum() 
-    n_lone =  (df['type'] == 'lone').sum()  
-    n_real =  (df['type'] == 'real').sum() 
-    n_nomatch = (df['type'] == 'nomatch').sum()
+    #n_spike = (df['type'] == 'spike')['read_count'].sum() 
+    #n_lone =  (df['type'] == 'lone')['read_count'].sum()  
+    #n_real =  (df['type'] == 'real')['read_count'].sum() 
+    #n_nomatch = (df['type'] == 'nomatch')['read_count'].sum()
 
     # get rid of nans, and calculate template switching value. 
     ndf = df.replace('nomatch',np.nan)
@@ -1455,15 +1454,15 @@ def process_make_readtable_pd(df,
     # 
 
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
-    sh.add_value('/readtable', 'n_spike', str(n_spike) )     
-    sh.add_value('/readtable', 'n_lone', str(n_lone) )      
-    sh.add_value('/readtable', 'n_real', str(n_real) )     
-    sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
+    #sh.add_value('/readtable', 'n_spike', str(n_spike) )     
+    #sh.add_value('/readtable', 'n_lone', str(n_lone) )      
+    #sh.add_value('/readtable', 'n_real', str(n_real) )     
+    #sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
 
     return df
 
 
-def make_shoulder_plots(df, outdir=None):
+def make_shoulder_plots(df, outdir=None, cp=None):
     # make shoulder plots. injection, target
     logging.info('making shoulder plots...')
     if outdir is None:
@@ -1696,8 +1695,10 @@ def process_make_matrices_pd(df,
     return norm_dict
 
 
-def process_mapseq_all(infiles, sampleinfo, bcfile=None, outdir=None, expid=None, cp=None):    
+def process_mapseq_all_XXX(infiles, sampleinfo, bcfile=None, outdir=None, expid=None, cp=None):    
     '''
+    DO NOT USE. NEEDS UPDATING FOR LARGE DATA
+    
     performs end-to-end default processing. fastq pairs to matrices
     
     '''
@@ -1804,6 +1805,8 @@ def process_mapseq_all(infiles, sampleinfo, bcfile=None, outdir=None, expid=None
                                exp_id = expid,  
                                outdir=outdir, 
                                cp=cp)
+    
+    
 
 
 def build_seqmapdict(udf, components, column='vbc_read'):

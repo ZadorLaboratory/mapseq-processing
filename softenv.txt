@@ -11,7 +11,7 @@ Install:
 You may need to restart your shell to enable the conda command.
 
 Update base:
-	conda update -n base -c defaults conda
+	conda update -n base defaults
 
 Enable additional Conda repositories:
 	conda config --add channels conda-forge
@@ -36,7 +36,7 @@ Install dependencies, useful tools:
     git is part of x-code
     bowtie2 only available via brew ( https://brew.sh/ )
     
-    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy openpyxl natsort paramiko h5py
+    conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy openpyxl natsort paramiko h5py dask
 	brew install bowtie2
 
     # For printing notebook as PDF
