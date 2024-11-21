@@ -773,6 +773,7 @@ def filter_split_pd(df,
                     max_n_bases=None,
                     column='sequence',
                     drop=True,
+                    cp=None
                     ):
     '''
     filter sequence by repeats, Ns. 
@@ -788,7 +789,7 @@ def filter_split_pd(df,
                        max_repeats=max_repeats,
                        max_n_bases=max_n_bases, 
                        column=column )
-    logging.info(f'Filtering by read quality. Repeats. Ns.')    
+    logging.info(f'Splitting into mapseq fields. ')    
     df = split_mapseq_fields(df, 
                              drop=True)
 
@@ -957,6 +958,8 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunk
     if dask_temp is not None:
         logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
         dask.config.set(temporary_directory=os.path.expanduser(dask_temp))
+    else:
+        logging.info(f'no dask_temp specified. letting dask use its default')
         
     initlen = len(seqdf)
     logging.debug(f'collapsing with read counts for col={column} len={len(seqdf)}')

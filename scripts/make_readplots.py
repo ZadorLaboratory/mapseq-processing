@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+#
+# Make shoulder plots from READTABLE
+#
+#
 import argparse
 import logging
 import os
