@@ -796,7 +796,7 @@ def filter_split_pd(df,
     return df
 
  
-def split_mapseq_fields(df, pcolumn='sequence', drop=False, cp=None):
+def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
     '''
     spike_st=24
     spike_end = 32
@@ -821,18 +821,18 @@ def split_mapseq_fields(df, pcolumn='sequence', drop=False, cp=None):
     ssi_st = int(cp.get('mapseq', 'ssi_st'))
     ssi_end = int(cp.get('mapseq', 'ssi_end'))
     
-    df['vbc_read'] = df[pcolumn].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
-    df['spikeseq'] = df[pcolumn].str.slice(spike_st,spike_end).astype('string[pyarrow]')
-    df['libtag'] = df[pcolumn].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
-    df['umi'] = df[pcolumn].str.slice(umi_st,umi_end).astype('string[pyarrow]')
-    df['ssi'] = df[pcolumn].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
+    df['vbc_read'] = df[column].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
+    df['spikeseq'] = df[column].str.slice(spike_st,spike_end).astype('string[pyarrow]')
+    df['libtag'] = df[column].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
+    df['umi'] = df[column].str.slice(umi_st,umi_end).astype('string[pyarrow]')
+    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
     sh = get_default_stats()
     
     if drop:
-        logging.info(f'dropping {pcolumn} column to slim.')
-        df.drop( pcolumn, axis=1, inplace=True)
+        logging.info(f'dropping {column} column to slim.')
+        df.drop( column, axis=1, inplace=True)
     else:
-        logging.info(f'drop is false. keeping {pcolumn} column.')
+        logging.info(f'drop is false. keeping {column} column.')
     logging.info(f'df done. len={len(df)} returning...')
     # changes in-place, but return as well. 
     return df
@@ -941,6 +941,52 @@ def set_counts_df(seqdf, column='', cp=None):
     seqdf['read_count'] = seqdf['sequence'].map(fmap)
     # change made to inbound df, but return anyway
     return seqdf
+
+def set_siteinfo(df, sampdf, column='sequence', cp=None):
+    '''
+    This is a purely utility function to determine site type for
+    shoulder plots. 
+    
+    '''
+    if cp is None:
+        cp=get_default_config()
+    ssi_st = int(cp.get('mapseq','ssi_st') )
+    ssi_end = int(cp.get('mapseq','ssi_end') )
+    bcfile = os.path.expanduser( cp.get('barcodes','ssifile'))
+
+    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
+    df.drop( column, axis=1, inplace=True)
+
+    # set site
+    # map SSIs, set unknown to unmatched.
+    logging.debug(f'getting rt labels...')
+    labels = get_rtlist(sampdf)
+    logging.debug(f'rtlabels={labels}')
+    #bcdict = get_barcode_dict(bcfile, labels)
+    rtdict = get_rtprimer_dict(bcfile, labels)
+   
+    #logging.info('filling in labels by SSI sequences...')
+    #df['label'] = df['ssi'].map(bcdict)
+    #logging.info('labelling unmatched...')
+    #df.fillna({'label': 'nomatch'}, inplace=True)
+
+    logging.info('filling in rtprimer number by SSI sequences...')    
+    df['rtprimer'] = df['ssi'].map(rtdict)
+    logging.info('labelling unmatched...')
+    df.fillna({'rtprimer': 'nomatch'}, inplace=True)
+    
+    sdf = sampdf[['rtprimer','siteinfo']]
+    sdf = sdf[sdf['siteinfo'] != '']
+    smap = dict(zip(sdf['rtprimer'],sdf['siteinfo']))
+    df['site'] = df['rtprimer'].map(smap)
+    df.fillna({'site': 'nomatch'}, inplace=True)
+    sdf = None    
+    
+    return df
+    
+
+
+
 
 def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     initlen = len(seqdf)

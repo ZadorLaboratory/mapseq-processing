@@ -94,7 +94,6 @@ if __name__ == '__main__':
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
       
-   
     outdir = None
     if args.outdir is not None:
         outdir = os.path.abspath(args.outdir)

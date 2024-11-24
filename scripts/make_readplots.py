@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Make shoulder plots from READTABLE
+# Make shoulder plots from READTABLE OR AGGREGATED
 #
 #
 import argparse
@@ -47,13 +47,33 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-b','--barcodes', 
+                        metavar='barcodes',
+                        required=False,
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
+                        type=str, 
+                        help='barcode file space separated: label sequence')
+
+    parser.add_argument('-f','--format', 
+                        metavar='format',
+                        required=False,
+                        default='aggregated',
+                        type=str, 
+                        help='input dataframe type [ aggregated | readtable ]')
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=True,
+                        default=None,
+                        type=str, 
+                        help='XLS sampleinfo file. ')
+
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
                     default=None, 
                     type=str, 
                     help='Logfile for subprocess.')
-
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -106,21 +126,29 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
-       
-    logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
-    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
- 
+
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr)
-    
+
+    logging.debug(f'loading sample DF...')
+    sampdf = load_sample_info(cp, args.sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+
+    logging.info(f'loading {args.infile}') 
+    if args.format == 'aggregated':
+        df = load_mapseq_df( args.infile, fformat='aggregated', use_dask=False)
+        logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+        df = set_siteinfo(df, sampdf, cp=cp)
+        logging.debug(f'set siteinfo on dataframe: {df}')
+        
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = make_shoulder_plots(df,
                         outdir=outdir, 
                         cp=cp)
-
+    
     logging.info(f'Plots written to {outdir}')
    

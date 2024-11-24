@@ -173,7 +173,7 @@ if __name__ == '__main__':
                            cp=cp)
     
     df = split_mapseq_fields(df, 
-                             pcolumn = 'sequence',
+                             column = 'sequence',
                              drop = True,
                              cp=cp)
 
