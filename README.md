@@ -188,8 +188,8 @@ A spike-in barcode matrix (sbcm). Contains raw numbers of spike-in molecules for
 
 A real barcode matrix normalized by spike-ins (nbcm). The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. For most further analysis, this can be considered the canonical processing output file. 
 
-A scaled+normalized barcode matrix (scbcm). This normalized+scaled matrix is useful for drawing heatmaps, since all values are scaled back to values from 0.0 to 1.0 so they can be represented by color intensity.      
-
+A scaled+normalized barcode matrix (scbcm). For this matrix, the values are log-scaled, which can be useful as input 
+to other visualization functions.  
 
 Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
 	[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 

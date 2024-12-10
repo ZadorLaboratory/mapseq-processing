@@ -1264,6 +1264,7 @@ def normalize_scale(df, columns = None, logscale='log2', min=0.0, max=1.0):
     Set -inf to 0
     Set NaN to 0
     
+    
     '''
     #logging.debug(f'making rows sum to one...')
     if logscale == 'log2':
