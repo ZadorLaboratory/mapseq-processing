@@ -1322,6 +1322,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     ridf.reset_index(inplace=True, drop=True)
     logging.debug(f'before threshold inj df len={len(ridf)}')   
     
+    
     mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
     incol = mdf.columns
     outcol = []
@@ -1335,7 +1336,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
 
-def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1):
+def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
     '''
     rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
     remove rows from rtdf that do not have at least <min_injection> value in the row 
@@ -1350,6 +1351,10 @@ def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1):
     ridf.reset_index(inplace=True, drop=True)
     logging.debug(f'before threshold inj df len={len(ridf)}')   
     
+    if write_out:
+        ridf.to_csv('./ridf.tsv', sep='\t')
+        rtdf.to_csv('./rtdf.tsv', sep='\t')
+    
     mdf = pd.merge(rtdf, ridf, how='inner', left_on='vbc_read_col', right_on='vbc_read_col')
     incol = mdf.columns
     outcol = []
@@ -1360,6 +1365,10 @@ def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1):
             outcol.append(c.replace('_x',''))
     mdf = mdf[selcol]
     mdf.columns = outcol
+    logging.debug(f'before drop_duplicates. len={len(mdf)}')
+    mdf.drop_duplicates(inplace=True)
+    mdf.reset_index(drop=True, inplace=True)
+    logging.debug(f'after drop_duplicates. len={len(mdf)} columns={mdf.columns}')
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
 
@@ -1635,10 +1644,17 @@ def process_make_matrices_pd(df,
         valid = True
         logging.debug(f'handling brain_id={brain_id}')
         bdf = df[df['brain'] == brain_id]
-                    
-        # handle target areas...
+
+        # extract and threshold injection area
+        idf = bdf[bdf['site'].str.startswith('injection')]
+        ridf = idf[idf['type'] == 'real'] 
+
+                   
+        # extract target areas
         tdf = bdf[bdf['site'].str.startswith('target')]
         rtdf = tdf[tdf['type'] == 'real'] 
+
+
 
         # threshold by min_target or threshold by target-negative
         # if use_target_negative is true, but no target negative site 
@@ -1670,14 +1686,13 @@ def process_make_matrices_pd(df,
 
         if require_injection:
             # extract and filter injection areas.
-            logging.debug(f'require_injection={require_injection} inj_min_umi={inj_min_umi}') 
-            idf = bdf[bdf['site'].str.startswith('injection')]
-            ridf = idf[idf['type'] == 'real']  
+            logging.debug(f'require_injection={require_injection} inj_min_umi={inj_min_umi}')  
             if len(ridf) == 0:
                 logging.warning('require_injection=True but no real VBCs from any injection site.')
             logging.debug(f'{len(frtdf)} real target VBCs before filtering.')      
             frtdf = filter_non_inj_umi(frtdf, ridf, inj_min_umi=inj_min_umi)
             logging.debug(f'{len(frtdf)} real target VBCs after injection filtering.')
+            logging.debug(f'filtered real VBCs:\n{frtdf} ')
             if not len(frtdf) > 0:
                 logging.warning(f'No VBCs passed injection filtering! Skip brain.')
                 valid = False
