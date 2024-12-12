@@ -1746,4 +1746,43 @@ def align_collapse_split_pd(df,
     #of = os.path.join( outdir , f'collapsed.fasta')
     #logging.info(f'Writing collapsed fasta to {of}')
     #write_fasta_from_df(joindf, of)        
-    return newdf    
+    return newdf   
+
+
+def filter_non_inj_umi_merge(rtdf, ridf, inj_min_umi=1, write_out=False):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and columns from first argument (rtdf)
+    
+    '''
+    logging.info(f'filtering non-injection. inj_min_umi={inj_min_umi}')
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.umi_count >= inj_min_umi]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    if write_out:
+        ridf.to_csv('./ridf.tsv', sep='\t')
+        rtdf.to_csv('./rtdf.tsv', sep='\t')
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='vbc_read_col', right_on='vbc_read_col')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'before drop_duplicates. len={len(mdf)}')
+    mdf.drop_duplicates(inplace=True)
+    mdf.reset_index(drop=True, inplace=True)
+    logging.debug(f'after drop_duplicates. len={len(mdf)} columns={mdf.columns}')
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf
+
+ 

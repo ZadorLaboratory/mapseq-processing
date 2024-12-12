@@ -1336,6 +1336,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
 
+
 def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
     '''
     rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
@@ -1349,20 +1350,25 @@ def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
     logging.debug(f'before threshold inj df len={len(ridf)}')
     ridf = ridf[ridf.umi_count >= inj_min_umi]
     ridf.reset_index(inplace=True, drop=True)
-    logging.debug(f'before threshold inj df len={len(ridf)}')   
     
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
     if write_out:
         ridf.to_csv('./ridf.tsv', sep='\t')
         rtdf.to_csv('./rtdf.tsv', sep='\t')
+
+    # merge using vbc_read_col as common field. 
+    mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
+    # only keep target VBCs that are in injection
+    mdf = mdf[mdf['_merge'] == 'both']
     
-    mdf = pd.merge(rtdf, ridf, how='inner', left_on='vbc_read_col', right_on='vbc_read_col')
     incol = mdf.columns
     outcol = []
     selcol =[]
     for c in incol:
-        if not c.endswith('_y'):
+        if not c.endswith('_i'):
+            # _t or join column. 
             selcol.append(c)
-            outcol.append(c.replace('_x',''))
+            outcol.append(c.replace('_t',''))
     mdf = mdf[selcol]
     mdf.columns = outcol
     logging.debug(f'before drop_duplicates. len={len(mdf)}')
@@ -1371,6 +1377,7 @@ def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
     logging.debug(f'after drop_duplicates. len={len(mdf)} columns={mdf.columns}')
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
+
 
 
 def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
