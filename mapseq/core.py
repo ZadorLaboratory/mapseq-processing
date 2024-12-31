@@ -414,7 +414,7 @@ def threshold_read_counts(config, df, threshold=1):
     df = df[df['read_count'] >= threshold].copy()
     return df
 
-def load_sample_info(config, file_name):
+def load_sample_info(config, file_name, sheet_name='Sample information'):
     #
     # Parses Excel spreadsheet to get orderly sample metadata, saves as sampleinfo.tsv.     
     # OR Reads in sampleinfo.tsv
@@ -444,7 +444,6 @@ def load_sample_info(config, file_name):
     str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
 
     if file_name.endswith('.xlsx'):
-        sheet_name = 'Sample information'
         edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
         sdf = pd.DataFrame()
         
@@ -492,7 +491,6 @@ def load_sample_info(config, file_name):
                     sdf[scol] = sdf['ourtube']
                 elif scol == 'region':
                     sdf[scol] = sdf['rtprimer']
-        
         
         # fix empty rows. 
         sdf.brain = sdf.brain.astype(str)
@@ -1631,6 +1629,8 @@ def process_make_matrices_pd(df,
         inj_min_umi = int(cp.get('matrices','inj_min_umi'))
     if target_min_umi is None:
         target_min_umi = int(cp.get('matrices','target_min_umi'))   
+    target_min_umi_absolute = int(cp.get('matrices','target_min_umi_absolute'))
+
 
     use_target_negative=cp.getboolean('matrices','use_target_negative')
     use_target_water_control=cp.getboolean('matrices','use_target_water_control')    
@@ -1675,6 +1675,8 @@ def process_make_matrices_pd(df,
             logging.info(f'use_target_water_control is {use_target_water_control}')
             max_water_control = calc_min_umi_threshold(bdf, 'target-water-control',cp)
             logging.debug(f'target_water_control UMI count = {max_water_control}')
+
+
         
         target_min_umi = max([target_min_umi, max_negative, max_water_control ])
         logging.debug(f'min_target UMI count after all constraints = {target_min_umi}')   

@@ -64,10 +64,18 @@ if __name__ == '__main__':
                         type=str,
                         help='Excel or TSV of sampleinfo.')
 
+    parser.add_argument('-S','--samplesheet', 
+                        metavar='samplesheet',
+                        required=True,
+                        default='Sample information',
+                        type=str, 
+                        help='XLS sheet tab name.')
+
     parser.add_argument('outfile', 
                     metavar='outfile',
-                    type=str, 
-                    help='Parsed TSV of Sampleinfo') 
+                    nargs='?',
+                    default=sys.stdout,   
+                    help='Parsed TSV of Sampleinfo. Stdout if omitted.') 
         
     args= parser.parse_args()
     
@@ -83,18 +91,20 @@ if __name__ == '__main__':
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infile={args.infile} outfile={args.outfile}')
 
-    outfile = os.path.abspath(args.outfile)
-    filepath = os.path.abspath(outfile)    
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)   
-    head = base.split('.')[0]
-    outdir = dirname
-    logging.debug(f'outdir set to {outdir}')
-    outdir = os.path.abspath(outdir)    
-    os.makedirs(outdir, exist_ok=True)
-
-    logging.info(f'handling {args.infile} to outdir {outdir}')    
+    if type(args.outfile) == str :
+        outfile = os.path.abspath(args.outfile)
+        filepath = os.path.abspath(outfile)    
+        dirname = os.path.dirname(filepath)
+        filename = os.path.basename(filepath)
+        (base, ext) = os.path.splitext(filename)   
+        head = base.split('.')[0]
+        outdir = dirname
+        logging.debug(f'outdir set to {outdir}')
+        outdir = os.path.abspath(outdir)    
+        os.makedirs(outdir, exist_ok=True)
+    else:
+        outfile = args.outfile
+   
     logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
@@ -106,7 +116,7 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.info(f'Loading sample information...')
-    df = load_sample_info(cp, args.infile)
+    df = load_sample_info(cp, args.infile, args.samplesheet)
     logging.debug(f'\n{df}')
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
     df.to_csv(outfile, sep='\t')

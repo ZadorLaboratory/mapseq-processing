@@ -58,6 +58,12 @@ if __name__ == '__main__':
                         type=str, 
                         help='XLS sampleinfo file. ')
 
+    parser.add_argument('-S','--samplesheet', 
+                        metavar='samplesheet',
+                        required=True,
+                        default='Sample information',
+                        type=str, 
+                        help='XLS sheet tab name.')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -148,7 +154,7 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.debug(f'loading sample DF...')
-    sampdf = load_sample_info(cp, args.sampleinfo)
+    sampdf = load_sample_info(cp, args.sampleinfo, args.samplesheet)
     logging.debug(f'\n{sampdf}')
     sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
     
