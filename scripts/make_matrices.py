@@ -53,8 +53,14 @@ if __name__ == '__main__':
                         required=False,
                         default=None,
                         type=int, 
-                        help='Minimum target UMIs for inclusion.')
+                        help='Minimum single target UMIs for including all.')
 
+    parser.add_argument('-T','--target_min_umi_absolute', 
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Minimum target UMIs absolute.')    
+    
     parser.add_argument('-e','--expid', 
                     metavar='expid',
                     required=False,
@@ -137,6 +143,7 @@ if __name__ == '__main__':
                                    exp_id = args.expid,  
                                    inj_min_umi = args.inj_min_umi,
                                    target_min_umi = args.target_min_umi,
+                                   target_min_umi_absolute = args.target_min_umi_absolute,
                                    outdir=outdir, 
                                    label_column='label',
                                    cp=cp)

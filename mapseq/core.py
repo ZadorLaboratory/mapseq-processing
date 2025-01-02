@@ -1607,7 +1607,8 @@ def process_make_matrices_pd(df,
                           outdir=None,
                           exp_id = 'M001',  
                           inj_min_umi = None,
-                          target_min_umi = None, 
+                          target_min_umi = None,
+                          target_min_umi_absolute = None, 
                           label_column='label',
                           cp = None):
     '''
@@ -1629,8 +1630,8 @@ def process_make_matrices_pd(df,
         inj_min_umi = int(cp.get('matrices','inj_min_umi'))
     if target_min_umi is None:
         target_min_umi = int(cp.get('matrices','target_min_umi'))   
-    target_min_umi_absolute = int(cp.get('matrices','target_min_umi_absolute'))
-
+    if target_min_umi_absolute is None:
+        target_min_umi_absolute = int(cp.get('matrices','target_min_umi_absolute'))
 
     use_target_negative=cp.getboolean('matrices','use_target_negative')
     use_target_water_control=cp.getboolean('matrices','use_target_water_control')    
@@ -1661,8 +1662,6 @@ def process_make_matrices_pd(df,
         tdf = bdf[bdf['site'].str.startswith('target')]
         rtdf = tdf[tdf['type'] == 'real'] 
 
-
-
         # threshold by min_target or threshold by target-negative
         # if use_target_negative is true, but no target negative site 
         # defined, use min_target and throw warning. 
@@ -1676,11 +1675,16 @@ def process_make_matrices_pd(df,
             max_water_control = calc_min_umi_threshold(bdf, 'target-water-control',cp)
             logging.debug(f'target_water_control UMI count = {max_water_control}')
 
-
-        
         target_min_umi = max([target_min_umi, max_negative, max_water_control ])
         logging.debug(f'min_target UMI count after all constraints = {target_min_umi}')   
 
+        if target_min_umi_absolute > 1:
+            before = len(rtdf)
+            rtdf = rtdf[rtdf['umi_count'] >= target_min_umi_absolute ]
+            rtdf.reset_index(drop=True, inplace=True)
+            after = len(rtdf)
+            logging.debug(f'filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
+            
         # min_target is now either calculated from target-negative, or from config. 
         if target_min_umi > 1:
             before = len(rtdf)
