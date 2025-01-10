@@ -60,7 +60,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-S','--samplesheet', 
                         metavar='samplesheet',
-                        required=True,
+                        required=False,
                         default='Sample information',
                         type=str, 
                         help='XLS sheet tab name.')

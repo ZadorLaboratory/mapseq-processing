@@ -1337,7 +1337,8 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
 
 def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
     '''
-    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate 
+    matters.
     remove rows from rtdf that do not have at least <min_injection> value in the row 
     of ridf with the same index (VBC sequence)
     Does an inner join() on the dataframes, keyed on sequence. 
@@ -1354,28 +1355,47 @@ def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
         ridf.to_csv('./ridf.tsv', sep='\t')
         rtdf.to_csv('./rtdf.tsv', sep='\t')
 
-    # merge using vbc_read_col as common field. 
-    mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
-    # only keep target VBCs that are in injection
-    mdf = mdf[mdf['_merge'] == 'both']
+    # get target VBCs that are in injection
+    mtdf = merge_and_filter(rtdf, ridf)
+
+    # get injection VBCs that are in at least one target, similarly 
+    midf = merge_and_filter(ridf, rtdf)
     
+    return ( mtdf, midf)
+
+
+
+
+def merge_and_filter(adf,  bdf, on='vbc_read_col', indicator=True, how='outer'):
+    '''
+    Return filtered ADF consisting of only entries in ADF that also exist in BDF as joined on 
+    the 'on' column.  
+    
+    
+    '''
+    #suffixes=('_a','_b')
+    # get targets in injection merge using vbc_read_col as common field. 
+    #mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
+    mdf = adf.merge(bdf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_a','_b'))
+    # only keep target VBCs that are in injection
+    mdf = mdf[mdf['_merge'] == 'both']    
     incol = mdf.columns
     outcol = []
     selcol =[]
     for c in incol:
-        if not c.endswith('_i'):
+        if not c.endswith('_b'):
             # _t or join column. 
             selcol.append(c)
-            outcol.append(c.replace('_t',''))
+            outcol.append(c.replace('_a',''))
     mdf = mdf[selcol]
     mdf.columns = outcol
     logging.debug(f'before drop_duplicates. len={len(mdf)}')
     mdf.drop_duplicates(inplace=True)
+    mdf.drop('_merge', inplace=True, axis=1)
     mdf.reset_index(drop=True, inplace=True)
     logging.debug(f'after drop_duplicates. len={len(mdf)} columns={mdf.columns}')
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
-
 
 
 def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
@@ -1615,6 +1635,9 @@ def process_make_matrices_pd(df,
     -- per brain, pivot real VBCs (value=umi counts)
     -- create real, real normalized by spikein, and  
     -- use label_column to pivot on, making it the y-axis, x-axis is vbc sequence.  
+    -- optionally require VBCs to be in injection to be included
+    -- optionally include injections in matrices. 
+    
     
     '''
     if cp is None:
@@ -1622,6 +1645,7 @@ def process_make_matrices_pd(df,
     if outdir is None:
         outdir = os.path.abspath('./')
     require_injection = cp.getboolean('matrices','require_injection')
+    include_injection = cp.getboolean('matrices','include_injection')
 
     max_negative = 1
     max_water_control = 1
@@ -1656,7 +1680,6 @@ def process_make_matrices_pd(df,
         # extract and threshold injection area
         idf = bdf[bdf['site'].str.startswith('injection')]
         ridf = idf[idf['type'] == 'real'] 
-
                    
         # extract target areas
         tdf = bdf[bdf['site'].str.startswith('target')]
@@ -1696,34 +1719,45 @@ def process_make_matrices_pd(df,
         else:
             logging.debug(f'target_min_umi={target_min_umi} no filtering.')
             frtdf = rtdf
+  
+        # get injection-filtered real target table, and target-filtered real injection table
+        # in case either is needed. 
+        (ifrtdf, tfridf) = filter_non_inj_umi(frtdf, ridf, inj_min_umi=inj_min_umi)            
+        logging.debug(f'{len(ifrtdf)} real target VBCs after injection filtering.')
+        logging.debug(f'{len(tfridf)} real injection VBCs after target filtering.')
 
         if require_injection:
-            # extract and filter injection areas.
-            logging.debug(f'require_injection={require_injection} inj_min_umi={inj_min_umi}')  
+            logging.debug(f'require_injection={require_injection} inj_min_umi={inj_min_umi}')
             if len(ridf) == 0:
                 logging.warning('require_injection=True but no real VBCs from any injection site.')
-            logging.debug(f'{len(frtdf)} real target VBCs before filtering.')      
-            frtdf = filter_non_inj_umi(frtdf, ridf, inj_min_umi=inj_min_umi)
-            logging.debug(f'{len(frtdf)} real target VBCs after injection filtering.')
-            logging.debug(f'filtered real VBCs:\n{frtdf} ')
-            if not len(frtdf) > 0:
+                valid = False
+            elif not len(ifrtdf) > 0:
                 logging.warning(f'No VBCs passed injection filtering! Skip brain.')
                 valid = False
+            else:
+                # set filtered real to injection-filtered real targets. 
+                frtdf = ifrtdf    
         else:
+            # frtdf remains unfiltered...
             logging.debug(f'require_injection={require_injection} proceeding...')
-               
-        # make matrices if brain data is valid... 
-        if valid:       
-            
-            # raw reals
-            rbcmdf = rtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+
+        vbcdf = frtdf
+        
+        if include_injection:
+            logging.debug(f'include_injection={include_injection} including mutually present injection VBCs') 
+            vbcdf = pd.concat( [frtdf, tfridf], ignore_index=True ) 
+
+        # make matrices if per-brain data is valid... 
+        if valid:                               
+            #rbcmdf = rtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+            rbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             scol = natsorted(list(rbcmdf.columns))
             rbcmdf = rbcmdf[scol]
             rbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'brain={brain_id} raw real barcode matrix len={len(rbcmdf)}')            
             
             # filtered reals
-            fbcmdf = frtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+            fbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             scol = natsorted(list(fbcmdf.columns))
             fbcmdf = fbcmdf[scol]
             fbcmdf.fillna(value=0, inplace=True)
@@ -1731,6 +1765,11 @@ def process_make_matrices_pd(df,
 
             # spikes
             sdf = tdf[tdf['type'] == 'spike']
+            if include_injection: 
+                logging.debug(f'include_injection={include_injection} need injection spikes...')
+                isdf = idf[idf['type']== 'spike']
+                sdf = pd.concat( [sdf, isdf], ignore_index=True  )
+                
             sbcmdf = sdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             spcol = natsorted(list(sbcmdf.columns))
             sbcmdf = sbcmdf[spcol]
@@ -1739,7 +1778,6 @@ def process_make_matrices_pd(df,
     
             (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
             
-        
             nbcmdf = normalize_weight(fbcmdf, sbcmdf)
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
             norm_dict[brain_id] = nbcmdf
