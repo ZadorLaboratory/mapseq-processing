@@ -1200,16 +1200,15 @@ def counts_axis_plot_sns(ax, df, scale=None ) :
         logging.debug(f'made axis with log10 scale.')       
     ax.set_title(title, fontsize=10)
 
-       
 
 def normalize_weight(df, weightdf, columns=None):
-    '''
-    Weight values in realdf by spikedf
+    '''   
+    Weight values in realdf by spikedf, by column groups
     Assumes matrix index is sequence.
     Assumes matrices have same columns!!  
     If column numbers are mis-matched, will create empty column
-    If columns is none, use/weight all columns, otherwise ignore unlisted columns
-
+    If columns is none, use/weight all columns
+    
     !! only use target columns. 
     
     '''
@@ -1254,6 +1253,80 @@ def normalize_weight(df, weightdf, columns=None):
     logging.debug(f'norm sum_list={sum_list}')
 
     return normdf
+       
+
+def normalize_weight_grouped(df, weightdf, columns=None):
+    '''
+     Weight values in df by weightdf, by column groups
+    
+    
+    df   dataframe to be scaled, weightdf is spikeins
+    columns is list of column groupings. weighting will done within the groups.     
+   
+    Assumes matrix index is sequence.
+    Assumes matrices have same columns  
+    If column numbers are mis-matched, will create empty column
+    If columns is none, use/weight all columns
+    Will only return columns somewhere in columns. 
+
+    '''
+    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
+    
+    # sanity checks, fixes. 
+    if len(df.columns) != len(weightdf.columns):
+        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
+    
+    if columns is None:
+        columns = [ list( df.columns ) ]    
+    
+    outdf = None
+    
+    for i, group in enumerate( columns ):
+        logging.debug(f'handling group {i} of {len(group)} columns.')
+        gwdf = weightdf[group]
+        gdf = df[group]
+        sumlist = []
+        for col in group:
+            sum = gwdf[col].sum()
+            sumlist.append(sum)
+        sum_array = np.array(sumlist)
+        maxidx = np.argmax(sum_array)
+        maxval = sum_array[maxidx]  
+        maxcol = gwdf.columns[maxidx]
+        logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
+        factor_array =  maxval / sum_array
+        logging.debug(f'factor array= {list(factor_array)}')
+    
+        max_list = []
+        sum_list = []
+        for col in gdf.columns:
+            max_list.append(gdf[col].max())
+            sum_list.append(gdf[col].sum())
+        logging.debug(f'real max_list={max_list}')
+        logging.debug(f'real sum_list={sum_list}')
+        
+        normdf = gdf.copy()
+        for i, col in enumerate(normdf.columns):
+            logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
+            normdf[col] = (normdf[col] * factor_array[i] ) 
+    
+        max_list = []
+        sum_list = []
+        for col in normdf.columns:
+            max_list.append(normdf[col].max())
+            sum_list.append(normdf[col].sum())
+        logging.debug(f'norm max_list={max_list}')
+        logging.debug(f'norm sum_list={sum_list}')
+        if outdf is None:
+            logging.debug(f'outdf is None, setting to new.')
+            outdf = normdf
+        else:
+            logging.debug(f'outdf not None, before: len={len(outdf)}. cols={len(outdf.columns)}')
+            outdf = pd.concat([ outdf, normdf], axis=1)
+            logging.debug(f'after: len={len(outdf)}. cols={len(outdf.columns)}')
+    
+    logging.info(f'normalizing done.len={len(outdf)}. cols={len(outdf.columns)} ')
+    return outdf
 
 
 def normalize_scale(df, columns = None, logscale='log2', min=0.0, max=1.0):
@@ -1747,8 +1820,16 @@ def process_make_matrices_pd(df,
             logging.debug(f'include_injection={include_injection} including mutually present injection VBCs') 
             vbcdf = pd.concat( [frtdf, tfridf], ignore_index=True ) 
 
+        
+
         # make matrices if per-brain data is valid... 
         if valid:                               
+            vbcdf.to_csv(f'{outdir}/{brain_id}.vbctable.tsv', sep='\t')
+            vbcdf.to_parquet(f'{outdir}/{brain_id}.vbctable.parquet')
+            
+            target_columns = list( vbcdf[vbcdf['site'].str.startswith('target')]['label'].unique())
+            injection_columns = list( vbcdf[vbcdf['site'].str.startswith('injection')]['label'].unique())
+            
             #rbcmdf = rtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             rbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             scol = natsorted(list(rbcmdf.columns))
@@ -1778,7 +1859,15 @@ def process_make_matrices_pd(df,
     
             (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
             
-            nbcmdf = normalize_weight(fbcmdf, sbcmdf)
+            if include_injection:
+                logging.debug(f'include_injection={include_injection} need grouped normalization.')
+                nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf, columns = [target_columns, injection_columns])
+            else:
+                logging.debug(f'include_injection={include_injection} ungrouped normalization.')
+                nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf)
+            
+            #nbcmdf = normalize_weight(fbcmdf, sbcmdf)
+            
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
             norm_dict[brain_id] = nbcmdf
             
