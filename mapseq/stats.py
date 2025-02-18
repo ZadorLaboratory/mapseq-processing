@@ -6,6 +6,8 @@
 #  ssifasta
 #  merged
 #
+#   https://stackoverflow.com/questions/58960478/python-library-for-dynamic-documents
+#  https://stackoverflow.com/questions/7204805/deep-merge-dictionaries-of-dictionaries-in-python
 #
 #
 
@@ -19,6 +21,9 @@ import datetime as dt
 from pprint import pprint
 from collections import defaultdict
 
+from jinja2 import Template
+import codecs
+from mergedeep import merge
 
 MYSTATS = None
 
@@ -126,4 +131,37 @@ def runtests():
     pprint(o)
     o['stats'] = {}
     save_stats_object(o)
-   
+
+def generate_report( template, json_list, cp=None):
+    '''
+    @arg template    Markdown text file template for output doc. 
+    @arg json_list    Python list of json files containing keys/values for doc.
+    
+    @return string of Markdown text with values interpolated.
+    '''
+    stats = {}
+        
+    for sfile in json_list:
+        with open(sfile) as json_data:
+            logging.debug(f'importing {sfile} ...')
+            obj = json.load(json_data)
+            stats = merge(stats, obj)
+    
+    logging.debug(f'stats={stats}')        
+    
+    with open(template, 'r') as file:
+        template = Template(file.read(),trim_blocks=True)
+        rendered_file = template.render(stats=stats)
+
+        print(rendered_file)
+        #output the file
+        #output_file = codecs.open("report.md", "w", "utf-8")
+        #output_file.write(rendered_file)
+        #output_file.close()
+    return rendered_file
+                   
+    
+    
+    
+    
+    

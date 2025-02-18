@@ -542,7 +542,32 @@ def load_seqtsv_pd(infile):
     return df
 
 
+def load_mapseq_matrix_df( infile, use_dask = False ):
+    '''
+    convenience method to align with load_mapseq_df()
+    just ensures validity, data type. 
+    
+    '''
+    df = None
+    if infile.endswith('.tsv'):
+        if use_dask:
+            df = dd.read_csv(infile, sep='\t')  
+        else:
+            df = pd.read_csv(infile, sep='\t', index_col=0)
 
+    elif infile.endswith('.parquet'):
+        if use_dask:
+            df = dd.read_parquet(infile)  
+        else:
+            df = pd.read_parquet(infile)
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
+    
+    logging.debug(f'naive: dtypes=\n{df.dtypes}')    
+    return df
+    
+    
 def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
@@ -1709,9 +1734,14 @@ def process_make_matrices_pd(df,
     -- create real, real normalized by spikein, and  
     -- use label_column to pivot on, making it the y-axis, x-axis is vbc sequence.  
     -- optionally require VBCs to be in injection to be included
-    -- optionally include injections in matrices. 
+    -- optionally include injections in matrices.
     
-    
+    theshold logic. 
+    inj_min_umi                VBC UMI must exceed to be kept.
+    target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
+    target_min_umi_absolute    hard threshold cutoff
+ 
+
     '''
     if cp is None:
         cp = get_default_config()
@@ -1750,13 +1780,29 @@ def process_make_matrices_pd(df,
         logging.debug(f'handling brain_id={brain_id}')
         bdf = df[df['brain'] == brain_id]
 
-        # extract and threshold injection area
+        # extract and threshold injection areas
         idf = bdf[bdf['site'].str.startswith('injection')]
         ridf = idf[idf['type'] == 'real'] 
+        if inj_min_umi > 1:
+            before = len(ridf)
+            ridf = filter_all_lt(ridf, 'vbc_read_col', 'umi_count', inj_min_umi)            
+            if not len(ridf) > 0:
+                valid = False
+                logging.warning(f'No injection VBCs passed min_inj_umi filtering! Skip brain.')
+            logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(ridf)}')
+        else:
+            logging.debug(f'inj_min_umi={inj_min_umi} no filtering.')
                    
-        # extract target areas
+        # extract and do absolute thesholding of target areas
         tdf = bdf[bdf['site'].str.startswith('target')]
         rtdf = tdf[tdf['type'] == 'real'] 
+
+        if target_min_umi_absolute > 1:
+            before = len(rtdf)
+            rtdf = rtdf[rtdf['umi_count'] >= target_min_umi_absolute ]
+            rtdf.reset_index(drop=True, inplace=True)
+            after = len(rtdf)
+            logging.debug(f'filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
 
         # threshold by min_target or threshold by target-negative
         # if use_target_negative is true, but no target negative site 
@@ -1774,13 +1820,6 @@ def process_make_matrices_pd(df,
         target_min_umi = max([target_min_umi, max_negative, max_water_control ])
         logging.debug(f'min_target UMI count after all constraints = {target_min_umi}')   
 
-        if target_min_umi_absolute > 1:
-            before = len(rtdf)
-            rtdf = rtdf[rtdf['umi_count'] >= target_min_umi_absolute ]
-            rtdf.reset_index(drop=True, inplace=True)
-            after = len(rtdf)
-            logging.debug(f'filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
-            
         # min_target is now either calculated from target-negative, or from config. 
         if target_min_umi > 1:
             before = len(rtdf)
@@ -1820,7 +1859,6 @@ def process_make_matrices_pd(df,
             logging.debug(f'include_injection={include_injection} including mutually present injection VBCs') 
             vbcdf = pd.concat( [frtdf, tfridf], ignore_index=True ) 
 
-        
 
         # make matrices if per-brain data is valid... 
         if valid:                               
@@ -1830,7 +1868,6 @@ def process_make_matrices_pd(df,
             target_columns = list( vbcdf[vbcdf['site'].str.startswith('target')]['label'].unique())
             injection_columns = list( vbcdf[vbcdf['site'].str.startswith('injection')]['label'].unique())
             
-            #rbcmdf = rtdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             rbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
             scol = natsorted(list(rbcmdf.columns))
             rbcmdf = rbcmdf[scol]
