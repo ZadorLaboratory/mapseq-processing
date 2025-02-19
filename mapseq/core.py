@@ -1903,11 +1903,13 @@ def process_make_matrices_pd(df,
                 logging.debug(f'include_injection={include_injection} ungrouped normalization.')
                 nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf)
             
-            #nbcmdf = normalize_weight(fbcmdf, sbcmdf)
-            
+            # put columns in natural sort order...
+            nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]            
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            
             norm_dict[brain_id] = nbcmdf
             
+            # make scaled normalized matrix
             scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
             scbcmdf.fillna(value=0, inplace=True)
             logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
