@@ -46,6 +46,11 @@ def get_default_config():
 
 
 def get_rtlist(sampledf):
+    '''
+    handle numeric rtprimer convert to BC<int>
+    otherwise, return literal list of labels. 
+    
+    '''
     rtlist = list(sampledf['rtprimer'].dropna())
     nrtlist = []
     for x in rtlist:
@@ -54,10 +59,13 @@ def get_rtlist(sampledf):
             nrtlist.append(y)
         except ValueError:
             logging.debug(f'ignoring bad int() input.')
-    
+        
+    if len(nrtlist) > 1: 
     #rtlist = [int(x) for x in rtlist]
-    
-    nrtlist = [f'BC{x}' for x in nrtlist]
+        nrtlist = [f'BC{x}' for x in nrtlist]
+    else:
+        nrtlist = list(sampledf['rtprimer'].dropna())
+    logging.debug(f'got rtlist = {nrtlist}')
     return nrtlist
 
 
@@ -1546,7 +1554,7 @@ def process_make_readtable_pd(df,
     loneregex = cp.get('readtable', 'loneregex' )
     
     if bcfile is None:
-        bcfile = cp.get('barcodes','ssifile')    
+        bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
     
     logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile}')
     

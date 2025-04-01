@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('-b','--barcodes', 
                         metavar='barcodes',
                         required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/barcode_v2.txt'),
+                        default=None,
                         type=str, 
                         help='barcode file space separated: label sequence')
 
@@ -167,7 +167,7 @@ if __name__ == '__main__':
     else:
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr)
-    
+        
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = process_make_readtable_pd(df,
                                    sampdf, 
