@@ -1,5 +1,6 @@
 import glob
 import gzip
+import itertools
 import json
 import logging
 import math
@@ -1942,6 +1943,68 @@ def process_make_matrices_pd(df,
     logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
     return norm_dict
 
+
+def make_vbctable_qctables(df, outdir=None, cp=None, 
+                           cols=['site','type'], 
+                           vals = ['label','umi_count','read_count'], 
+                           sort_by='umi_count' ):
+    '''
+    write subsetted data from vbctable dataframe for QC checks. 
+
+    vbc_read_col                  label  type  umi_count  read_count brain region  site
+0 AAAAAAACAGCTAAAGAATCCTTGTTCACC  BC207  lone          3          25               target-water-control
+1 AAAAAAACATTCACGCGTATGGCCTGAGGG  BC207  lone          1          20               target-water-control
+2 AAAAAAACCGGCCTTGTACTTGGTTCTCTT  BC203  real         13         509     6                       target
+
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+        
+    if outdir is None:
+        outdir = os.path.abspath('./')
+        logging.debug(f'outdir not provided, set to {outdir}')
+    else:
+        outdir = os.path.abspath(outdir)
+        logging.debug(f'outdir = {outdir} ')
+        
+    # for all sites, for all types, create
+    # <site>.<type>.tsv  ->  label  umi_count read_count 
+    #
+    labeldict = {}
+    for c in cols:
+        clist = list(df[c].dropna().unique())
+        clist = [ x for x in clist if len(x) > 0 ]        
+        clist.sort()
+        labeldict[c] = clist
+    
+    logging.debug(f'labeldict={labeldict}')
+    alist = []
+    for c in cols:
+        alist.append(labeldict[c])
+    logging.debug(f'arglist = {alist}')
+    combinations = list(itertools.product(*alist))
+    
+    for tup in combinations:
+        logging.debug(f'handling columnset {tup}')
+        tsvname = []
+        ndf = df.copy()
+        for i, col_name in enumerate(cols):
+            col_val = tup[i]
+            tsvname.append(col_val)
+            logging.debug(f'filtering {col_name} by value={col_val}')
+            ndf = ndf[ ndf[col_name] == col_val ]
+        fname = '.'.join(tsvname)
+        outfile = os.path.join(outdir, f'{fname}.tsv')
+        if len(ndf) > 1:
+            logging.debug(f'writing to {outfile}')
+            ndf = ndf[vals]
+            ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
+            ndf.reset_index(inplace=True, drop=True)
+            ndf.to_csv(outfile, sep='\t')
+        else:
+            logging.info(f'no entries for {fname}')
+    
 
 def process_mapseq_all_XXX(infiles, sampleinfo, bcfile=None, outdir=None, expid=None, cp=None):    
     '''

@@ -170,8 +170,10 @@ if __name__ == '__main__':
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    df.to_csv(outfile, sep='\t')
     
+    make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
+     
+    df.to_csv(outfile, sep='\t')
     dir, base, ext = split_path(outfile)
     outfile = os.path.join( dir , f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
