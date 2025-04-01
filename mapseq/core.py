@@ -1786,9 +1786,13 @@ def process_make_matrices_pd(df,
         if inj_min_umi > 1:
             before = len(ridf)
             ridf = filter_all_lt(ridf, 'vbc_read_col', 'umi_count', inj_min_umi)            
-            if not len(ridf) > 0:
-                valid = False
-                logging.warning(f'No injection VBCs passed min_inj_umi filtering! Skip brain.')
+            #
+            # INCORRECT: if require_injection is false, there may not be any injection but thats OK.
+            # Let the filter_non_inj_umi() function do its thing...
+            #
+            #if not len(ridf) > 0:
+            #    valid = False
+            #    logging.warning(f'No injection VBCs passed min_inj_umi filtering! Skip brain.')
             logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(ridf)}')
         else:
             logging.debug(f'inj_min_umi={inj_min_umi} no filtering.')
