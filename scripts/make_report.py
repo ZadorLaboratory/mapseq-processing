@@ -86,7 +86,7 @@ if __name__ == '__main__':
     cp.read(args.config)
        
     cdict = format_config(cp)
-    logging.debug(f'Running with config. {args.config}: {cdict}')
+    logging.debug(f'Running with config. {args.config}:\n{cdict}')
     logging.debug(f'infiles={args.infiles}')
     
       
@@ -122,6 +122,11 @@ if __name__ == '__main__':
     logging.info(f'loading {args.infiles}') 
  
     rmd = generate_report(args.template, args.infiles, cp=cp)
-    outfile.write(rmd)
-
-    #logging.info(f'Saving report as Markdown doc to {outfile}...')
+    
+    if outfile is None:
+        fh = sys.stdout
+        fh.write(rmd)
+    else:
+        logging.info(f'Saving report as Markdown doc to {outfile}...')
+        with open(args.outfile, 'w') as fh:
+            fh.write(rmd)

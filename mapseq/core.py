@@ -1975,6 +1975,10 @@ def make_vbctable_qctables(df, outdir=None, cp=None,
     else:
         outdir = os.path.abspath(outdir)
         logging.debug(f'outdir = {outdir} ')
+    
+    
+    sh = get_default_stats()
+    #sh.add_value('/vbctable','n_vbcs', len(udf) )    
         
     # for all sites, for all types, create
     # <site>.<type>.tsv  ->  label  umi_count read_count 
@@ -2010,6 +2014,7 @@ def make_vbctable_qctables(df, outdir=None, cp=None,
             ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
             ndf.reset_index(inplace=True, drop=True)
             ndf.to_csv(outfile, sep='\t')
+            sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
         else:
             logging.info(f'no entries for {fname}')
     

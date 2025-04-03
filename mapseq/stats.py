@@ -132,6 +132,20 @@ def runtests():
     o['stats'] = {}
     save_stats_object(o)
 
+
+def config_asdict(cp):
+    '''
+    make configparser object into dict of dicts. 
+    '''
+    cdict = {}
+    for s in cp.sections():
+        sdict = {}
+        for k in list(cp[s].keys()):
+            sdict[k] = cp.get(s, k)
+        cdict[s] = sdict
+    return cdict
+        
+
 def generate_report( template, json_list, cp=None):
     '''
     @arg template    Markdown text file template for output doc. 
@@ -139,8 +153,11 @@ def generate_report( template, json_list, cp=None):
     
     @return string of Markdown text with values interpolated.
     '''
-    stats = {}
-        
+
+    conf = config_asdict(cp)
+    logging.debug(f'cdict = {conf}')
+
+    stats = {}        
     for sfile in json_list:
         with open(sfile) as json_data:
             logging.debug(f'importing {sfile} ...')
@@ -150,8 +167,8 @@ def generate_report( template, json_list, cp=None):
     logging.debug(f'stats={stats}')        
     
     with open(template, 'r') as file:
-        template = Template(file.read(),trim_blocks=True)
-        rendered_file = template.render(stats=stats)
+        template = Template(file.read(), trim_blocks=True)
+        rendered_file = template.render(stats=stats, conf=conf)
 
         print(rendered_file)
         #output the file

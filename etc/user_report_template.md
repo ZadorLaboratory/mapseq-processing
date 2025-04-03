@@ -1,10 +1,11 @@
-# Data Processing Information for M253 Chen Ran
+
+# Data Processing Information for {{ conf['project']['project_id'] }}
 
 ## Output Data Description
 
 ### Matrix information
 
-M253.all.tsv:		All viral barcode (VBC) sequences, broken down by type (real, spike-in, L1) and target region.  
+{{ conf['project']['project_id'] }}.all.tsv:		All viral barcode (VBC) sequences, broken down by type (real, spike-in, L1) and target region.  
 			Barcode sequences may appear more than once, if found in multiple target areas. \`\`  
 umi\_count is the number of unique UMIs seen, with read\_count representing the total number of reads behind those UMIs (the allocation of reads to UMIs is not included). 
 
@@ -26,13 +27,54 @@ Barcode is in both injection and target areas.
 \<brain\>.nbcm.tsv	normalized barcode matrix  
 			Filtered barcode values normalized by spike-in counts per SSI area. 
 
-### Summary Statistics
+### Configuration and Summary Statistics
 
-global numbers  
-total reads  
-% collapsed. 
+Config:
 
-per brain numbers
+min_reads = {{ conf['fastq']['min_reads'] }}  
+max_repeats = {{ conf['fastq']['max_repeats'] }}  
+max_mismatch = {{ conf['collapse']['max_mismatch'] }}  
+target_min_reads = {{ conf['vbctable']['target_min_reads'] }}  
+inj_min_reads = {{ conf['vbctable']['inj_min_reads'] }}  
+
+FASTQ Processing:
+
+{% for ( k,v ) in stats['fastq'].items() %}
+  {{ k }}  = {{ v }}  
+{% endfor %}
+
+Split and Filter:
+
+{% for ( k,v ) in stats['fastq_filter'].items() %}
+  {{ k }}  = {{ v }}  
+{% endfor %}
+
+Align and Collapse:
+
+{% for ( k,v ) in stats['collapse'].items() %}
+  {{ k }}  = {{ v }}  
+{% endfor %}
+
+Read Table:
+
+{% for ( k,v ) in stats['readtable'].items() %}
+  {{ k }}  = {{ v }}  
+{% endfor %}
+
+VBC Table:
+
+{% for ( k,v ) in stats['vbctable'].items() %}
+  {{ k }}  = {{ v }}  
+{% endfor %}
+
+{% for bid, bdict in stats['matrices'].items() %}
+### Brain {{ bid }}
+
+{% for (k,v) in bdict.items()  %}
+{{ k }}  = {{ v }}  
+{% endfor %}
+
+{% endfor %}
 
 ### Pipeline Overview
 

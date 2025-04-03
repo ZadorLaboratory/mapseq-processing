@@ -1,0 +1,17 @@
+
+To generate a standard user report for experiment:
+	
+	make_report.py -c M282.novaseq.conf -o statsreport.md -d */stats*
+	
+	Fills in template at ~/git/mapeseq-processing/etc/user_report_template.md with 
+	values from merged stats files from the pipeline steps.
+	Uses jinja2 templating. 
+	https://jinja.palletsprojects.com/en/stable/templates/ 
+	 
+	
+	pandoc --metadata-file ~/git/mapseq-processing/etc/user_report_metadata.yaml  statsreport.md -o statsreport.pdf
+	
+	Creates PDF version for easier viewing...
+	
+	https://pandoc.org/MANUAL.html#variables-for-latex
+	
