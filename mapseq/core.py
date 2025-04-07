@@ -589,7 +589,7 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000)
         'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
         'collapsed'   : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
         'readtable'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-        'vbctable'   : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],      
+        'vbctable'   : ['vbc_read_col'],      
         }
     
     INT_COLS = {
