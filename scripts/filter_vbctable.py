@@ -3,7 +3,9 @@ import argparse
 import logging
 import os
 import sys
+
 from configparser import ConfigParser
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -15,6 +17,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
+
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -40,25 +43,30 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-i','--inj_min_reads', 
+    parser.add_argument('-i','--inj_min_umi', 
                         required=False,
                         default=None,
                         type=int, 
-                        help='Minimum injection reads for inclusion.')
+                        help='Minimum injection UMIs for inclusion.')
     
-    parser.add_argument('-t','--target_min_reads', 
+    parser.add_argument('-t','--target_min_umi', 
                         required=False,
                         default=None,
                         type=int, 
-                        help='Minimum target reads for inclusion.')
+                        help='Minimum single target UMIs for including all.')
 
+    parser.add_argument('-T','--target_min_umi_absolute', 
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Minimum target UMIs absolute.')    
+    
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
                     default=None, 
                     type=str, 
                     help='Logfile for subprocess.')
-
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
@@ -72,7 +80,7 @@ if __name__ == '__main__':
                     required=False,
                     default=None, 
                     type=str, 
-                    help='Read table TSV aggregated to viral barcode TSV.') 
+                    help='VBC table filtered by thresholds.') 
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -84,7 +92,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single readtable TSV or Parquet.')
+                        help='Single vbctable TSV or parquet file')
         
     args= parser.parse_args()
     
@@ -93,16 +101,24 @@ if __name__ == '__main__':
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)   
 
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)    
+
     cp = ConfigParser()
     cp.read(args.config)
        
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
-          
+
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/read.table.tsv'
+    outfile = f'{outdir}/vbcfiltered.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -117,64 +133,44 @@ if __name__ == '__main__':
         else:
             logging.debug(f'outdir/file not specified.')        
     else:
-        # outdir specified
         outdir = os.path.abspath(args.outdir)
         if args.outfile is not None:
             logging.debug(f'outdir specified. outfile specified.')
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/read.table.tsv'
+            outfile = f'{outdir}/readtable.tsv'
 
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
     logging.info(f'handling {args.infile} to outdir {outdir}')    
     logging.debug(f'infile = {args.infile}')
-    
-    if args.logfile is not None:
-        log = logging.getLogger()
-        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
-        formatter = logging.Formatter(FORMAT)
-        logStream = logging.FileHandler(filename=args.logfile)
-        logStream.setFormatter(formatter)
-        log.addHandler(logStream)
-    
-    if args.inj_min_reads is None:
-        inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
-    else:
-        inj_min_reads = args.inj_min_reads
 
-    if args.target_min_reads is None:
-        target_min_reads = int(cp.get('vbctable','target_min_reads'))
-    else:
-        target_min_reads = args.target_min_reads
-
+    
     logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
+    df = load_mapseq_df( args.infile, fformat='vbctable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
-       
+
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
         datestr = args.datestr
-    sh = StatsHandler(outdir=outdir, datestr=datestr)  
+    sh = StatsHandler(outdir=outdir, datestr=datestr)
     
-    # Make final VBC/UMI based table (each row is a neuron)
-    logging.debug(f'args={args}')
-    df = process_make_vbctable_pd(df,
-                               outdir=outdir,
-                               inj_min_reads = inj_min_reads,
-                               target_min_reads = target_min_reads, 
+    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    df = process_filter_vbctable(df, 
+                               inj_min_umi = args.inj_min_umi,
+                               target_min_umi = args.target_min_umi,
+                               target_min_umi_absolute = args.target_min_umi_absolute,
+                               outdir=outdir, 
                                cp=cp)
-
-    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    
-    make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
-     
     df.to_csv(outfile, sep='\t')
+    logging.info('Done with TSV.')
     dir, base, ext = split_path(outfile)
-    outfile = os.path.join( dir , f'{base}.parquet')
+    outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)
+    logging.info('Done with Parquet.') 
+   

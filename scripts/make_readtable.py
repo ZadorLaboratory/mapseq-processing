@@ -97,7 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single TSV or Parquet file with collapsed vbc_read.')
+                        help='Single collapsed TSV or parquet file.')
         
     args= parser.parse_args()
     
@@ -105,6 +105,14 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.DEBUG)
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)   
+
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
 
     cp = ConfigParser()
     cp.read(args.config)
@@ -115,7 +123,7 @@ if __name__ == '__main__':
           
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/read.table.tsv'
+    outfile = f'{outdir}/readtable.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -137,22 +145,14 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/read.table.tsv'
+            outfile = f'{outdir}/readtable.tsv'
 
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
 
     logging.info(f'handling {args.infile} to outdir {outdir}')    
     logging.debug(f'infile = {args.infile}')
-    
-    if args.logfile is not None:
-        log = logging.getLogger()
-        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
-        formatter = logging.Formatter(FORMAT)
-        logStream = logging.FileHandler(filename=args.logfile)
-        logStream.setFormatter(formatter)
-        log.addHandler(logStream)
-    
+        
     logging.debug(f'loading sample DF...')
     sampdf = load_sample_info(cp, args.sampleinfo, args.samplesheet)
     logging.debug(f'\n{sampdf}')

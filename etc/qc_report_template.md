@@ -10,6 +10,7 @@ max_repeats = {{ conf['fastq']['max_repeats'] }}
 max_mismatch = {{ conf['collapse']['max_mismatch'] }}  
 target_min_reads = {{ conf['vbctable']['target_min_reads'] }}  
 inj_min_reads = {{ conf['vbctable']['inj_min_reads'] }}  
+target_min_umi = {{  conf['vbctable']['target_min_umi'] }} 
 
 FASTQ Processing:
 
