@@ -181,7 +181,6 @@ The VBC table contains ALL information from the experiment including controls, L
 - Uses given UMI thresholds, or calculates them based on biological negative or water control.
 - Thresholds target VBC and injection VBCs by appropriate UMI count. 
 - Optionally restricts target VBCs to those that appear in injection. 
-- 
 
 This step also produces: 
 - controls.tsv	  All control site data (target-water-control) 
