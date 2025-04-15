@@ -165,10 +165,16 @@ if __name__ == '__main__':
     else:
         dask_temp = None
     
+    if args.min_reads is None:
+        min_reads= int( cp.get('fastq','min_reads') )
+    else:
+        min_reads = int(args.min_reads)
+    
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     df = aggregate_reads_dd(df, 
                            column=args.column,
                            outdir=outdir,
+                           min_reads = min_reads,
                            dask_temp = dask_temp 
                            )
     logging.info(f'Saving len={len(df)} as TSV to {outfile}...')

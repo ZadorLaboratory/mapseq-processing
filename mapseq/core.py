@@ -972,6 +972,8 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunk
     '''
     ASSUMES INPUT IS DASK DATAFRAME
     
+    
+    
     '''
     if dask_temp is not None:
         logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
@@ -984,16 +986,19 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunk
     ndf = seqdf[column].value_counts().compute()
     ndf = ndf.reset_index()
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
+    logging.info(f'computed counts. new DF len={len(ndf)}')
   
     if min_reads > 1:
-        logging.debug(f'Dropping reads with less than {min_reads} read_count.')
-        logging.info(f'Length before read_count threshold={len(ndf)}')
+        logging.info(f'Dropping reads with less than {min_reads} read_count.')
+        logging.debug(f'Length before read_count threshold={len(ndf)}')
         ndf = ndf[ndf['read_count'] >= min_reads]
         ndf.reset_index(inplace=True, drop=True)
         logging.info(f'Length after read_count threshold={len(ndf)}')    
     else:
         logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
+    logging.info(f'final output DF len={len(ndf)}')    
     return ndf
+
 
     
 def filter_counts_df(cp, countsdf, min_count):

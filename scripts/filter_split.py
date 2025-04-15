@@ -105,7 +105,10 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.INFO)   
 
     cp = ConfigParser()
-    cp.read(args.config)
+    o = cp.read(args.config)
+    if len(o) < 1:
+        logging.error(f'No valid configuration. {args.config}')
+        sys.exit(1)
        
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
