@@ -157,15 +157,38 @@ Takes about 45 minutes for 400M reads on MacBook Pro M3
 ### make_vbctable.py
 
 ```
-~/git/mapseq-processing/scripts/process_ssifasta.py 
+~/git/mapseq-processing/scripts/make_vbctable.py 
 	-v					# give verbose output
 	-o vbctable.out/M253.vbctable.tsv 	# output file for all VBCs 
-	readtable.out/M253.readtable.tsv 	# fully populated read table. 
+	readtable.out/M253.filter.tsv 		# fully populated read table. 
 ```
 Consumes the readtable, drops all reads with missing/unmatched tags/sequences, drops reads that do not meet the read count threshold for the site type. It then collapses by viral barcode, calculating UMI count for each VBC.
 Outputs a VBC-oriented table. 
 
 This typically takes about 12 minutes. (3 minutes on Mac M3)
+
+### filter_vbctable.py
+
+```
+~/git/mapseq-processing/scripts/filter_vbctable.py 
+	-v					# give verbose output
+	-o vbcfilter.out/M253.vbcfilter.tsv 	# output file for filtered VBCs 
+	vbctable.out/M253.vbctable.tsv 		# fully populated VBC table. 
+```
+The VBC table contains ALL information from the experiment including controls, L1s, and any data that results from errors. To simplify matrix creation, we apply all thresholds and filtering at this step. This step:
+
+- Removes L1s and any non-L1 sample reads with L1 tags
+- Uses given UMI thresholds, or calculates them based on biological negative or water control.
+- Thresholds target VBC and injection VBCs by appropriate UMI count. 
+- Optionally restricts target VBCs to those that appear in injection. 
+- 
+
+This step also produces: 
+- controls.tsv	  All control site data (target-water-control) 
+- anomalies.tsv   Mismatched data. E.g. L1 libtag with non-L1 SSI, L1 SSI without L1 libtag.
+
+All data in the main output file created by this step is then unconditionally included in the matrices produced by the next command.   
+
 
 ### make_matrices.py
 ```
@@ -188,8 +211,6 @@ A spike-in barcode matrix (sbcm). Contains raw numbers of spike-in molecules for
 
 A real barcode matrix normalized by spike-ins (nbcm). The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. For most further analysis, this can be considered the canonical processing output file. 
 
-A scaled+normalized barcode matrix (scbcm). For this matrix, the values are log-scaled, which can be useful as input 
-to other visualization functions.  
 
 Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
 	[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 

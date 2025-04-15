@@ -1293,7 +1293,6 @@ def normalize_weight_grouped(df, weightdf, columns=None):
     '''
      Weight values in df by weightdf, by column groups
     
-    
     df   dataframe to be scaled, weightdf is spikeins
     columns is list of column groupings. weighting will done within the groups.     
    
@@ -1304,7 +1303,7 @@ def normalize_weight_grouped(df, weightdf, columns=None):
     Will only return columns somewhere in columns. 
 
     '''
-    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
+    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf} columns={columns}')
     
     # sanity checks, fixes. 
     if len(df.columns) != len(weightdf.columns):
@@ -1317,48 +1316,52 @@ def normalize_weight_grouped(df, weightdf, columns=None):
     
     for i, group in enumerate( columns ):
         logging.debug(f'handling group {i} of {len(group)} columns.')
-        gwdf = weightdf[group]
-        gdf = df[group]
-        sumlist = []
-        for col in group:
-            sum = gwdf[col].sum()
-            sumlist.append(sum)
-        sum_array = np.array(sumlist)
-        maxidx = np.argmax(sum_array)
-        maxval = sum_array[maxidx]  
-        maxcol = gwdf.columns[maxidx]
-        logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
-        factor_array =  maxval / sum_array
-        logging.debug(f'factor array= {list(factor_array)}')
-    
-        max_list = []
-        sum_list = []
-        for col in gdf.columns:
-            max_list.append(gdf[col].max())
-            sum_list.append(gdf[col].sum())
-        logging.debug(f'real max_list={max_list}')
-        logging.debug(f'real sum_list={sum_list}')
+        # we may get empty categories, depending on experiment. 
+        if len(group) > 0:
+            gwdf = weightdf[group]
+            gdf = df[group]
+            sumlist = []
+            for col in group:
+                sum = gwdf[col].sum()
+                sumlist.append(sum)
+            sum_array = np.array(sumlist)
+            maxidx = np.argmax(sum_array)
+            maxval = sum_array[maxidx]  
+            maxcol = gwdf.columns[maxidx]
+            logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
+            factor_array =  maxval / sum_array
+            logging.debug(f'factor array= {list(factor_array)}')
         
-        normdf = gdf.copy()
-        for i, col in enumerate(normdf.columns):
-            logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
-            normdf[col] = (normdf[col] * factor_array[i] ) 
-    
-        max_list = []
-        sum_list = []
-        for col in normdf.columns:
-            max_list.append(normdf[col].max())
-            sum_list.append(normdf[col].sum())
-        logging.debug(f'norm max_list={max_list}')
-        logging.debug(f'norm sum_list={sum_list}')
-        if outdf is None:
-            logging.debug(f'outdf is None, setting to new.')
-            outdf = normdf
+            max_list = []
+            sum_list = []
+            for col in gdf.columns:
+                max_list.append(gdf[col].max())
+                sum_list.append(gdf[col].sum())
+            logging.debug(f'real max_list={max_list}')
+            logging.debug(f'real sum_list={sum_list}')
+            
+            normdf = gdf.copy()
+            for i, col in enumerate(normdf.columns):
+                logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
+                normdf[col] = (normdf[col] * factor_array[i] ) 
+        
+            max_list = []
+            sum_list = []
+            for col in normdf.columns:
+                max_list.append(normdf[col].max())
+                sum_list.append(normdf[col].sum())
+            logging.debug(f'norm max_list={max_list}')
+            logging.debug(f'norm sum_list={sum_list}')
+            if outdf is None:
+                logging.debug(f'outdf is None, setting to new.')
+                outdf = normdf
+            else:
+                logging.debug(f'outdf not None, before: len={len(outdf)}. cols={len(outdf.columns)}')
+                outdf = pd.concat([ outdf, normdf], axis=1)
+                logging.debug(f'after: len={len(outdf)}. cols={len(outdf.columns)}')
         else:
-            logging.debug(f'outdf not None, before: len={len(outdf)}. cols={len(outdf.columns)}')
-            outdf = pd.concat([ outdf, normdf], axis=1)
-            logging.debug(f'after: len={len(outdf)}. cols={len(outdf.columns)}')
-    
+            logging.warning('column group is empty, ignoring...')
+         
     logging.info(f'normalizing done.len={len(outdf)}. cols={len(outdf.columns)} ')
     return outdf
 
@@ -1784,18 +1787,29 @@ def process_filter_vbctable(df,
     # ?? template switch?  sequencing error?
     anomalies = df[ df['type'] == 'lone' ]
     df = df[ df['type'] != 'lone' ]
-  
+    anomalies.reset_index(inplace=True, drop=True)
+
+    # remove all controls by SSI
+    controls = df[ df['site'].str.contains('control') ]
+    df = df[ df['site'].str.contains('control') == False]
+    controls.reset_index(inplace=True, drop=True)
+
     spikes = df[ df['type'] == 'spike']
     df = df[ df ['type'] != 'spike']
 
     targets = df[ df['site'].str.startswith('target') ]
-    injection = df[ df['site'].str.startswith('injection') ]
+    injections = df[ df['site'].str.startswith('injection') ]
+
+    # output controls and anomalies
+    anomalies.to_csv(f'{outdir}/anomalies.tsv', sep='\t')
+    controls.to_csv(f'{outdir}/controls.tsv', sep='\t')
+    
 
     # threshold injection(s)
     if inj_min_umi > 1:
-        before = len(injection)
-        injection = filter_all_lt(injection, 'vbc_read_col', 'umi_count', inj_min_umi)            
-        logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(injection)}')
+        before = len(injections)
+        injections = filter_all_lt(injections, 'vbc_read_col', 'umi_count', inj_min_umi)            
+        logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(injections)}')
     else:
         logging.debug(f'inj_min_umi={inj_min_umi} no filtering needed.')
 
@@ -1855,7 +1869,7 @@ def process_filter_vbctable(df,
     
     # get injection-filtered real target table, and target-filtered real injection table
     # in case either is needed. 
-    (finjection, ftargets) = filter_non_inj_umi(targets, injection, inj_min_umi=inj_min_umi)            
+    (finjection, ftargets) = filter_non_inj_umi(targets, injections, inj_min_umi=inj_min_umi)            
     logging.debug(f'{len(ftargets)} real target VBCs after injection filtering.')
     logging.debug(f'{len(finjection)} real injection VBCs after target filtering.')
 
@@ -1871,7 +1885,8 @@ def process_filter_vbctable(df,
     else:
         logging.debug(f'include_injection={include_injection} excluding injection VBCs from table.')
         df = targets
-    # re-create df with thresholded non-spikes. 
+    
+    # re-create df with un-thresholded spike-ins  
     df = pd.concat([spikes, df ])   
     df.reset_index(inplace=True, drop=True)
     logging.debug(f'output DF:\n{df}')
@@ -1886,10 +1901,11 @@ def process_make_matrices(df,
                           cp = None):
     '''
     
-    Simplified matrix creation. Assume all input is valid, thresholded, and to be included.
+    Simplified matrix creation. 
+    NOTE: Assumes ALL input is valid, thresholded, and to be included.
     
     -- per brain, pivot real VBCs (value=umi counts)
-    -- create real, real normalized by spikein, and  
+    -- create real, real normalized by spike-in, and scaled normalized.   
     -- use label_column to pivot on, making it the y-axis, x-axis is vbc sequence.  
     
     '''
@@ -1912,95 +1928,55 @@ def process_make_matrices(df,
     norm_dict = {}
 
     for brain_id in bidlist:
-        valid = True
         logging.debug(f'handling brain_id={brain_id}')
-        bdf = df[df['brain'] == brain_id]
+        bdf = df[df['brain'] == brain_id]                               
+        bdf.to_csv(f'{outdir}/{brain_id}.vbctable.tsv', sep='\t')
+        bdf.to_parquet(f'{outdir}/{brain_id}.vbctable.parquet')
 
-        # extract injection areas
-        idf = bdf[bdf['site'].str.startswith('injection')]
-        ridf = idf[idf['type'] == 'real'] 
-                   
-        # extract  target areas
-        tdf = bdf[bdf['site'].str.startswith('target')]
-        rtdf = tdf[tdf['type'] == 'real'] 
+        # separate reals and spikes
+        reals = bdf[bdf['type'] == 'real']       
+        ridf = reals[reals['site'].str.startswith('injection')]
+        rtdf = reals[reals['site'].str.startswith('target')]
 
+        spikes = bdf[bdf['type'] == 'spike']
+        stdf = spikes[spikes['site'].str.startswith('target')]
+        sidf = spikes[spikes['site'].str.startswith('target')]
+        
+        target_columns = list( rtdf['label'].unique())
+        injection_columns = list( ridf['label'].unique())
 
+        # reals        
+        rbcmdf = reals.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+        scol = natsorted(list(rbcmdf.columns))
+        rbcmdf = rbcmdf[scol]
+        rbcmdf.fillna(value=0, inplace=True)
+        logging.debug(f'brain={brain_id} raw real barcode matrix len={len(rbcmdf)}')            
+        
+            
+        sbcmdf = spikes.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+        spcol = natsorted(list(sbcmdf.columns))
+        sbcmdf = sbcmdf[spcol]
+        sbcmdf.fillna(value=0, inplace=True)    
+        logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
 
-        # make matrices if per-brain data is valid... 
-        if valid:                               
-            vbcdf.to_csv(f'{outdir}/{brain_id}.vbctable.tsv', sep='\t')
-            vbcdf.to_parquet(f'{outdir}/{brain_id}.vbctable.parquet')
-            
-            target_columns = list( vbcdf[vbcdf['site'].str.startswith('target')]['label'].unique())
-            injection_columns = list( vbcdf[vbcdf['site'].str.startswith('injection')]['label'].unique())
-            
-            rbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
-            scol = natsorted(list(rbcmdf.columns))
-            rbcmdf = rbcmdf[scol]
-            rbcmdf.fillna(value=0, inplace=True)
-            logging.debug(f'brain={brain_id} raw real barcode matrix len={len(rbcmdf)}')            
-            
-            # filtered reals
-            fbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
-            scol = natsorted(list(fbcmdf.columns))
-            fbcmdf = fbcmdf[scol]
-            fbcmdf.fillna(value=0, inplace=True)
-            logging.debug(f'brain={brain_id} real barcode matrix len={len(fbcmdf)}')
-
-            # spikes
-            sdf = tdf[tdf['type'] == 'spike']
-            if include_injection: 
-                logging.debug(f'include_injection={include_injection} need injection spikes...')
-                isdf = idf[idf['type']== 'spike']
-                sdf = pd.concat( [sdf, isdf], ignore_index=True  )
-                
-            sbcmdf = sdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
-            spcol = natsorted(list(sbcmdf.columns))
-            sbcmdf = sbcmdf[spcol]
-            sbcmdf.fillna(value=0, inplace=True)    
-            logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
-    
-            (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
-            
-            if include_injection:
-                logging.debug(f'include_injection={include_injection} need grouped normalization.')
-                nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf, columns = [target_columns, injection_columns])
-            else:
-                logging.debug(f'include_injection={include_injection} ungrouped normalization.')
-                nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf)
-            
-            # put columns in natural sort order...
-            nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]            
-            logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
-            
-            norm_dict[brain_id] = nbcmdf
-            
-            # make scaled normalized matrix
-            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
-            scbcmdf.fillna(value=0, inplace=True)
-            logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
-            
-            sh.add_value(f'/matrices/brain_{brain_id}','valid', 'True' )            
-            sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real', len(rbcmdf) )
-            sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real_filtered', len(fbcmdf) )
-            sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_spike', len(sbcmdf) )
-            
-            # raw real
-            rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
-            # filtered real
-            fbcmdf.to_csv(f'{outdir}/{brain_id}.fbcmdf.tsv', sep='\t')
-            # spike-in matrix
-            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')
-            # filtered normalized by spike-ins.    
-            nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
-            # log-scaled normalized 
-            scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
-                       
-        else:
-            logging.info(f'brain {brain_id} data not valid.')
-            sh.add_value(f'/matrices/brain_{brain_id}','valid', 'False' )
-            
+        (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
+        nbcmdf = normalize_weight_grouped(rbcmdf, sbcmdf, columns = [target_columns, injection_columns])
+        nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]            
+        logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+        
+        norm_dict[brain_id] = nbcmdf
+                          
+        sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real', len(rbcmdf) )
+        sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_spike', len(sbcmdf) )
+        
+        # real matrix
+        rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
+        # spike-in matrix
+        sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')
+        # real normalized by spike-ins.    
+        nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')          
         logging.info(f'done with brain={brain_id}')    
+        
     logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
     return norm_dict
 
