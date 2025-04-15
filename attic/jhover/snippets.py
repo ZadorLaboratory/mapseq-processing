@@ -1785,4 +1785,146 @@ def filter_non_inj_umi_merge(rtdf, ridf, inj_min_umi=1, write_out=False):
     logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
     return mdf
 
+def findrepeats(s, n=2):
+    '''
+    Finds strings of repeated characters longer than <num>
+    Typically used to find homopolymers in sequences for exclusion from results
+    as repeats interfere with amplification/replication.
+    '''
+    rcount = 1
+    last = None
+    res = False
+    for c in s:
+        if last is None:
+            last = c
+        else:
+            if c == last:
+                rcount += 1
+            else:
+                last = c
+                rcount = 1
+        if rcount >= n:
+            # short-circuit if found. 
+            return True
+        else:
+            pass
+    return res
+
+
+def remove_base_repeats(df, col='sequence', n=7):
+    '''
+    removes rows where column string repeats C,G,A, or T <n> times or more.    
+    '''
+    startlen=len(df)
+    logging.debug(f'removing n>{n} repeats from df len={startlen}')
+    bases = ['C','G','A','T']
+    for b in bases:
+        pat = b*n
+        logging.debug(f'searching for {pat}')
+        df = df[ ~df[col].str.contains(pat)]
+    
+    endlen=(len(df))
+    logging.debug(f'df without {n} repeats len={endlen}')
+    df.reset_index(drop=True, inplace=True)
+    return df
+
+
+def has_base_repeats(seqstring, n=7):
+    '''
+    if string repeats C,G,A, or T <n> times or more.    
+    '''
+    bases = ['C','G','A','T']
+    for b in bases:
+        pat = b*n
+        if pat in seqstring:
+            return True
+    return False
+
+def has_n_bases(seqstring, n=0):
+    '''
+    if string contains 'N' <n> times or more.    
+    '''
+    ncount = seqstring.count('N')
+    if ncount > n:
+        return True
+    return False
+ 
+ 
+def gzip_decompress(filename):
+    """
+    default for copyfileobj is 16384
+    https://blogs.blumetech.com/blumetechs-tech-blog/2011/05/faster-python-file-copy.html
+
+    """
+    log = logging.getLogger('utils')
+    if filename.endswith('.gz'):
+        targetname = filename[:-3]
+        bufferlength = 10 * 1024 * 1024  # 10 MB
+        with gzip.open(filename, 'rb') as f_in:
+            with open(targetname, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out, length=bufferlength)
+    else:
+        log.warn(
+            f'tried to gunzip file without .gz extension {filename}. doing nothing.')
+
+def load_df(filepath):
+    """
+    Convenience method to load DF consistently across modules. 
+    """
+    logging.debug(f'loading {filepath}')
+    filepath = os.path.expanduser(filepath)
+    df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype="string[pyarrow]", comment="#")
+    #df.fillna(value='', inplace=True)
+    logging.debug(f'initial load done. converting types...')
+    df = df.convert_dtypes(convert_integer=False)
+    for col in df.columns:
+        logging.debug(f'trying column {col}')
+        try:
+            df[col] = df[col].astype('uint32')
+        except ValueError:
+            logging.debug(f'column {col} not int')
+    logging.debug(f'{df.dtypes}')
+    return df
+
+
+def merge_fastq_pairs(config, readfilelist, outdir):
+    logging.debug(f'processing {readfilelist}')
+    if outdir is None:
+        outdir = "."
+    else:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            logging.debug(f'made outdir={outdir}')
+    pairshandled = 0
+    for (read1file, read2file) in readfilelist:
+        logging.debug(f'read1file = {read1file}')
+        logging.debug(f'read2file = {read2file}')
+        pairshandled += 1 
+
+def filter_split_pd(df, 
+                    max_repeats=None,
+                    max_n_bases=None,
+                    column='sequence',
+                    drop=True,
+                    cp=None
+                    ):
+    '''
+    filter sequence by repeats, Ns. 
+    split into MAPseq fields
+    optionally drop sequence column
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+
+    logging.info(f'Filtering by read quality. Repeats. Ns.')
+    df = filter_reads_pd(df, 
+                       max_repeats=max_repeats,
+                       max_n_bases=max_n_bases, 
+                       column=column )
+    logging.info(f'Splitting into mapseq fields. ')    
+    df = split_mapseq_fields(df, 
+                             drop=True)
+    return df
+
  

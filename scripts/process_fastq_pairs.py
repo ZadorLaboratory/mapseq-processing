@@ -150,11 +150,10 @@ if __name__ == '__main__':
 
     dir, base, ext = split_path(outfile)
 
-    df = process_fastq_pairs(
-                            infilelist, 
-                            outdir,                         
-                            force=args.force,
-                            cp = cp)
+    df = process_fastq_pairs(infilelist, 
+                             outdir,                         
+                             force=args.force,
+                             cp = cp)
     
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')

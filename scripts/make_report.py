@@ -10,6 +10,9 @@ import sys
 
 from configparser import ConfigParser
 
+import pypandoc
+
+
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
@@ -68,6 +71,13 @@ if __name__ == '__main__':
                     default=os.path.expanduser('~/git/mapseq-processing/etc/user_report_template.md'), 
                     type=str, 
                     help='Report template.') 
+
+    parser.add_argument('-m','--metadata', 
+                    metavar='metadata',
+                    required=False,
+                    default=os.path.expanduser('~/git/mapseq-processing/etc/report_metadata.yaml'), 
+                    type=str, 
+                    help='Report template.')
    
     parser.add_argument('infiles',
                         metavar='infiles',
@@ -130,3 +140,21 @@ if __name__ == '__main__':
         logging.info(f'Saving report as Markdown doc to {outfile}...')
         with open(args.outfile, 'w') as fh:
             fh.write(rmd)
+            
+    # pandoc --metadata-file ~/git/mapseq-processing/etc/user_report_metadata.yaml  
+    # statsreport.md -o statsreport.pdf
+    if args.outfile is not None:
+        logging.info(f'converting Mardown to PDF...')
+        outfile = os.path.abspath(args.outfile)
+        filepath = os.path.abspath(outfile)    
+        dirname = os.path.dirname(filepath)
+        filename = os.path.basename(filepath)
+        (base, ext) = os.path.splitext(filename)
+        pdfoutfile = os.path.join(dirname, f'{base}.pdf')           
+        rv = pypandoc.convert_file(args.outfile, 
+                                   'pdf', 
+                                   outputfile=pdfoutfile,
+                                   extra_args=[f'--metadata-file', f'{args.metadata}']
+                                   )
+        logging.info(f'writing PDF to {pdfoutfile} ')
+    

@@ -1,4 +1,3 @@
-
 ## QC Information for {{ conf['project']['project_id'] }}
 
 ### Configuration and Summary Statistics

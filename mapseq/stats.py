@@ -1,16 +1,3 @@
-#!/usr/bin/env python
-# mechanism to collect statistics/information during processing to be written out
-# to file for later reporting. 
-# default:  stats.json
-#  fastq
-#  ssifasta
-#  merged
-#
-#   https://stackoverflow.com/questions/58960478/python-library-for-dynamic-documents
-#  https://stackoverflow.com/questions/7204805/deep-merge-dictionaries-of-dictionaries-in-python
-#
-#
-
 import os
 import json
 import logging

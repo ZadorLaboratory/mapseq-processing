@@ -17,8 +17,7 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 from natsort import natsorted
-import matplotlib.pyplot as plt
-import seaborn as sns
+
 import scipy
 
 from Bio import SeqIO
@@ -36,6 +35,7 @@ from mapseq.utils import *
 from mapseq.bowtie import *
 from mapseq.barcode import *
 from mapseq.stats import *
+from mapseq.plotting import *
 
 
 def get_default_config():
@@ -68,28 +68,6 @@ def get_rtlist(sampledf):
     logging.debug(f'got rtlist = {nrtlist}')
     return nrtlist
 
-
-def package_pairfiles(infiles):
-    '''
-    pack up input list of elements into list of paired tuples. 
-    ['a','b','c','d'] -> [('a','b'),('c','d')]
-
-    '''
-    if len(infiles) %2 != 0:
-        logging.error(f'number of elements must be multiple of two!')
-        
-    infilelist = []
-    a = None
-    b = None
-    for i,v in enumerate(infiles):
-        if i % 2 == 0:
-            a = v
-        else:
-            b = v
-            t = (a,b)
-            logging.info(f'input pair of readfiles: r1={a} r2={b}')
-            infilelist.append(t)
-    return infilelist
 
 
 def guess_site(infile, sampdf):
@@ -664,24 +642,7 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000)
             df = pd.read_parquet(infile) 
     return df       
     
-
-
-
-def merge_fastq_pairs(config, readfilelist, outdir):
-    logging.debug(f'processing {readfilelist}')
-    if outdir is None:
-        outdir = "."
-    else:
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-            logging.debug(f'made outdir={outdir}')
-    pairshandled = 0
-    for (read1file, read2file) in readfilelist:
-        logging.debug(f'read1file = {read1file}')
-        logging.debug(f'read2file = {read2file}')
-        pairshandled += 1    
-
-
+ 
 def process_fastq_pairs(infilelist, 
                         outdir,                         
                         force=True,
@@ -712,7 +673,7 @@ def process_fastq_pairs(infilelist,
 
 
 
-def process_fastq_pairs_pd_chunked(infilelist, 
+def process_fastq_pairs_pd_chunked( infilelist, 
                                     outdir,                         
                                     force=False, 
                                     cp = None):
@@ -781,13 +742,14 @@ def process_fastq_pairs_pd_chunked(infilelist,
             chunknum += 1
 
         logging.debug(f'handled pair number {pairnum}')
+        sh.add_value('/fastq',f'pair{pairnum}_len', len(ndf) )
         pairnum += 1
     logging.debug(f'dtypes =\n{df.dtypes}')
     logging.info('Finished processing all input.')
     sh.add_value('/fastq','reads_handled', len(df) )
     sh.add_value('/fastq','pairs_handled', pairnum )
     return df          
-        
+
 def get_fh(infile):
     '''
     Opens compressed/uncompressed file as appropriate... 
@@ -798,38 +760,13 @@ def get_fh(infile):
     else:
         fh = open(infile, 'rt')
     return fh    
+        
 
 
-def filter_split_pd(df, 
-                    max_repeats=None,
-                    max_n_bases=None,
-                    column='sequence',
-                    drop=True,
-                    cp=None
-                    ):
-    '''
-    filter sequence by repeats, Ns. 
-    split into MAPseq fields
-    optionally drop sequence column
-    
-    '''
-    if cp is None:
-        cp = get_default_config()
-
-    logging.info(f'Filtering by read quality. Repeats. Ns.')
-    df = filter_reads_pd(df, 
-                       max_repeats=max_repeats,
-                       max_n_bases=max_n_bases, 
-                       column=column )
-    logging.info(f'Splitting into mapseq fields. ')    
-    df = split_mapseq_fields(df, 
-                             drop=True)
-
-    return df
-
- 
 def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
     '''
+    Used by filter_split
+    
     spike_st=24
     spike_end = 32
     libtag_st=30
@@ -838,10 +775,12 @@ def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
     umi_end = 44
     ssi_st = 44
     ssi_end = 52
+    
     '''    
     logging.info(f'pulling out MAPseq fields...')
     if cp is None:
         cp = get_default_config()
+        
     vbc_st = int(cp.get('mapseq', 'vbc_st'))
     vbc_end = int(cp.get('mapseq', 'vbc_end'))        
     spike_st=int(cp.get('mapseq', 'spike_st'))
@@ -878,6 +817,7 @@ def filter_reads_pd(df,
                     remove=True,
                     cp=None):
     '''
+    Used by filter_split.
 
     '''
     if cp is None:
@@ -1100,139 +1040,6 @@ def make_read_counts_dfs(config, filelist, outdir):
     return dflist 
         
 
-def make_clustered_heatmap(df, outprefix, columns=None ):
-    '''
-    
-    Caller should edit columns in order to exclude injection areas from plot. 
-    '''
-    camp = 'Reds'
-    g = sns.clustermap(df, cmap=camp, yticklabels=False, col_cluster=False, standard_scale=0)
-    g.fig.subplots_adjust(right=0.7)
-    g.ax_cbar.set_position((0.8, .2, .03, .4))
-    plt.title(f'{prefix}\nCounts')
-    plt.savefig(f'{outprefix}.heatmap.pdf')
-    logging.info(f'done making {outprefix}.heatmap.pdf ')
-    
-
-def make_read_countplot(config, df, outfile, title=None ): 
-    '''
-    makes individual read count plot from sequence read_count DF 
-    assumes 'sequence' and 'read_count' columns. 
-    
-    '''   
-    plt.set_loglevel (level = 'warning')
-    
-    logging.debug(f'handling sequence df len={len(df)}')
-    outfile = os.path.abspath(outfile)    
-
-    if title is None:
-        title='Read count frequence plot.'
-
-    df.sort_values(by='read_count', ascending=False, inplace=True)
-    df.reset_index(inplace=True)
-    df['index'] = df['index'].astype('int64')
-
-    plt.figure()
-    plt.plot(np.log10(df['index']), np.log10(df['read_count']))
-    plt.title(title)
-    plt.xlabel("log10(index)")
-    plt.ylabel("log10(read_count)")
-    logging.info(f'Saving count plot to {outfile}')
-    plt.savefig(outfile)
-
-
-def make_read_countplot_sns(cp, df, outfile='count-frequency-plot.pdf' ):
-    '''
-    makes two figures, one log-normalized, one straight for same counts df. 
-    '''
-    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    df.sort_values(by='read_count', ascending=False, inplace=True)
-    df.reset_index(inplace=True)
-    df['index'] = df.index.astype('int64')
-
-    #page_dims = 
-    #  A4 landscape   (11.69,8.27) 
-    #  A3 landscape  (16.53,11.69)
-    #  A4 portrait  (8.27, 11.69)  
-    page_dims = (8.27, 11.69)
-    with pdfpages(outfile) as pdfpages:
-        axlist = []
-        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
-        fig.suptitle(f'Read counts frequency plots.')
-        for a in axes.flat:
-            axlist.append(a)
-        ax = axlist[0]
-        counts_axis_plot_sns(ax, df, scale=None)
-        ax = axlist[1]
-        counts_axis_plot_sns(ax, df, scale='log10')
-        
-        pdfpages.savefig(fig)
-
-
-
-def make_shoulder_plot_sns(df, title='counts frequency plot', site=None, outfile='count-frequency-plot.pdf' ):
-    '''
-    makes two figures, one log-normalized, one straight for same counts df. 
-    '''
-    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    
-    cdf = pd.DataFrame( df[df['site'] == site ]['read_count'].copy(), columns=['read_count'])
-    cdf.sort_values(by='read_count', ascending=False, inplace=True)
-    cdf.reset_index(inplace=True,  drop=True)
-    cdf['index'] = cdf.index.astype('int64')
-
-    #page_dims = 
-    #  A4 landscape   (11.69,8.27) 
-    #  A3 landscape  (16.53,11.69)
-    #  A4 portrait  (8.27, 11.69)  
-    page_dims = (8.27, 11.69)
-    with pdfpages(outfile) as pdfpages:
-        axlist = []
-        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
-        fig.suptitle(f'Read counts freq: site={site}')
-        for a in axes.flat:
-            axlist.append(a)
-        ax = axlist[0]
-        counts_axis_plot_sns(ax, cdf, scale=None)
-        ax = axlist[1]
-        counts_axis_plot_sns(ax, cdf, scale='log10')        
-        pdfpages.savefig(fig)
-
-        
-def counts_axis_plot_sns(ax, df, scale=None ) :
-    '''
-    Creates individual axes for single plot within figure. 
-    scale = None | log10  | log2
-    '''
-    s = df['read_count'].sum()
-    n = len(df)
-    t = df['read_count'].max()
-    r = df['index'].max()
-    
-    title=''
-    if scale is None:
-        h = calc_freq_threshold(df, fraction=0.9, column = 'read_count')
-        sns.lineplot(ax=ax, x=df['index'], y=df['read_count'] )
-        title = 'counts frequency plot'
-        #lx = 0.2 * t 
-        #ly = 0.2 * r
-        lx = 1.0
-        ly = 1.0
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nestimated_threshold={h}", fontsize=11) #add text
-        logging.debug(f'made axis without scale.') 
-    elif scale == 'log10':
-        # avoid divide by 0 runtime warning...
-        df['log10index'] = np.log10(df['index'] + 1)
-        df['log10counts'] = np.log10(df['read_count'])
-        sns.lineplot(ax=ax, x=df['log10index'], y=df['log10counts'] )
-        #lx = 0.05 * np.log10(t) 
-        #ly = 0.05 * np.log10(r)        
-        lx = 0.2
-        ly = 0.2
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=11) #add text
-        title = 'log10(counts) frequency plot'
-        logging.debug(f'made axis with log10 scale.')       
-    ax.set_title(title, fontsize=10)
 
 
 def normalize_weight(df, weightdf, columns=None):
@@ -1656,21 +1463,7 @@ def process_make_readtable_pd(df,
     return df
 
 
-def make_shoulder_plots(df, outdir=None, cp=None):
-    # make shoulder plots. injection, target
-    logging.info('making shoulder plots...')
-    if outdir is None:
-        outdir = os.path.abspath('./')
-    logging.getLogger('matplotlib.font_manager').disabled = True
-    if len(df[df['site'] == 'injection'] ) > 1:
-        make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
-    else:
-        logging.info(f'no injection sites, so no plot.')
-    if len(df[df['site'] == 'target'] ) > 1:    
-        make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
-    else:
-        logging.info(f'no target sites, so no plot.')
-   
+
 
 def process_make_vbctable_pd(df,
                           outdir=None,
@@ -2303,7 +2096,7 @@ def process_mapseq_all_XXX(infiles, sampleinfo, bcfile=None, outdir=None, expid=
         parser.print_help()
         print('error: the following arguments are required: 2 or multiple of 2 infiles')
         sys.exit(1)
-    infiles = package_pairfiles(infiles) 
+    infiles = package_pairs(infiles) 
     
     outfile = f'{outdir}/{expid}.reads.tsv'
     df = process_fastq_pairs_pd(infiles, 

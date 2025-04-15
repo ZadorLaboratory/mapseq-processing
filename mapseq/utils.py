@@ -30,6 +30,7 @@ from Bio.SeqRecord import SeqRecord
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
+
 #
 # Multiprocessing  using explicity command running. 
 #            jstack = JobStack()
@@ -40,8 +41,6 @@ numba_logger.setLevel(logging.WARNING)
 #
 #            will block until all jobs in jobstack are done, using <max_processes> jobrunners that
 #            pull from the stack.
-#
-
 class JobSet(object):
     def __init__(self, max_processes, jobstack):
         self.max_processes = max_processes
@@ -112,6 +111,74 @@ class NonZeroReturnException(Exception):
     Thrown when a command has non-zero return code. 
     """
 
+
+
+def run_command(cmd):
+    """
+    cmd should be standard list of tokens...  ['cmd','arg1','arg2'] with cmd on shell PATH.
+    @return 
+    
+    """
+    cmdstr = " ".join(cmd)
+    logging.debug(f"command: {cmdstr} running...")
+    start = dt.datetime.now()
+    cp = subprocess.run( cmd, 
+                    text=True, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT
+                    )
+    end = dt.datetime.now()
+    elapsed =  end - start
+    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
+    
+    if cp.stderr is not None:
+        logging.warn(f"got stderr: {cp.stderr}")
+    if cp.stdout is not None:
+        logging.debug(f"got stdout: {cp.stdout}")   
+    if str(cp.returncode) == '0':
+        #logging.debug(f'successfully ran {cmdstr}')
+        logging.debug(f'got rc={cp.returncode} command= {cmdstr}')
+    else:
+        logging.warn(f'got rc={cp.returncode} command= {cmdstr}')
+       
+        #raise NonZeroReturnException(f'For cmd {cmdstr}')
+    return cp
+
+def run_command_shell(cmd):
+    """
+    maybe subprocess.run(" ".join(cmd), shell=True)
+    cmd should be standard list of tokens...  ['cmd','arg1','arg2'] with cmd on shell PATH.
+    
+    """
+    cmdstr = " ".join(cmd)
+    logging.debug(f"running command: {cmdstr} ")
+    start = dt.datetime.now()
+    cp = subprocess.run(" ".join(cmd), 
+                    shell=True, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT)
+
+    end = dt.datetime.now()
+    elapsed =  end - start
+    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
+    
+    if cp.stderr is not None:
+        logging.warn(f"got stderr: {cp.stderr}")
+        pass
+    if cp.stdout is not None:
+        #logging.debug(f"got stdout: {cp.stdout}")
+        pass
+    if str(cp.returncode) == '0':
+        #logging.debug(f'successfully ran {cmdstr}')
+        logging.debug(f'got rc={cp.returncode} command= {cmdstr}')
+    else:
+        logging.warn(f'got rc={cp.returncode} command= {cmdstr}')
+        raise NonZeroReturnException(f'For cmd {cmdstr}')
+    return cp
+
+
+
+
 def setup_logging(level):
     """ 
     Setup logging using e.g. level=logging.DEBUG
@@ -125,49 +192,47 @@ def setup_logging(level):
     logger.addHandler(streamHandler)
     logger.setLevel(level)
 
+def get_configstr(cp):
+    with io.StringIO() as ss:
+        cp.write(ss)
+        ss.seek(0)  # rewind
+        return ss.read()
+
+def format_config(cp):
+    cdict = {section: dict(cp[section]) for section in cp.sections()}
+    s = pprint.pformat(cdict, indent=4)
+    return s
 
 
-def findrepeats(s, n=2):
+def write_config(config, filename, timestamp=True, datestring=None):
     '''
-    Finds strings of repeated characters longer than <num>
-    Typically used to find homopolymers in sequences for exclusion from results
-    as repeats interfere with amplification/replication.
-    '''
-    rcount = 1
-    last = None
-    res = False
-    for c in s:
-        if last is None:
-            last = c
-        else:
-            if c == last:
-                rcount += 1
-            else:
-                last = c
-                rcount = 1
-        if rcount >= n:
-            # short-circuit if found. 
-            return True
-        else:
-            pass
-    return res
-
-def remove_base_repeats(df, col='sequence', n=7):
-    '''
-    removes rows where column string repeats C,G,A, or T <n> times or more.    
-    '''
-    startlen=len(df)
-    logging.debug(f'removing n>{n} repeats from df len={startlen}')
-    bases = ['C','G','A','T']
-    for b in bases:
-        pat = b*n
-        logging.debug(f'searching for {pat}')
-        df = df[ ~df[col].str.contains(pat)]
+    writes config file to relevant name,
+    if timestamp=True, puts date/time code dot-separated before extension. e.g.
+    filename = /path/to/some.file.string.txt  ->  /path/to/some.file.string.202303081433.txt
+    date is YEAR/MO/DY/HR/MI
+    if datestring is not None, uses that timestamp
     
-    endlen=(len(df))
-    logging.debug(f'df without {n} repeats len={endlen}')
-    df.reset_index(drop=True, inplace=True)
-    return df
+    '''
+    filepath = os.path.abspath(filename)    
+    dirname = os.path.dirname(filepath)
+    basefilename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(basefilename) 
+    
+    if timestamp:
+        if datestring is None:
+            datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+        else:
+            datestr = datestring
+        filename = f'{dirname}/{base}.{datestr}{ext}'
+
+    os.makedirs(dirname, exist_ok=True)
+        
+    with open(filename, 'w') as configfile:
+        config.write(configfile)
+    logging.debug(f'wrote current config to {filename}')
+    
+    return os.path.abspath(filename)
+
 
 def remove_singletons(listoflists):
     '''
@@ -182,28 +247,6 @@ def remove_singletons(listoflists):
     logging.debug(f'len after = {len(outlist)}')
     return outlist
         
-
-
-def has_base_repeats(seqstring, n=7):
-    '''
-    if string repeats C,G,A, or T <n> times or more.    
-    '''
-    bases = ['C','G','A','T']
-    for b in bases:
-        pat = b*n
-        if pat in seqstring:
-            return True
-    return False
-
-def has_n_bases(seqstring, n=0):
-    '''
-    if string contains 'N' <n> times or more.    
-    '''
-    ncount = seqstring.count('N')
-    if ncount > n:
-        return True
-    return False
-
 
 def flatten_list(listoflists):
     flat_list = []
@@ -281,89 +324,25 @@ def add_rowlist_column(rowlist, colval):
     return rowlist
     
 
-
-def gzip_decompress(filename):
-    """
-    default for copyfileobj is 16384
-    https://blogs.blumetech.com/blumetechs-tech-blog/2011/05/faster-python-file-copy.html
-
-    """
-    log = logging.getLogger('utils')
-    if filename.endswith('.gz'):
-        targetname = filename[:-3]
-        bufferlength = 10 * 1024 * 1024  # 10 MB
-        with gzip.open(filename, 'rb') as f_in:
-            with open(targetname, 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out, length=bufferlength)
-    else:
-        log.warn(
-            f'tried to gunzip file without .gz extension {filename}. doing nothing.')
-
- 
-def run_command(cmd):
-    """
-    cmd should be standard list of tokens...  ['cmd','arg1','arg2'] with cmd on shell PATH.
-    @return 
-    
-    
-    """
-    cmdstr = " ".join(cmd)
-    logging.debug(f"command: {cmdstr} running...")
-    start = dt.datetime.now()
-    cp = subprocess.run( cmd, 
-                    text=True, 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT
-                    )
-    end = dt.datetime.now()
-    elapsed =  end - start
-    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
-    
-    if cp.stderr is not None:
-        logging.warn(f"got stderr: {cp.stderr}")
-    if cp.stdout is not None:
-        logging.debug(f"got stdout: {cp.stdout}")   
-    if str(cp.returncode) == '0':
-        #logging.debug(f'successfully ran {cmdstr}')
-        logging.debug(f'got rc={cp.returncode} command= {cmdstr}')
-    else:
-        logging.warn(f'got rc={cp.returncode} command= {cmdstr}')
-       
-        #raise NonZeroReturnException(f'For cmd {cmdstr}')
-    return cp
-
-def run_command_shell(cmd):
-    """
-    maybe subprocess.run(" ".join(cmd), shell=True)
-    cmd should be standard list of tokens...  ['cmd','arg1','arg2'] with cmd on shell PATH.
-    
-    """
-    cmdstr = " ".join(cmd)
-    logging.debug(f"running command: {cmdstr} ")
-    start = dt.datetime.now()
-    cp = subprocess.run(" ".join(cmd), 
-                    shell=True, 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT)
-
-    end = dt.datetime.now()
-    elapsed =  end - start
-    logging.debug(f"ran cmd='{cmdstr}' return={cp.returncode} {elapsed.seconds} seconds.")
-    
-    if cp.stderr is not None:
-        logging.warn(f"got stderr: {cp.stderr}")
-        pass
-    if cp.stdout is not None:
-        #logging.debug(f"got stdout: {cp.stdout}")
-        pass
-    if str(cp.returncode) == '0':
-        #logging.debug(f'successfully ran {cmdstr}')
-        logging.debug(f'got rc={cp.returncode} command= {cmdstr}')
-    else:
-        logging.warn(f'got rc={cp.returncode} command= {cmdstr}')
-        raise NonZeroReturnException(f'For cmd {cmdstr}')
-    return cp
-
+def package_pairs(itemlist):
+    '''
+    pack up input list of elements into list of paired tuples. 
+    ['a','b','c','d'] -> [('a','b'),('c','d')]
+    '''
+    if len(infiles) %2 != 0:
+        logging.error(f'number of elements must be multiple of two!')
+    pairlist = []
+    a = None
+    b = None
+    for i,v in enumerate(itemlist):
+        if i % 2 == 0:
+            a = v
+        else:
+            b = v
+            t = (a,b)
+            logging.info(f'input pair: r1={a} r2={b}')
+            pairlist.append(t)
+    return pairlist
 
 
 def string_modulo(instring, divisor):
@@ -392,16 +371,6 @@ def modulo_filter(inlist, divisor, remainder):
     
 
 
-def get_configstr(cp):
-    with io.StringIO() as ss:
-        cp.write(ss)
-        ss.seek(0)  # rewind
-        return ss.read()
-
-def format_config(cp):
-    cdict = {section: dict(cp[section]) for section in cp.sections()}
-    s = pprint.pformat(cdict, indent=4)
-    return s
 
 def get_mainbase(filepath):
     '''
@@ -620,6 +589,7 @@ def convert_numeric(df):
     # changes made in place, but also return so df = convert_numeric(df) works. 
     return df
 
+
 def split_path(filepath):
     '''
     dir, base, ext = split_path(filepath)
@@ -629,28 +599,6 @@ def split_path(filepath):
     filename = os.path.basename(filepath)
     base, ext = os.path.splitext(filename)
     return (dirpath, base, ext)
-
-
-
-def load_df(filepath):
-    """
-    Convenience method to load DF consistently across modules. 
-    """
-    logging.debug(f'loading {filepath}')
-    filepath = os.path.expanduser(filepath)
-    df = pd.read_csv(filepath, sep='\t', index_col=0, keep_default_na=False, dtype="string[pyarrow]", comment="#")
-    #df.fillna(value='', inplace=True)
-    logging.debug(f'initial load done. converting types...')
-    df = df.convert_dtypes(convert_integer=False)
-    for col in df.columns:
-        logging.debug(f'trying column {col}')
-        try:
-            df[col] = df[col].astype('uint32')
-        except ValueError:
-            logging.debug(f'column {col} not int')
-    logging.debug(f'{df.dtypes}')
-    return df
-
 
 def merge_dfs( dflist):
     newdf = None
@@ -721,34 +669,6 @@ def merge_write_df(newdf, filepath,  mode=0o644):
         raise ex
 
 
-def write_config(config, filename, timestamp=True, datestring=None):
-    '''
-    writes config file to relevant name,
-    if timestamp=True, puts date/time code dot-separated before extension. e.g.
-    filename = /path/to/some.file.string.txt  ->  /path/to/some.file.string.202303081433.txt
-    date is YEAR/MO/DY/HR/MI
-    if datestring is not None, uses that timestamp
-    
-    '''
-    filepath = os.path.abspath(filename)    
-    dirname = os.path.dirname(filepath)
-    basefilename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(basefilename) 
-    
-    if timestamp:
-        if datestring is None:
-            datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-        else:
-            datestr = datestring
-        filename = f'{dirname}/{base}.{datestr}{ext}'
-
-    os.makedirs(dirname, exist_ok=True)
-        
-    with open(filename, 'w') as configfile:
-        config.write(configfile)
-    logging.debug(f'wrote current config to {filename}')
-    
-    return os.path.abspath(filename)
     
 
 
@@ -868,7 +788,6 @@ def writelist(filepath, dlist, mode=0o644):
         pass
 
 
-
 def log_objectinfo(obj, label):
     '''
     print info about object to the debug log 
@@ -877,6 +796,7 @@ def log_objectinfo(obj, label):
     ot = type(obj)
     size_gb = ((( sys.getsizeof(obj) ) / 1024 ) / 1024 ) / 1024
     logging.debug(f"variable= '{label}' type={ot} size={size_gb:.4f} GB.")
+
     
 class DotConfigParser(ConfigParser):
     def __init__(self):
