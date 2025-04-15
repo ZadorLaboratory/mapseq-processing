@@ -178,9 +178,11 @@ This typically takes about 12 minutes. (3 minutes on Mac M3)
 The VBC table contains ALL information from the experiment including controls, L1s, and any data that results from errors. To simplify matrix creation, we apply all thresholds and filtering at this step. This step:
 
 - Removes L1s and any non-L1 sample reads with L1 tags
-- Uses given UMI thresholds, or calculates them based on biological negative or water control.
+- Applies minimum UMI count in target and/or injection areas (min_target_umi, min_inj_umi)
+- Optionally calculates minimum UMI counts based on biological negative or water control.
+- Optionally filters out VBCs not present in the injection site (require_injection)
 - Thresholds target VBC and injection VBCs by appropriate UMI count. 
-- Optionally restricts target VBCs to those that appear in injection. 
+- Optionally includes injection VBCs (if they exist in some target)
 
 This step also produces: 
 - controls.tsv	  All control site data (target-water-control) 
@@ -198,9 +200,7 @@ All data in the main output file created by this step is then unconditionally in
 	vbctable.out/M253.vbctable.tsv
 ```
 
-This program produces, for each brain, several matrices of viral barcodes by dissected region. This is the step at which (optionally) various threshold can be applied. 
--- Minimum UMI count in target and/or injection areas (min_target_umi, min_inj_umi)
--- Filter out VBCs not present in the injection site (require_injection)
+This program produces, for each brain, several matrices of viral barcodes by dissected region. Since filtering and thresholding is handled in the previous step, all data in input is included in matrices. 
 
 The matrices produced are: 
 
@@ -210,7 +210,5 @@ A spike-in barcode matrix (sbcm). Contains raw numbers of spike-in molecules for
 
 A real barcode matrix normalized by spike-ins (nbcm). The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. For most further analysis, this can be considered the canonical processing output file. 
 
-
 Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
 	[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 
-
