@@ -9,89 +9,25 @@ import numpy as np
 
 from natsort import natsorted
 
-
 def make_counts_plots(df, outdir=None, groupby='label', column='read_count', cp=None):
     '''
     take standard aggregated, readtable or vbctable DFs and create 
     read_count or umi_count frequency plots for all real targets.  
     
-    
+    confirm that groupby column value exists. 
     '''
+    project_id = cp.get('project','project_id')
+    before = len(df)
+    df = df[df[groupby] != '']
+    after = len(df)
+    removed = before - after
+    logging.debug(f'removed {removed} rows ( {before} - {after}) with no value for {groupby}')
     make_freqplot_combined_sns(df, 
-                               title=f'{column} frequency',  
-                               outfile=os.path.join(outdir, f'{column}_by{groupby}_frequency.pdf'),
+                               title=f'{project_id}: {column} frequency',  
+                               outfile=os.path.join(outdir, f'{project_id}_{column}_by{groupby}_frequency.pdf'),
                                groupby=groupby, 
                                column=column,
                                scale='log10' )
-
-
-def make_clustered_heatmap(df, outprefix, columns=None ):
-    '''
-    
-    Caller should edit columns in order to exclude injection areas from plot. 
-    '''
-    camp = 'Reds'
-    g = sns.clustermap(df, cmap=camp, yticklabels=False, col_cluster=False, standard_scale=0)
-    g.fig.subplots_adjust(right=0.7)
-    g.ax_cbar.set_position((0.8, .2, .03, .4))
-    plt.title(f'{prefix}\nCounts')
-    plt.savefig(f'{outprefix}.heatmap.pdf')
-    logging.info(f'done making {outprefix}.heatmap.pdf ')
-    
-
-def make_read_countplot(config, df, outfile, title=None ): 
-    '''
-    makes individual read count plot from sequence read_count DF 
-    assumes 'sequence' and 'read_count' columns. 
-    
-    '''   
-    plt.set_loglevel (level = 'warning')
-    
-    logging.debug(f'handling sequence df len={len(df)}')
-    outfile = os.path.abspath(outfile)    
-
-    if title is None:
-        title='Read count frequence plot.'
-
-    df.sort_values(by='read_count', ascending=False, inplace=True)
-    df.reset_index(inplace=True)
-    df['index'] = df['index'].astype('int64')
-
-    plt.figure()
-    plt.plot(np.log10(df['index']), np.log10(df['read_count']))
-    plt.title(title)
-    plt.xlabel("log10(index)")
-    plt.ylabel("log10(read_count)")
-    logging.info(f'Saving count plot to {outfile}')
-    plt.savefig(outfile)
-
-
-def make_read_countplot_sns(cp, df, outfile='count-frequency-plot.pdf' ):
-    '''
-    makes two figures, one log-normalized, one straight for same counts df. 
-    '''
-    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
-    df.sort_values(by='read_count', ascending=False, inplace=True)
-    df.reset_index(inplace=True)
-    df['index'] = df.index.astype('int64')
-
-    #page_dims = 
-    #  A4 landscape   (11.69,8.27) 
-    #  A3 landscape  (16.53,11.69)
-    #  A4 portrait  (8.27, 11.69)  
-    page_dims = (8.27, 11.69)
-    with pdfpages(outfile) as pdfpages:
-        axlist = []
-        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
-        fig.suptitle(f'Read counts frequency plots.')
-        for a in axes.flat:
-            axlist.append(a)
-        ax = axlist[0]
-        counts_axis_plot_sns(ax, df, scale=None)
-        ax = axlist[1]
-        counts_axis_plot_sns(ax, df, scale='log10')
-        
-        pdfpages.savefig(fig)
 
 
 def make_freqplot_combined_sns(df, 
@@ -112,7 +48,7 @@ def make_freqplot_combined_sns(df,
     groups=natsorted( list(df[groupby].unique()) )
 
     if scale is not None:
-        title = f'{title} (scale)'
+        title = f'{title} ({scale})'
 
     # do nine per figure...
     page_dims = (11.7, 8.27)
@@ -150,41 +86,7 @@ def make_freqplot_combined_sns(df,
 
 
 
-
-def make_shoulder_plot_sns(df, 
-                           title='frequency plot', 
-                           site='target', 
-                           outfile='frequency-plot.pdf', 
-                           column='read_count' ):
-    '''
-    makes two figures, one log-normalized, one straight for same counts df. 
-    '''
-    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     
-    cdf = pd.DataFrame( df[df['site'] == site ][column].copy(), columns=[column])
-    cdf.sort_values(by=column, ascending=False, inplace=True)
-    cdf.reset_index(inplace=True,  drop=True)
-    cdf['index'] = cdf.index.astype('int64')
-
-    #page_dims = 
-    #  A4 landscape   (11.69,8.27) 
-    #  A3 landscape  (16.53,11.69)
-    #  A4 portrait  (8.27, 11.69)  
-    page_dims = (8.27, 11.69)
-    with pdfpages(outfile) as pdfpages:
-        axlist = []
-        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
-        fig.suptitle(f'{column} freq: site={site}')
-        for a in axes.flat:
-            axlist.append(a)
-        ax = axlist[0]
-        counts_axis_plot_sns(ax, cdf, scale=None, column=column)
-        ax = axlist[1]
-        counts_axis_plot_sns(ax, cdf, scale='log10', column=column)        
-        pdfpages.savefig(fig)
-
-
-        
 def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts frequency' ) :
     '''
     Creates individual axes for single plot within figure. 
@@ -219,26 +121,13 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
         sns.lineplot(ax=ax, x=df['log10index'], y=df['log10counts'] )
         #lx = 0.05 * np.log10(t) 
         #ly = 0.05 * np.log10(r)        
-        lx = 0.2
-        ly = 0.2
+        lx = 0.1
+        ly = 0.1
         ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=11) #add text
         title = f'{title} log10().'
         logging.debug(f'made axis with log10 scale.')       
 
     ax.set_title(title, fontsize=10)
 
-def make_shoulder_plots(df, outdir=None, cp=None):
-    # make shoulder plots. injection, target
-    logging.info('making shoulder plots...')
-    if outdir is None:
-        outdir = os.path.abspath('./')
-    logging.getLogger('matplotlib.font_manager').disabled = True
-    if len(df[df['site'] == 'injection'] ) > 1:
-        make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
-    else:
-        logging.info(f'no injection sites, so no plot.')
-    if len(df[df['site'] == 'target'] ) > 1:    
-        make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
-    else:
-        logging.info(f'no target sites, so no plot.')
+
    

@@ -62,12 +62,19 @@ if __name__ == '__main__':
                         type=str, 
                         help='input dataframe type [ aggregated | readtable ]')
 
-    #parser.add_argument('-s','--sampleinfo', 
-    #                    metavar='sampleinfo',
-    #                    required=True,
-    #                    default=None,
-    #                    type=str, 
-    #                    help='XLS sampleinfo file. ')
+    parser.add_argument('-C','--column', 
+                        metavar='column',
+                        required=False,
+                        default='read_count',
+                        type=str, 
+                        help='Column to plot [ read_count | umi_count ]')
+
+    parser.add_argument('-G','--groupby', 
+                        metavar='groupby',
+                        required=False,
+                        default='label',
+                        type=str, 
+                        help='Aggregate by [ label | site ]')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -148,7 +155,7 @@ if __name__ == '__main__':
     
     df = load_mapseq_df( args.infile, fformat=args.format, use_dask=False)   
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    make_counts_plots(df, outdir=outdir, groupby='site', column='read_count', cp=cp )
+    make_counts_plots(df, outdir=outdir, groupby=args.groupby, column=args.column, cp=cp )
     
     logging.info(f'Plots written to {outdir}')
    

@@ -1927,4 +1927,106 @@ def filter_split_pd(df,
                              drop=True)
     return df
 
- 
+def make_read_countplot(config, df, outfile, title=None ): 
+    '''
+    makes individual read count plot from sequence read_count DF 
+    assumes 'sequence' and 'read_count' columns. 
+    
+    '''   
+    plt.set_loglevel (level = 'warning')
+    
+    logging.debug(f'handling sequence df len={len(df)}')
+    outfile = os.path.abspath(outfile)    
+
+    if title is None:
+        title='Read count frequence plot.'
+
+    df.sort_values(by='read_count', ascending=False, inplace=True)
+    df.reset_index(inplace=True)
+    df['index'] = df['index'].astype('int64')
+
+    plt.figure()
+    plt.plot(np.log10(df['index']), np.log10(df['read_count']))
+    plt.title(title)
+    plt.xlabel("log10(index)")
+    plt.ylabel("log10(read_count)")
+    logging.info(f'Saving count plot to {outfile}')
+    plt.savefig(outfile)
+
+
+def make_read_countplot_sns(cp, df, outfile='count-frequency-plot.pdf' ):
+    '''
+    makes two figures, one log-normalized, one straight for same counts df. 
+    '''
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    df.sort_values(by='read_count', ascending=False, inplace=True)
+    df.reset_index(inplace=True)
+    df['index'] = df.index.astype('int64')
+
+    #page_dims = 
+    #  A4 landscape   (11.69,8.27) 
+    #  A3 landscape  (16.53,11.69)
+    #  A4 portrait  (8.27, 11.69)  
+    page_dims = (8.27, 11.69)
+    with pdfpages(outfile) as pdfpages:
+        axlist = []
+        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
+        fig.suptitle(f'Read counts frequency plots.')
+        for a in axes.flat:
+            axlist.append(a)
+        ax = axlist[0]
+        counts_axis_plot_sns(ax, df, scale=None)
+        ax = axlist[1]
+        counts_axis_plot_sns(ax, df, scale='log10')
+        
+        pdfpages.savefig(fig)
+
+
+
+
+def make_shoulder_plot_sns(df, 
+                           title='frequency plot', 
+                           site='target', 
+                           outfile='frequency-plot.pdf', 
+                           column='read_count' ):
+    '''
+    makes two figures, one log-normalized, one straight for same counts df. 
+    '''
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    
+    cdf = pd.DataFrame( df[df['site'] == site ][column].copy(), columns=[column])
+    cdf.sort_values(by=column, ascending=False, inplace=True)
+    cdf.reset_index(inplace=True,  drop=True)
+    cdf['index'] = cdf.index.astype('int64')
+
+    #page_dims = 
+    #  A4 landscape   (11.69,8.27) 
+    #  A3 landscape  (16.53,11.69)
+    #  A4 portrait  (8.27, 11.69)  
+    page_dims = (8.27, 11.69)
+    with pdfpages(outfile) as pdfpages:
+        axlist = []
+        fig,axes = plt.subplots(nrows=2, ncols=1, figsize=page_dims, layout='constrained') 
+        fig.suptitle(f'{column} freq: site={site}')
+        for a in axes.flat:
+            axlist.append(a)
+        ax = axlist[0]
+        counts_axis_plot_sns(ax, cdf, scale=None, column=column)
+        ax = axlist[1]
+        counts_axis_plot_sns(ax, cdf, scale='log10', column=column)        
+        pdfpages.savefig(fig)
+
+def make_shoulder_plots(df, outdir=None, cp=None):
+    # make shoulder plots. injection, target
+    logging.info('making shoulder plots...')
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    logging.getLogger('matplotlib.font_manager').disabled = True
+    if len(df[df['site'] == 'injection'] ) > 1:
+        make_shoulder_plot_sns(df, site='injection', outfile=f'{outdir}/inj-counts.pdf')
+    else:
+        logging.info(f'no injection sites, so no plot.')
+    if len(df[df['site'] == 'target'] ) > 1:    
+        make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
+    else:
+        logging.info(f'no target sites, so no plot.') 
