@@ -174,10 +174,18 @@ if __name__ == '__main__':
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     
+    logging.debug(f'making qctables')
     make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
+
+    logging.debug(f'making frequency plots.')
+    make_counts_plots(df, outdir=outdir, cp=cp, column='umi_count' )
      
     df.to_csv(outfile, sep='\t')
     dir, base, ext = split_path(outfile)
     outfile = os.path.join( dir , f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)
+    
+
+    
+    

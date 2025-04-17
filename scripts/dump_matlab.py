@@ -1,5 +1,41 @@
 #!/usr/bin/env python
 #
+#
+# h5py example
+#
+#  infile = 'v73data.mat'
+#  f = h5py.File(infile, "r") 
+#  list( f.keys())
+#  ['#refs#', '#subsystem#', 'chshift_20x']
+#  f['chshift_20x'].shape
+# (4,1)
+#  r1 = f['chshift_20x'][0][0]
+#  h1 = f[r1]
+#  d1 = h1[:] 
+#  type(d1)
+#  #numpy.ndarray
+#  d1.shape
+# (1,6) 
+#
+#  converting mapseq barcodematrix files via h5py
+#
+#  f = h5py.File(infile, "r")
+#  bcmatrix = np.array(f['barcodematrix']) 
+#  df = pd.DataFrame(bcmatrix.T) 
+#  df.to_csv('bcmatrix.tsv', sep='\t')
+#
+#  refbarcodes = np.array(f['refbarcodes'])  
+#  rdf = pd.DataFrame( refbarcodes.T )   # ascii integers, 1 per column
+#  cdf = pd.DataFrame()
+#  for col in rdf.columns:
+#     cdf[col] = rdf[col].apply(chr)
+#
+#  def apply_join(row):
+#      return ''.join(row)
+#
+#  joined = cdf.apply(apply_join, axis=1)
+#  joined = joined.astype('string')
+
 
 import argparse
 import logging

@@ -14,9 +14,10 @@ For each brain:
 Raw real barcode UMI counts from filtered VBC table.   
 
 Only includes barcodes where:   
-The relevant injection areas \> {{conf['vbctable']['inj_min_umi']}} molecules (UMIs)   
+If the experiment has injection samples, then those areas must have a minimum of  \> {{conf['vbctable']['inj_min_umi']}} molecules (UMIs).   
 At least one target area had \> {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
-Barcode is in both injection and target areas.
+
+If the experiment had injection samples, then the matrix contains only barcodes present in both injection and target areas. If there 
 Rows represent barcodes and columns represent areas. 
 
 \<brain\>.sbcm.tsv	spike-in barcode matrix.   
@@ -31,10 +32,10 @@ Rows represent barcodes and columns represent areas.
 
 1. Raw paired-end sequencing data is parsed and assembled into single blocks consisting of barcode, UMI, and SSI.   
    During this stage all resulting reads with 'N's are filtered, along with any reads containing sections longer than {{stats['fastq_filter']['max_repeats']}} bp containing the same base (since homopolymers introduce errors).    
-2. We take the barcodes of all remaining reads, and perform an all-against-all alignment and find all sets of barcodes with Hamming distance of 3 or less from each other (based on 30 bp of barcode length). These sets are then used to 'collapse' the barcode in all the full sequences (VBC+UMI+SSI) to a single unique sequence, essentially 'fixing' viral replication errors in the barcodes.   
+2. We take the barcodes of all remaining reads, and perform an all-against-all alignment and find all sets of barcodes with Hamming distance of 3 or less from each other (based on 30 bp of barcode length). These sets are then used to 'collapse' the barcode in all the full sequences (VBC+UMI+SSI) to a single unique sequence, essentially 'fixing' replication and sequencing errors in the barcodes.   
 3. We then take the full sequences and sort them all according to SSIs (which correspond to unique brain areas), and then determine the molecule number of a barcode in a certain brain area by counting UMIs. As this is done we aggregate the original read counts for each UMI.   
-4. Within each SSI we separate out spike-in, real, and L1 sequences based on their properties.   
-5. We create the aggregate table \<experiment\>.all.tsv above.   
+4. Within each SSI we separate out spike-in and real sequences based on their properties.   
+5. We create the aggregate table \<experiment\>.vbctable.tsv above.   
 6. The aggregate table can now be converted to connection matrices, with the number of each real and spike-in barcode in each brain area. In this matrix, each row is one barcode, each column is a brain area, and the element of the matrix corresponds to the molecule number of the barcode in the brain area.  
 7. Lastly, we normalized the number of molecules of each barcode in each brain area to the total number of spike-in molecules in the corresponding brain area.  This is to compensate RT/PCR variations during sequencing library preparation.  This produces the normalized barcode matrix above. 
 

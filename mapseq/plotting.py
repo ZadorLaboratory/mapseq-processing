@@ -1,9 +1,28 @@
 import logging
+import os
 
+import datetime as dt
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+
+from natsort import natsorted
+
+
+def make_counts_plots(df, outdir=None, groupby='label', column='read_count', cp=None):
+    '''
+    take standard aggregated, readtable or vbctable DFs and create 
+    read_count or umi_count frequency plots for all real targets.  
+    
+    
+    '''
+    make_freqplot_combined_sns(df, 
+                               title=f'{column} frequency',  
+                               outfile=os.path.join(outdir, f'{column}_by{groupby}_frequency.pdf'),
+                               groupby=groupby, 
+                               column=column,
+                               scale='log10' )
 
 
 def make_clustered_heatmap(df, outprefix, columns=None ):

@@ -21,6 +21,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
+from mapseq.plotting import *
 
 
 if __name__ == '__main__':
@@ -57,16 +58,16 @@ if __name__ == '__main__':
     parser.add_argument('-f','--format', 
                         metavar='format',
                         required=False,
-                        default='aggregated',
+                        default='readtable',
                         type=str, 
                         help='input dataframe type [ aggregated | readtable ]')
 
-    parser.add_argument('-s','--sampleinfo', 
-                        metavar='sampleinfo',
-                        required=True,
-                        default=None,
-                        type=str, 
-                        help='XLS sampleinfo file. ')
+    #parser.add_argument('-s','--sampleinfo', 
+    #                    metavar='sampleinfo',
+    #                    required=True,
+    #                    default=None,
+    #                    type=str, 
+    #                    help='XLS sampleinfo file. ')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -133,22 +134,21 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr)
 
-    logging.debug(f'loading sample DF...')
-    sampdf = load_sample_info(cp, args.sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    #logging.debug(f'loading sample DF...')
+    #sampdf = load_sample_info(cp, args.sampleinfo)
+    #logging.debug(f'\n{sampdf}')
+    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
 
     logging.info(f'loading {args.infile}') 
-    if args.format == 'aggregated':
-        df = load_mapseq_df( args.infile, fformat='aggregated', use_dask=False)
-        logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
-        df = set_siteinfo(df, sampdf, cp=cp)
-        logging.debug(f'set siteinfo on dataframe: {df}')
-        
+    #if args.format == 'aggregated':
+    #    df = load_mapseq_df( args.infile, fformat='aggregated', use_dask=False)
+    #    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+    #    df = set_siteinfo(df, sampdf, cp=cp)
+    #    logging.debug(f'set siteinfo on dataframe: {df}')
+    
+    df = load_mapseq_df( args.infile, fformat=args.format, use_dask=False)   
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    df = make_shoulder_plots(df,
-                        outdir=outdir, 
-                        cp=cp)
+    make_counts_plots(df, outdir=outdir, groupby='site', column='read_count', cp=cp )
     
     logging.info(f'Plots written to {outdir}')
    

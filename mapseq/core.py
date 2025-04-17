@@ -1465,9 +1465,7 @@ def process_make_readtable_pd(df,
     #sh.add_value('/readtable', 'n_real', str(n_real) )     
     #sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
 
-    return df
-
-
+    return ndf
 
 
 def process_make_vbctable_pd(df,

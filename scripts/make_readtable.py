@@ -182,6 +182,7 @@ if __name__ == '__main__':
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(outfile, sep='\t')
     logging.info('Done with TSV.')
+    
     dir, base, ext = split_path(outfile)
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
