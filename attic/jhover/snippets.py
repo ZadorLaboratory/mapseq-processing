@@ -2030,3 +2030,224 @@ def make_shoulder_plots(df, outdir=None, cp=None):
         make_shoulder_plot_sns(df, site='target', outfile=f'{outdir}/target-counts.pdf')   
     else:
         logging.info(f'no target sites, so no plot.') 
+        
+        
+def process_make_matrices_pd(df,
+                          outdir=None,
+                          exp_id = 'M001',  
+                          inj_min_umi = None,
+                          target_min_umi = None,
+                          target_min_umi_absolute = None, 
+                          label_column='label',
+                          cp = None):
+    '''
+    -- per brain, pivot real VBCs (value=umi counts)
+    -- create real, real normalized by spikein, and  
+    -- use label_column to pivot on, making it the y-axis, x-axis is vbc sequence.  
+    -- optionally require VBCs to be in injection to be included
+    -- optionally include injections in matrices.
+    
+    theshold logic. 
+    inj_min_umi                VBC UMI must exceed to be kept.
+    target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
+    target_min_umi_absolute    hard threshold cutoff
+ 
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    require_injection = cp.getboolean('matrices','require_injection')
+    include_injection = cp.getboolean('matrices','include_injection')
+
+    max_negative = 1
+    max_water_control = 1
+
+    if inj_min_umi is None:
+        inj_min_umi = int(cp.get('matrices','inj_min_umi'))
+    if target_min_umi is None:
+        target_min_umi = int(cp.get('matrices','target_min_umi'))   
+    if target_min_umi_absolute is None:
+        target_min_umi_absolute = int(cp.get('matrices','target_min_umi_absolute'))
+
+    use_target_negative=cp.getboolean('matrices','use_target_negative')
+    use_target_water_control=cp.getboolean('matrices','use_target_water_control')    
+    clustermap_scale = cp.get('matrices','clustermap_scale')
+    logging.debug(f'running exp_id={exp_id} inj_min_umi={inj_min_umi} target_min_umi={target_min_umi} use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
+
+    df['brain'] = df['brain'].astype('string')
+    bidlist = list(df['brain'].dropna().unique())
+    bidlist = [ x for x in bidlist if len(x) > 0 ]
+    bidlist.sort()
+    logging.debug(f'handling brain list: {bidlist}')
+    
+    sh = get_default_stats()
+
+    norm_dict = {}
+
+    for brain_id in bidlist:
+        valid = True
+        logging.debug(f'handling brain_id={brain_id}')
+        bdf = df[df['brain'] == brain_id]
+
+        # extract and threshold injection areas
+        idf = bdf[bdf['site'].str.startswith('injection')]
+        ridf = idf[idf['type'] == 'real'] 
+        if inj_min_umi > 1:
+            before = len(ridf)
+            ridf = filter_all_lt(ridf, 'vbc_read_col', 'umi_count', inj_min_umi)            
+            #
+            # INCORRECT: if require_injection is false, there may not be any injection but thats OK.
+            # Let the filter_non_inj_umi() function do its thing...
+            #
+            #if not len(ridf) > 0:
+            #    valid = False
+            #    logging.warning(f'No injection VBCs passed min_inj_umi filtering! Skip brain.')
+            logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(ridf)}')
+        else:
+            logging.debug(f'inj_min_umi={inj_min_umi} no filtering.')
+                   
+        # extract and do absolute thesholding of target areas
+        tdf = bdf[bdf['site'].str.startswith('target')]
+        rtdf = tdf[tdf['type'] == 'real'] 
+
+        if target_min_umi_absolute > 1:
+            before = len(rtdf)
+            rtdf = rtdf[rtdf['umi_count'] >= target_min_umi_absolute ]
+            rtdf.reset_index(drop=True, inplace=True)
+            after = len(rtdf)
+            logging.debug(f'filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
+
+        # threshold by min_target or threshold by target-negative
+        # if use_target_negative is true, but no target negative site 
+        # defined, use min_target and throw warning. 
+        if use_target_negative:
+            logging.info(f'use_target_negative is {use_target_negative}')
+            max_negative = calc_min_umi_threshold(bdf, 'target-negative', cp)
+            logging.debug(f'target-negative UMI count = {max_negative}')
+
+        if use_target_water_control:
+            logging.info(f'use_target_water_control is {use_target_water_control}')
+            max_water_control = calc_min_umi_threshold(bdf, 'target-water-control',cp)
+            logging.debug(f'target_water_control UMI count = {max_water_control}')
+
+        target_min_umi = max([target_min_umi, max_negative, max_water_control ])
+        logging.debug(f'min_target UMI count after all constraints = {target_min_umi}')   
+
+        # min_target is now either calculated from target-negative, or from config. 
+        if target_min_umi > 1:
+            before = len(rtdf)
+            frtdf = filter_all_lt(rtdf, 'vbc_read_col', 'umi_count', target_min_umi)            
+            if not len(frtdf) > 0:
+                valid = False
+                logging.warning(f'No VBCs passed min_target filtering! Skip brain.')
+            logging.debug(f'filtering by target_min_umi={target_min_umi} before={before} after={len(rtdf)}')
+        else:
+            logging.debug(f'target_min_umi={target_min_umi} no filtering.')
+            frtdf = rtdf
+  
+        # get injection-filtered real target table, and target-filtered real injection table
+        # in case either is needed. 
+        (ifrtdf, tfridf) = filter_non_inj_umi(frtdf, ridf, inj_min_umi=inj_min_umi)            
+        logging.debug(f'{len(ifrtdf)} real target VBCs after injection filtering.')
+        logging.debug(f'{len(tfridf)} real injection VBCs after target filtering.')
+
+        if require_injection:
+            logging.debug(f'require_injection={require_injection} inj_min_umi={inj_min_umi}')
+            if len(ridf) == 0:
+                logging.warning('require_injection=True but no real VBCs from any injection site.')
+                valid = False
+            elif not len(ifrtdf) > 0:
+                logging.warning(f'No VBCs passed injection filtering! Skip brain.')
+                valid = False
+            else:
+                # set filtered real to injection-filtered real targets. 
+                frtdf = ifrtdf    
+        else:
+            # frtdf remains unfiltered...
+            logging.debug(f'require_injection={require_injection} proceeding...')
+
+        vbcdf = frtdf
+        
+        if include_injection:
+            logging.debug(f'include_injection={include_injection} including mutually present injection VBCs') 
+            vbcdf = pd.concat( [vbcdf, tfridf], ignore_index=True ) 
+
+        # make matrices if per-brain data is valid... 
+        if valid:                               
+            vbcdf.to_csv(f'{outdir}/{brain_id}.vbctable.tsv', sep='\t')
+            vbcdf.to_parquet(f'{outdir}/{brain_id}.vbctable.parquet')
+            
+            target_columns = list( vbcdf[vbcdf['site'].str.startswith('target')]['label'].unique())
+            injection_columns = list( vbcdf[vbcdf['site'].str.startswith('injection')]['label'].unique())
+            
+            rbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+            scol = natsorted(list(rbcmdf.columns))
+            rbcmdf = rbcmdf[scol]
+            rbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'brain={brain_id} raw real barcode matrix len={len(rbcmdf)}')            
+            
+            # filtered reals
+            fbcmdf = vbcdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+            scol = natsorted(list(fbcmdf.columns))
+            fbcmdf = fbcmdf[scol]
+            fbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'brain={brain_id} real barcode matrix len={len(fbcmdf)}')
+
+            # spikes
+            sdf = tdf[tdf['type'] == 'spike']
+            if include_injection: 
+                logging.debug(f'include_injection={include_injection} need injection spikes...')
+                isdf = idf[idf['type']== 'spike']
+                sdf = pd.concat( [sdf, isdf], ignore_index=True  )
+                
+            sbcmdf = sdf.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+            spcol = natsorted(list(sbcmdf.columns))
+            sbcmdf = sbcmdf[spcol]
+            sbcmdf.fillna(value=0, inplace=True)    
+            logging.debug(f'brain={brain_id} spike barcode matrix len={len(sbcmdf)}')
+    
+            (fbcmdf, sbcmdf) = sync_columns(fbcmdf, sbcmdf)
+            
+            if include_injection:
+                logging.debug(f'include_injection={include_injection} need grouped normalization.')
+                nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf, columns = [target_columns, injection_columns])
+            else:
+                logging.debug(f'include_injection={include_injection} ungrouped normalization.')
+                nbcmdf = normalize_weight_grouped(fbcmdf, sbcmdf)
+            
+            # put columns in natural sort order...
+            nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]            
+            logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            
+            norm_dict[brain_id] = nbcmdf
+            
+            # make scaled normalized matrix
+            scbcmdf = normalize_scale(nbcmdf, logscale=clustermap_scale)
+            scbcmdf.fillna(value=0, inplace=True)
+            logging.debug(f'scbcmdf.describe()=\n{scbcmdf.describe()}')
+            
+            sh.add_value(f'/matrices/brain_{brain_id}','valid', 'True' )            
+            sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real', len(rbcmdf) )
+            sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real_filtered', len(fbcmdf) )
+            sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_spike', len(sbcmdf) )
+            
+            # raw real
+            rbcmdf.to_csv(f'{outdir}/{brain_id}.rbcm.tsv', sep='\t')
+            # filtered real
+            fbcmdf.to_csv(f'{outdir}/{brain_id}.fbcmdf.tsv', sep='\t')
+            # spike-in matrix
+            sbcmdf.to_csv(f'{outdir}/{brain_id}.sbcm.tsv', sep='\t')
+            # filtered normalized by spike-ins.    
+            nbcmdf.to_csv(f'{outdir}/{brain_id}.nbcm.tsv', sep='\t')
+            # log-scaled normalized 
+            scbcmdf.to_csv(f'{outdir}/{brain_id}.scbcm.tsv', sep='\t')
+                       
+        else:
+            logging.info(f'brain {brain_id} data not valid.')
+            sh.add_value(f'/matrices/brain_{brain_id}','valid', 'False' )
+            
+        logging.info(f'done with brain={brain_id}')    
+    logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
+    return norm_dict
