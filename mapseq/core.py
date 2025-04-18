@@ -706,6 +706,7 @@ def process_fastq_pairs_pd_chunked( infilelist,
     sh = get_default_stats()
     pairnum = 1
     chunknum = 1
+    old_len = 0
 
     for (read1file, read2file) in infilelist:
         logging.info(f'handling {read1file}, {read2file} ...')
@@ -742,7 +743,10 @@ def process_fastq_pairs_pd_chunked( infilelist,
             chunknum += 1
 
         logging.debug(f'handled pair number {pairnum}')
-        sh.add_value('/fastq',f'pair{pairnum}_len', len(ndf) )
+        
+        pair_len = len(df) - old_len
+        old_len = len(df)
+        sh.add_value('/fastq',f'pair{pairnum}_len', pair_len )
         pairnum += 1
     logging.debug(f'dtypes =\n{df.dtypes}')
     logging.info('Finished processing all input.')
