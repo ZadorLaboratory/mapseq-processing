@@ -329,7 +329,7 @@ def package_pairs(itemlist):
     pack up input list of elements into list of paired tuples. 
     ['a','b','c','d'] -> [('a','b'),('c','d')]
     '''
-    if len(infiles) %2 != 0:
+    if len(itemlist) %2 != 0:
         logging.error(f'number of elements must be multiple of two!')
     pairlist = []
     a = None
