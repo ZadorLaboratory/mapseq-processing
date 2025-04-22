@@ -1,0 +1,16 @@
+
+
+Useful functions
+
+# sort dataframe via natsort on column:
+
+from natsort import natsort_keygen
+df.sort_values(
+    by="time",
+    key=natsort_keygen()
+)
+
+# unique VBCs by brain
+df.groupby(by=['brain']).agg({'vbc_read_col':'nunique'})
+
+

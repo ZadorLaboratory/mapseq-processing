@@ -442,7 +442,7 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
                 scol = sheet_to_sample[ecol_stp]
                 logging.debug(f'found mapping {ecol} -> {scol}')
                 cser = edf[ecol]
-                logging.debug(f'column for {scol}:\n{cser}')
+                #logging.debug(f'column for {scol}:\n{cser}')
                 sdf[scol] = cser
             
             except KeyError:
@@ -452,7 +452,7 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
                 logging.error(f'error while handling {ecol} ')
                 logging.info(traceback.format_exc(None))
                 
-        logging.debug(f"rtprimer = {sdf['rtprimer']} dtype={sdf['rtprimer'].dtype}")
+        #logging.debug(f"rtprimer = {sdf['rtprimer']} dtype={sdf['rtprimer'].dtype}")
         
         # Only keep rows with rtprimer info. 
         sdf = sdf[sdf['rtprimer'].isna() == False]
@@ -580,12 +580,12 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000)
         }
 
     CAT_COLS = {
-        'reads'      : [],
-        'aggregated' : [],
-        'filtered'   : [],
-        'collapsed'   : [],
-        'readtable'  : ['label','site','type','brain','region'],
-        'vbctable'   : ['label','site','type','brain','region'],        
+        'reads'      : ['source'],
+        'aggregated' : ['source'],
+        'filtered'   : ['source'],
+        'collapsed'   : ['source'],
+        'readtable'  : ['label','site','type','brain','region','source'],
+        'vbctable'   : ['label','site','type','brain','region','source'],        
         }
     
     logging.info(f'loading {infile} as format {fformat} use_dask={use_dask} chunksize={chunksize}')
@@ -700,6 +700,7 @@ def process_fastq_pairs_pd_chunked( infilelist,
     r2e = int(cp.get('fastq','r2end'))
     
     chunksize = int(cp.get('fastq','chunksize'))
+    source_regex = cp.get('fastq','source_regex')
     logging.info(f'chunksize={chunksize} lines.')
     logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
     df = None
@@ -709,7 +710,9 @@ def process_fastq_pairs_pd_chunked( infilelist,
     old_len = 0
 
     for (read1file, read2file) in infilelist:
-        logging.info(f'handling {read1file}, {read2file} ...')
+        source_label = parse_sourcefile(read1file, source_regex)
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label}')
+
         fh1 = get_fh(read1file)
         dfi1 = pd.read_csv(fh1, 
                            header=None, 
@@ -732,12 +735,14 @@ def process_fastq_pairs_pd_chunked( infilelist,
                 logging.info(f'got chunk len={len(chunk1)} slicing...')
                 df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
                 logging.info(f'chunk df type={df.dtypes}')           
+                df['source'] = source_label
             else:
                 logging.debug(f'making additional read sequence DF...')
                 ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
                 logging.info(f'got chunk len={len(chunk1)} slicing...')
                 ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
                 logging.info(f'chunk df type={ndf.dtypes}')                
+                ndf['source'] = source_label                
                 df = pd.concat([df, ndf], copy=False, ignore_index=True)
             logging.debug(f'handled chunk number {chunknum}')
             chunknum += 1
@@ -1389,12 +1394,14 @@ def process_make_readtable_pd(df,
     rtdict = get_rtprimer_dict(bcfile, labels)
     logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
     logging.info('filling in labels by SSI sequences...')
+    
     df['label'] = df['ssi'].map(bcdict)
     logging.info('labelling unmatched...')
     df.fillna({'label': 'nomatch'}, inplace=True)
 
     logging.info('filling in rtprimer number by SSI sequences...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
+
     logging.info('labelling unmatched...')
     df.fillna({'rtprimer': 'nomatch'}, inplace=True)
     
@@ -1450,10 +1457,21 @@ def process_make_readtable_pd(df,
     #n_real =  (df['type'] == 'real')['read_count'].sum() 
     #n_nomatch = (df['type'] == 'nomatch')['read_count'].sum()
 
-    # get rid of nans, and calculate template switching value. 
+    # get rid of nans, and calculate template switching value.    
     ndf = df.replace('nomatch',np.nan)
+    
+    of = os.path.join( outdir, 'all-raw.tsv')
+    ndf.to_csv(of, sep='\t')
+    logging.info(f'Wrote all-raw DF len={len(ndf)} to {of}')
+    
+    nmdf = df[ ['label','type','site'] ]
+    nmdf = df[ df.isna().any(axis=1) ]
+    of = os.path.join( outdir, 'nomatch.tsv')
+    nmdf.to_csv(of, sep='\t')
+    n_nomatch = len(nmdf)
+    logging.info(f'Wrote nomatch DF len={len(nmdf)} to {of}')
+        
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
-
     # find and remove ( at least) known template-switch rows from dataframe. 
     tsdf = ndf[ ((ndf['type'] == 'lone') & (ndf['site'].str.startswith('target')) & (ndf['site'] != 'target-control'))]
     of = os.path.join(outdir, 'template_switch.tsv') 
@@ -1471,7 +1489,7 @@ def process_make_readtable_pd(df,
     #sh.add_value('/readtable', 'n_spike', str(n_spike) )     
     #sh.add_value('/readtable', 'n_lone', str(n_lone) )      
     #sh.add_value('/readtable', 'n_real', str(n_real) )     
-    #sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
+    sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
 
     return ndf
 
@@ -1700,7 +1718,7 @@ def process_filter_vbctable(df,
 
 def process_make_matrices(df,
                           outdir=None,
-                          exp_id = 'M001',  
+                          exp_id = None,  
                           label_column='label',
                           cp = None):
     '''
@@ -1717,8 +1735,10 @@ def process_make_matrices(df,
         cp = get_default_config()
     if outdir is None:
         outdir = os.path.abspath('./')
+
+    if exp_id is None:
+        exp_id = cp.get('project','project_id')
    
-    clustermap_scale = cp.get('matrices','clustermap_scale')
     logging.debug(f'running exp_id={exp_id} ')
 
     df['brain'] = df['brain'].astype('string')

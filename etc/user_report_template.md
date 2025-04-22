@@ -75,6 +75,10 @@ What we haven’t done but MAPseq users should do is to:
 1. Check consistency across multiple brains: Are neurons mixed in t-sne? Are the min distance within a brain similar to min distance across brains?  
 1. Clustering: do you get known cell types?
 
+
+### Data and sample storage policy
+The MAPseq/BARseq Core Facility is pleased to offer secure storage of sequencing data and processed samples for a period of six months (0.5 years) following the completion of your project. During this time, we kindly encourage you to back up any sequencing data you wish to retain. If you would like to have your samples returned, please feel free to request shipment within this six month window. After this period, all sequencing data will be permanently deleted unless you have made other arrangements with us. We respectfully remind you that it is your responsibility to request data retrieval or sample return within the allotted timeframe. We regret that we are unable to retain data or samples beyond the six month period without prior notice
+
 ### Acknowledgement Policy
 
 If the services from the MAPseq Core Facility are used to generate data in any publications, please acknowledge the MAPseq Core Facility in CSHL for processing samples for MAPseq sequencing.

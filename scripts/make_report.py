@@ -147,7 +147,7 @@ if __name__ == '__main__':
     # pandoc --metadata-file ~/git/mapseq-processing/etc/user_report_metadata.yaml  
     # statsreport.md -o statsreport.pdf
     if args.outfile is not None:
-        logging.info(f'converting Mardown to PDF...')
+        logging.info(f'converting Markdown to PDF...')
         outfile = os.path.abspath(args.outfile)
         filepath = os.path.abspath(outfile)    
         dirname = os.path.dirname(filepath)
@@ -160,4 +160,11 @@ if __name__ == '__main__':
                                    extra_args=[f'--metadata-file', f'{args.metadata}']
                                    )
         logging.info(f'writing PDF to {pdfoutfile} ')
+        
+        docxoutfile = os.path.join(dirname, f'{base}.docx') 
+        rv = pypandoc.convert_file( args.outfile, 
+                                    'docx',
+                                    outputfile=docxoutfile,
+                                    extra_args=[f'--metadata-file', f'{args.metadata}']
+                                    )
     
