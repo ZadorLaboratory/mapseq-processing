@@ -178,11 +178,9 @@ This typically takes about 12 minutes. (3 minutes on Mac M3)
 The VBC table contains ALL information from the experiment including controls, L1s, and any data that results from errors. To simplify matrix creation, we apply all thresholds and filtering at this step. This step:
 
 - Removes L1s and any non-L1 sample reads with L1 tags
-- Applies minimum UMI count in target and/or injection areas (min_target_umi, min_inj_umi)
 - Optionally calculates minimum UMI counts based on biological negative or water control.
 - Optionally filters out VBCs not present in the injection site (require_injection)
-- Thresholds target VBC and injection VBCs by appropriate UMI count. 
-- Optionally includes injection VBCs (if they exist in some target)
+- Applies minimum UMI count in target and/or injection areas (min_target_umi, min_inj_umi) 
 
 This step also produces: 
 - controls.tsv	  All control site data (target-water-control) 

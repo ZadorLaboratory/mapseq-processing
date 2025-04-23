@@ -2251,3 +2251,104 @@ def process_make_matrices_pd(df,
         logging.info(f'done with brain={brain_id}')    
     logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
     return norm_dict
+
+
+def load_sample_info_old(config, file_name, sheet_name='Sample information'):
+    #
+    # Parses Excel spreadsheet to get orderly sample metadata, saves as sampleinfo.tsv.     
+    # OR Reads in sampleinfo.tsv
+    # Assumes various properties of spreadsheet that need to stay static. 
+    #
+    #   ['Tube # by user', 'Our Tube #', 'Sample names provided by user',
+    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
+    #
+    # If brain is not given, or is empty, all are set to 'brain1'. 
+    # If region is not given, or is empty, all are set to <rtprimer>
+    # 
+    
+    # Mappings for excel columns. 
+    sheet_to_sample = {
+            'Tube # by user'                  : 'usertube', 
+            'Our Tube #'                      : 'ourtube', 
+            'Sample names provided by user'   : 'samplename', 
+            'Site information'                : 'siteinfo',
+            'RT primers for MAPseq'           : 'rtprimer',
+            'Brain'                           : 'brain',
+            'Region'                          : 'region',
+            'Matrix Column'                   : 'matrixcolumn',
+        }
+    
+    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
+    int_sample_col = ['usertube', 'ourtube', 'rtprimer', 'region', 'matrixcolumn']     # brain is sometimes not a number. 
+    str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
+
+    if file_name.endswith('.xlsx'):
+        edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
+        sdf = pd.DataFrame()
+        
+        for ecol in edf.columns:
+            ecol_stp = ecol.strip()    
+            try:
+                # map using stripped column name, retrieve using actual excel column name
+                # which may have trailing spaces...
+                scol = sheet_to_sample[ecol_stp]
+                logging.debug(f'found mapping {ecol} -> {scol}')
+                cser = edf[ecol]
+                #logging.debug(f'column for {scol}:\n{cser}')
+                sdf[scol] = cser
+            
+            except KeyError:
+                logging.debug(f'no mapping for {ecol} continuing...')
+            
+            except Exception as ex:
+                logging.error(f'error while handling {ecol} ')
+                logging.info(traceback.format_exc(None))
+                
+        #logging.debug(f"rtprimer = {sdf['rtprimer']} dtype={sdf['rtprimer'].dtype}")
+        
+        # Only keep rows with rtprimer info. 
+        sdf = sdf[sdf['rtprimer'].isna() == False]
+
+        # Fix brain column
+        sdf.loc[ sdf.brain.isna(), 'brain'] = 0
+        try:
+            sdf.brain = sdf.brain.astype('int')
+        except ValueError:
+            pass
+        sdf.brain = sdf.brain.astype('string')
+        sdf.loc[ sdf.brain == '0', 'brain'] = ''
+
+        # fix rtprimer column, if it was read as float string (e.g '127.0' )
+        #sdf['rtprimer'] =  sdf['rtprimer'].astype(float).astype(int).astype(str)
+        
+        for scol in sample_columns:
+            try:
+                ser = sdf[scol]
+            except KeyError as ke:
+                logging.info(f'no column {scol}, required. Creating...')
+                if scol == 'samplename':
+                    sdf[scol] = sdf['ourtube']
+                elif scol == 'region':
+                    sdf[scol] = sdf['rtprimer']
+        
+        # fix empty rows. 
+        sdf.brain = sdf.brain.astype(str)
+        #sdf.brain[sdf.brain == 'brain-nan'] = ''
+        sdf.loc[sdf.brain == 'brain-nan','brain'] = ''
+                    
+        sdf.replace(r'^s*$', float('NaN'), regex = True, inplace=True)
+        sdf.dropna(how='all', axis=0, inplace=True)        
+        sdf = fix_columns_int(sdf, columns=int_sample_col)
+        sdf = fix_columns_str(sdf, columns=str_sample_col)
+
+    elif file_name.endswith('.tsv'):
+        sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
+        #df.fillna(value='', inplace=True)
+        sdf = sdf.astype('str', copy=False)    
+        sdf = fix_columns_int(sdf, columns=int_sample_col)
+    else:
+        logging.error(f'file {file_name} neither .xlsx or .tsv')
+        sdf = None
+        
+    logging.debug(f'created reduced sample info df:\n{sdf}')
+    return sdf

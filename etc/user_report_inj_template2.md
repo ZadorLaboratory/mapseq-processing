@@ -14,10 +14,8 @@ For each brain:
 Raw real barcode UMI counts from filtered VBC table.   
 
 Only includes barcodes where:   
-If the experiment has injection samples, then those areas must have a minimum of  \> {{conf['vbctable']['inj_min_umi']}} molecules (UMIs).   
 At least one target area had \> {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
 
-If the experiment had injection samples, then the matrix contains only barcodes present in both injection and target areas. If there 
 Rows represent barcodes and columns represent areas. 
 
 \<brain\>.sbcm.tsv	spike-in barcode matrix.   
@@ -35,7 +33,7 @@ Rows represent barcodes and columns represent areas.
 2. We take the barcodes of all remaining reads, and perform an all-against-all alignment and find all sets of barcodes with Hamming distance of 3 or less from each other (based on 30 bp of barcode length). These sets are then used to 'collapse' the barcode in all the full sequences (VBC+UMI+SSI) to a single unique sequence, essentially 'fixing' replication and sequencing errors in the barcodes.   
 3. We then take the full sequences and sort them all according to SSIs (which correspond to unique brain areas), and then determine the molecule number of a barcode in a certain brain area by counting UMIs. As this is done we aggregate the original read counts for each UMI.   
 4. Within each SSI we separate out spike-in and real sequences based on their properties.   
-5. We create the aggregate table \<experiment\>.vbctable.tsv above.   
+5. We create the aggregate table {{ conf['project']['project_id'] }}.vbctable.tsv above.   
 6. The aggregate table can now be converted to connection matrices, with the number of each real and spike-in barcode in each brain area. In this matrix, each row is one barcode, each column is a brain area, and the element of the matrix corresponds to the molecule number of the barcode in the brain area.  
 7. Lastly, we normalized the number of molecules of each barcode in each brain area to the total number of spike-in molecules in the corresponding brain area.  This is to compensate RT/PCR variations during sequencing library preparation.  This produces the normalized barcode matrix above. 
 
@@ -44,10 +42,10 @@ Rows represent barcodes and columns represent areas.
  For this MAPseq data set, we have checked:
 
 1. Sequencing depth for projection sites. 
-   There are a minimum of {{ conf['vbctable']['target_min_umi'] }} reads for each barcode in target site samples and 2 reads for injection site samples. This sequencing depth is considered enough for target sites.
+   There are a minimum of {{ conf['vbctable']['target_min_umi'] }} UMIs for each barcode in target site samples. This sequencing depth is considered enough for target sites.
 
-Spike-in counts are mostly uniform across all projections sites and all injection sites.  
-We have seen 20 folds difference between injection sites and projection sites, and 2-3 folds difference within most projection sites, which is considered normal. 
+Spike-in counts are mostly uniform across all projections sites.  
+We have seen at most 2-3 folds difference in spike-in counts between projection sites, which is considered normal. 
 
 1. We have estimated the fraction of neurons labeled with the same barcodes using barcode diversity (\~20M for the current library) and unique barcodes recovered. 
 
@@ -60,10 +58,11 @@ The estimated amount of reused barcodes within each brain and across different b
 
 1. We have checked barcode amount in H2O controls. 
 
-The UMI counts from negative controls are listed in the matrix named “ctrl”. This background looks normal. 
+The UMI counts from negative controls are listed in the TSV named “controls.tsv”. This background looks normal. 
 
 1. We have calculated false positive rates. For target sites, the false positive rate is 0 when the UMI threshold is set above 3\.  
 1. We have checked the template switching rate induced during sample processing (PCR). The rate is 0.08%, which means 0.08% of the total molecules in the target sites coming from the template switching. This rate is considered low.
+
 
 ### Further Analysis
 

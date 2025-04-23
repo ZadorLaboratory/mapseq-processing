@@ -356,6 +356,8 @@ def calc_min_threshold(config, df, site='target-negative'):
     return min_threshold
 
 
+   
+
 
 def get_read_count_threshold(config, cdf, site=None):
     '''
@@ -401,6 +403,8 @@ def threshold_read_counts(config, df, threshold=1):
     df = df[df['read_count'] >= threshold].copy()
     return df
 
+
+
 def load_sample_info(config, file_name, sheet_name='Sample information'):
     #
     # Parses Excel spreadsheet to get orderly sample metadata, saves as sampleinfo.tsv.     
@@ -427,11 +431,9 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
         }
     
     sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
-    int_sample_col = ['usertube', 'ourtube', 'rtprimer', 'region', 'matrixcolumn']     # brain is sometimes not a number. 
-    str_sample_col = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain' ,'region']
 
     if file_name.endswith('.xlsx'):
-        edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1)        
+        edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1, dtype=str)        
         sdf = pd.DataFrame()
         
         for ecol in edf.columns:
@@ -442,7 +444,6 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
                 scol = sheet_to_sample[ecol_stp]
                 logging.debug(f'found mapping {ecol} -> {scol}')
                 cser = edf[ecol]
-                #logging.debug(f'column for {scol}:\n{cser}')
                 sdf[scol] = cser
             
             except KeyError:
@@ -451,24 +452,12 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
             except Exception as ex:
                 logging.error(f'error while handling {ecol} ')
                 logging.info(traceback.format_exc(None))
-                
-        #logging.debug(f"rtprimer = {sdf['rtprimer']} dtype={sdf['rtprimer'].dtype}")
         
         # Only keep rows with rtprimer info. 
         sdf = sdf[sdf['rtprimer'].isna() == False]
+        sdf.fillna('', inplace=True)
 
-        # Fix brain column
-        sdf.loc[ sdf.brain.isna(), 'brain'] = 0
-        try:
-            sdf.brain = sdf.brain.astype('int')
-        except ValueError:
-            pass
-        sdf.brain = sdf.brain.astype('string')
-        sdf.loc[ sdf.brain == '0', 'brain'] = ''
-
-        # fix rtprimer column, if it was read as float string (e.g '127.0' )
-        #sdf['rtprimer'] =  sdf['rtprimer'].astype(float).astype(int).astype(str)
-        
+        # Ensure required columns are present, fill in with reasonable values.         
         for scol in sample_columns:
             try:
                 ser = sdf[scol]
@@ -478,55 +467,17 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
                     sdf[scol] = sdf['ourtube']
                 elif scol == 'region':
                     sdf[scol] = sdf['rtprimer']
+        logging.info(f'loaded DF from Excel {file_name}')
         
-        # fix empty rows. 
-        sdf.brain = sdf.brain.astype(str)
-        #sdf.brain[sdf.brain == 'brain-nan'] = ''
-        sdf.loc[sdf.brain == 'brain-nan','brain'] = ''
-                    
-        sdf.replace(r'^s*$', float('NaN'), regex = True, inplace=True)
-        sdf.dropna(how='all', axis=0, inplace=True)        
-        sdf = fix_columns_int(sdf, columns=int_sample_col)
-        sdf = fix_columns_str(sdf, columns=str_sample_col)
-
     elif file_name.endswith('.tsv'):
         sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
-        #df.fillna(value='', inplace=True)
         sdf = sdf.astype('str', copy=False)    
-        sdf = fix_columns_int(sdf, columns=int_sample_col)
     else:
         logging.error(f'file {file_name} neither .xlsx or .tsv')
         sdf = None
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
-
-def load_seqtsv_pd(infile):
-    '''
-    handle reads output of process_fastq_pairs.
-    52nt string sequence 
-    '''
-    logging.debug(f'loading reads TSV from {infile}')
-    STR_COLUMNS = [ 'vbc_read','spikeseq', 'ssi','umi','libtag']
-    INT_COLUMNS = ['read_count']
-    df = pd.read_csv(infile, sep='\t', index_col=0)
-    logging.debug(f'dtypes={df.dtypes}')
-    for col in STR_COLUMNS:
-        logging.debug(f'converting {col} to string[pyarrow]')
-        try:
-            df[col] = df[col].astype('string[pyarrow]')
-        except KeyError:
-            logging.warning(f'no {col} column. continue...')
-        
-    for col in INT_COLUMNS:
-        logging.debug(f'converting {col} to category')
-        try:
-            df[col] = df[col].astype('uint32')    
-        except KeyError:
-            logging.warning(f'no {col} column. continue...')
-            
-    log_objectinfo(df, 'reads-df')
-    return df
 
 
 def load_mapseq_matrix_df( infile, use_dask = False ):
@@ -584,8 +535,8 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000)
         'aggregated' : ['source'],
         'filtered'   : ['source'],
         'collapsed'   : ['source'],
-        'readtable'  : ['label','site','type','brain','region','source'],
-        'vbctable'   : ['label','site','type','brain','region','source'],        
+        'readtable'  : ['label','site','type','brain','region','source','ourtube'],
+        'vbctable'   : ['label','site','type','brain','region','source','ourtube'],        
         }
     
     logging.info(f'loading {infile} as format {fformat} use_dask={use_dask} chunksize={chunksize}')
@@ -884,14 +835,8 @@ def filter_reads_pd(df,
     sh.add_value('/fastq_filter','num_has_n', num_has_n )
     sh.add_value('/fastq_filter','num_kept', str(len(df)) )
     # changes made to inbound df, but return anyway
+    
     return df
-
-
-
-
-
-            
-      
 
 
 def filter_counts_fasta(cp, infile, 
@@ -966,9 +911,6 @@ def set_siteinfo(df, sampdf, column='sequence', cp=None):
     return df
     
 
-
-
-
 def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     initlen = len(seqdf)
     logging.debug(f'collapsing with read counts for sequence DF len={len(seqdf)}')
@@ -980,8 +922,7 @@ def aggregate_reads_pd(seqdf, pcolumn='sequence'):
 def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunksize=50000000, dask_temp=None):
     '''
     ASSUMES INPUT IS DASK DATAFRAME
-    
-    
+    retain other columns and keep first value
     
     '''
     if dask_temp is not None:
@@ -996,6 +937,14 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunk
     ndf = ndf.reset_index()
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     logging.info(f'computed counts. new DF len={len(ndf)}')
+    
+    # get back all other columns from original set. e.g. 'source'
+    logging.info(f'merging to recover other columns from original DF')
+    ndf = dd.from_pandas(ndf)
+    #ndf = pd.merge(ndf, seqdf.drop_duplicates(subset=column,keep='first'),on=column, how='left')  
+    result = ndf.merge(seqdf.drop_duplicates(subset=column,keep='first'), on=column, how='left')  
+    ndf = result.compute()
+    logging.info(f'got merged DF=\n{ndf}')
   
     if min_reads > 1:
         logging.info(f'Dropping reads with less than {min_reads} read_count.')
@@ -1358,16 +1307,19 @@ def process_make_readtable_pd(df,
                           outdir=None, 
                           cp = None):
     '''
-    take split/aligned read file.
-    produce fully tagged and filtered data table.
+    take split/aligned read file and produce a produce 
+    fully tagged and read-oriented data table, with 
+    validated/consistent contents
+    
     -- convert SSI column to BCXXX tag. 
     -- add optional region label
     -- classify by site-type
     -- set brain label
-    
-    aggregate and sum read and UMI counts by type, libtag, and ssi. 
+    -- aggregate and sum read counts 
+
     
     '''
+        
     logging.info(f'inbound df len={len(df)} columns={df.columns}')
     if outdir is None:
         outdir = os.path.abspath('./')
@@ -1395,13 +1347,13 @@ def process_make_readtable_pd(df,
     logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
     logging.info('filling in labels by SSI sequences...')
     
+    logging.info('filling in label by SSI sequence...')
     df['label'] = df['ssi'].map(bcdict)
     logging.info('labelling unmatched...')
     df.fillna({'label': 'nomatch'}, inplace=True)
 
-    logging.info('filling in rtprimer number by SSI sequences...')    
+    logging.info('filling in rtprimer number by SSI sequence...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
-
     logging.info('labelling unmatched...')
     df.fillna({'rtprimer': 'nomatch'}, inplace=True)
     
@@ -1410,11 +1362,11 @@ def process_make_readtable_pd(df,
     # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
    
     logging.info('identifying reals by libtag...')
-    rmap = df['libtag'].str.match('[TC][TC]$')
+    rmap = df['libtag'].str.match(realregex)
     df.loc[rmap, 'type'] = 'real'
     
     logging.info('identifying L1s by libtag...')
-    lmap = df['libtag'].str.match('[AG][AG]$')
+    lmap = df['libtag'].str.match(loneregex)
     df.loc[lmap, 'type'] = 'lone'
 
     logging.info('identifying spikeins by spikeseq matching...')
@@ -1424,6 +1376,16 @@ def process_make_readtable_pd(df,
     df.fillna({'type': 'nomatch'}, inplace=True)
     df.drop(['spikeseq'], inplace=True, axis=1)
 
+    # REQUIRED VALUE, so nomatch     
+    # set site
+    sdf = sampdf[['rtprimer','siteinfo']]
+    sdf = sdf[sdf['siteinfo'] != '']
+    smap = dict(zip(sdf['rtprimer'], sdf['siteinfo']))
+    df['site'] = df['rtprimer'].map(smap)
+    df.fillna({'site': 'nomatch'}, inplace=True)
+    sdf = None    
+
+    # NOT REQUIRED VALUES, so '' vs. nomatch. 
     # set brain
     bdf = sampdf[['rtprimer','brain']]
     bdf = bdf[bdf['brain'] != '']
@@ -1439,14 +1401,14 @@ def process_make_readtable_pd(df,
     df['region'] = df['rtprimer'].map(rmap)
     df.fillna({'region': ''}, inplace=True)
     rdf = None
-    
-    # set site
-    sdf = sampdf[['rtprimer','siteinfo']]
-    sdf = sdf[sdf['siteinfo'] != '']
-    smap = dict(zip(sdf['rtprimer'],sdf['siteinfo']))
-    df['site'] = df['rtprimer'].map(smap)
-    df.fillna({'site': ''}, inplace=True)
-    sdf = None    
+
+    # set ourtube
+    tdf = sampdf[['rtprimer','ourtube']]
+    tdf = tdf[tdf['ourtube'] != '']
+    tmap = dict(zip(tdf['rtprimer'],tdf['ourtube']))
+    df['ourtube'] = df['rtprimer'].map(tmap)
+    df.fillna({'ourtube': ''}, inplace=True)
+    tdf = None
     
     # calc/ collect stats
     sh = get_default_stats()    
@@ -1456,47 +1418,55 @@ def process_make_readtable_pd(df,
     #n_lone =  (df['type'] == 'lone')['read_count'].sum()  
     #n_real =  (df['type'] == 'real')['read_count'].sum() 
     #n_nomatch = (df['type'] == 'nomatch')['read_count'].sum()
+    #ndf = df.replace('nomatch', np.nan)
+    
+    of = os.path.join( outdir, 'all_reads.tsv')
+    df.to_csv(of, sep='\t')
+    logging.info(f'Wrote all_reads DF len={len(df)} to {of}')
+    
+    # Identify and remove rows with nomatch for label and/or type
+    # meaning nonsense libtag or unmatched SSI value. 
+    nmidf = df[ ['label','type'] ].copy()
+    nmidf.replace('nomatch', np.nan, inplace=True)
+    nmidf = nmidf[ nmidf.isna().any(axis=1) ]
+    
+    nmdf = df.iloc[nmidf.index]
+    
+    logging.debug(f'dropping nomatch rows. before len={len(df)}')    
+    df.drop(nmidf.index, inplace=True)
+    df.reset_index(inplace=True, drop=True)
+    logging.debug(f'dropped nomatch rows. after len={len(df)}') 
 
-    # get rid of nans, and calculate template switching value.    
-    ndf = df.replace('nomatch',np.nan)
-    
-    of = os.path.join( outdir, 'all-raw.tsv')
-    ndf.to_csv(of, sep='\t')
-    logging.info(f'Wrote all-raw DF len={len(ndf)} to {of}')
-    
-    nmdf = df[ ['label','type','site'] ]
-    nmdf = df[ df.isna().any(axis=1) ]
     of = os.path.join( outdir, 'nomatch.tsv')
+    nmdf.reset_index(inplace=True, drop=True)
     nmdf.to_csv(of, sep='\t')
     n_nomatch = len(nmdf)
     logging.info(f'Wrote nomatch DF len={len(nmdf)} to {of}')
-        
-    ndf.dropna(inplace=True, axis=0, ignore_index=True)
-    # find and remove ( at least) known template-switch rows from dataframe. 
-    tsdf = ndf[ ((ndf['type'] == 'lone') & (ndf['site'].str.startswith('target')) & (ndf['site'] != 'target-control'))]
+
+    # find and remove (at least) known template-switch rows from dataframe.
+    # template switch type is L1 (from libtab) but is a valid target (from SSI) 
+    tsdf = df[ ((df['type'] == 'lone') & ( df['site'].str.startswith('target'))) ]
     of = os.path.join(outdir, 'template_switch.tsv') 
-    logging.info(f'Writing template switch DF len={len(df)} Writing to {of}')
+    logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
     tsdf.to_csv(of, sep='\t')
     n_tswitch = len(tsdf)
     
-    ndf.drop(tsdf.index, inplace=True)
-    ndf.reset_index(drop=True, inplace=True)
+    # remove known template switch from readtable
+    df.drop(tsdf.index, inplace=True)
+    df.reset_index(drop=True, inplace=True)
      
-    # label tswitch tswitch and filter from final...
-    # 
-
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     #sh.add_value('/readtable', 'n_spike', str(n_spike) )     
     #sh.add_value('/readtable', 'n_lone', str(n_lone) )      
     #sh.add_value('/readtable', 'n_real', str(n_real) )     
     sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
 
-    return ndf
+    return df
 
 
 def process_make_vbctable_pd(df,
                           outdir=None,
-                          inj_min_reads = 3,
+                          inj_min_reads = 2,
                           target_min_reads = 2, 
                           cp = None):
     '''   
@@ -1506,6 +1476,8 @@ def process_make_vbctable_pd(df,
     -- remove nomatches
     -- threshold read_count by site type
     -- collapse by VBC sequence, calculating UMI count
+    
+    Drops source field since aggregation would make it ambiguous.
     
     This should  be prepared for input it make VBC matrices    
     '''
@@ -1518,6 +1490,7 @@ def process_make_vbctable_pd(df,
     #  ssi:        we have assigned label
     #  rtprimer:     "  " 
     #  vbc_read:   we have already collapsed
+    
     logging.info(f'dropping redundant readtable columns: libtag ssi rtprimer vbc_read  ')
     ndf.drop(labels=['libtag','ssi','rtprimer'], axis=1, inplace=True)   
     ndf.replace('nomatch',np.nan, inplace=True)
@@ -1542,15 +1515,33 @@ def process_make_vbctable_pd(df,
                                                               'read_count':'sum', 
                                                               'brain':'first',
                                                               'region':'first',
-                                                              'site':'first'
+                                                              'site':'first',
+                                                              'ourtube':'first',    
                                                               } ).reset_index()
-    
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
+
+
+    # remove internal controls that end user needn't see
+    # remove L1s
+    # pull out L1 VBCs expected to have L1 libtag. 
+    lones = udf[ (udf['site'] == 'target-lone') & (udf['type'] == 'lone') ]
+    udf = udf[ udf['site'] != 'target-lone' ]
+
     
+    # pull out remaining VBCs with matching SSIs that we did not expect to have L1 libtags. 
+    anomalies = udf[ udf['type'] == 'lone' ]
+    udf = udf[ udf['type'] != 'lone' ]
+    anomalies.reset_index(inplace=True, drop=True)  
+    anomalies.to_csv(f'{outdir}/anomalies.tsv', sep='\t')
+
+    # output L1s and anomalies. 
+    lones.reset_index(inplace=True, drop=True)
+    lones.to_csv(f'{outdir}/lones.tsv', sep='\t')
+
+    udf.reset_index(inplace=True, drop=True)  
     sh = get_default_stats()
-    sh.add_value('/vbctable','n_vbcs', len(udf) )    
-    
+    sh.add_value('/vbctable','n_vbcs', len(udf) )        
     log_objectinfo(udf, 'umi-df')
     return udf
 
@@ -1576,6 +1567,8 @@ def process_filter_vbctable(df,
     
     
     '''
+    CONTROLS=['target-negative','target-water-control','injection-water-control']
+    
     if cp is None:
         cp = get_default_config()
     if outdir is None:
@@ -1600,32 +1593,21 @@ def process_filter_vbctable(df,
 
     sh = get_default_stats() 
 
-    # pull out lone VBCs expected to have L1 libtag. 
-    lones = df[ (df['site'] == 'target-lone') & (df['type'] == 'lone') ]
-    
-    df = df[ df['site'] != 'target-lone' ]
-    
-    # pull out VBCs with matching SSIs that we did not expect to have L1 libtags. 
-    # ?? template switch?  sequencing error?
-    anomalies = df[ df['type'] == 'lone' ]
-    df = df[ df['type'] != 'lone' ]
-    anomalies.reset_index(inplace=True, drop=True)
-
-    # remove all controls by SSI
-    controls = df[ df['site'].str.contains('control') ]
-    df = df[ df['site'].str.contains('control') == False]
-    controls.reset_index(inplace=True, drop=True)
-
+    # remove spikes and save them 
+    # Spikes to NOT get thesholded by UMI 
     spikes = df[ df['type'] == 'spike']
     df = df[ df ['type'] != 'spike']
 
+    # remove all controls by SSI/site, save to TSV
+    controls = df[ df['site'].isin( CONTROLS ) ]
+    df = df[ df['site'].isin( CONTROLS ) == False]
+    controls.reset_index(inplace=True, drop=True)
+    controls.to_csv(f'{outdir}/controls.tsv', sep='\t')
+
+    # Separate targets and injections for specific UMI thresholding. 
     targets = df[ df['site'].str.startswith('target') ]
     injections = df[ df['site'].str.startswith('injection') ]
 
-    # output controls and anomalies
-    anomalies.to_csv(f'{outdir}/anomalies.tsv', sep='\t')
-    controls.to_csv(f'{outdir}/controls.tsv', sep='\t')
-    
 
     # threshold injection(s)
     if inj_min_umi > 1:
@@ -1767,8 +1749,8 @@ def process_make_matrices(df,
         stdf = spikes[spikes['site'].str.startswith('target')]
         sidf = spikes[spikes['site'].str.startswith('target')]
         
-        target_columns = list( rtdf['label'].unique())
-        injection_columns = list( ridf['label'].unique())
+        target_columns = list( rtdf[label_column].unique())
+        injection_columns = list( ridf[label_column].unique())
 
         # reals        
         rbcmdf = reals.pivot(index='vbc_read_col', columns=label_column, values='umi_count')

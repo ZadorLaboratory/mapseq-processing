@@ -66,7 +66,15 @@ if __name__ == '__main__':
                     required=False,
                     default='M001',
                     type=str, 
-                    help='Explicitly provided experiment id, e.g. M205')
+                    help='Explicitly provided tag.')
+
+    parser.add_argument('-l','--label', 
+                    metavar='label',
+                    required=False,
+                    default='label',
+                    type=str, 
+                    help='Field to use as column label, e.g. [ label | ourtube | region ]')
+
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -142,19 +150,11 @@ if __name__ == '__main__':
     sh = StatsHandler(outdir=outdir, datestr=datestr)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    #process_make_matrices_pd(df,
-    #                           exp_id = args.expid,  
-    #                           inj_min_umi = args.inj_min_umi,
-    #                           target_min_umi = args.target_min_umi,
-    #                           target_min_umi_absolute = args.target_min_umi_absolute,
-    #                           outdir=outdir, 
-    #                           label_column='label',
-    #                           cp=cp)
 
     process_make_matrices(df,
                                exp_id = args.expid,  
                                outdir=outdir, 
-                               label_column='label',
+                               label_column=args.label,
                                cp=cp)
 
     logging.info(f'Made matrices in {outdir}...')
