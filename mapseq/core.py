@@ -919,7 +919,7 @@ def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     return ndf
 
-def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=2, chunksize=50000000, dask_temp=None):
+def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunksize=50000000, dask_temp=None):
     '''
     ASSUMES INPUT IS DASK DATAFRAME
     retain other columns and keep first value
@@ -1593,16 +1593,16 @@ def process_filter_vbctable(df,
 
     sh = get_default_stats() 
 
-    # remove spikes and save them 
-    # Spikes to NOT get thesholded by UMI 
-    spikes = df[ df['type'] == 'spike']
-    df = df[ df ['type'] != 'spike']
-
     # remove all controls by SSI/site, save to TSV
     controls = df[ df['site'].isin( CONTROLS ) ]
     df = df[ df['site'].isin( CONTROLS ) == False]
     controls.reset_index(inplace=True, drop=True)
     controls.to_csv(f'{outdir}/controls.tsv', sep='\t')
+
+    # remove spikes and save them 
+    # Spikes to NOT get thesholded by UMI 
+    spikes = df[ df['type'] == 'spike']
+    df = df[ df ['type'] != 'spike']
 
     # Separate targets and injections for specific UMI thresholding. 
     targets = df[ df['site'].str.startswith('target') ]

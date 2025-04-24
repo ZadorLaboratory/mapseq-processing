@@ -24,14 +24,16 @@ For each brain:
 Raw real barcode UMI counts from filtered VBC table.   
 Only includes barcodes where:   
 At least one target area had \> {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
-Rows represent barcodes and columns represent areas. 
+Rows represent barcodes and columns represent areas.  
 
 \<brain\>.sbcm.tsv	spike-in barcode matrix.   
 			Spike in barcode UMI counts.   
 			Rows represent barcodes and columns represent areas. 
 
 \<brain\>.nbcm.tsv	normalized barcode matrix  
-			Filtered barcode values normalized by spike-in counts per SSI area. 
+			Filtered barcode values normalized by spike-in counts per SSI area.
+
+The columns for all the matrices represent the 'ourtube' ID contained in the 'sampleinfo.tsv' file. That file includes the mappings between user-supplied tube labels, our tube labels, and the rtprimer label for each sample. 
 
 
 ## Quality Control
