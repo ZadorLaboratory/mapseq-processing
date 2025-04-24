@@ -927,7 +927,7 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunk
     '''
     if dask_temp is not None:
         logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
-        dask.config.set(temporary_directory=os.path.expanduser(dask_temp))
+        dask.config.set(temporary_directory=os.path.abspath( os.path.expanduser(dask_temp)))
     else:
         logging.info(f'no dask_temp specified. letting dask use its default')
         
