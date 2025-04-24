@@ -79,7 +79,8 @@ For each command, there are typical arguments. Additional arguments may be suppo
 Note that for version 2, all the commands automatically generate Parquet file output (in addition to the standard TSV format). For full-sized datasets on moderate-memory systems (less than 128G) TSV files become problematic, causing out of memory errors. In those cases, the parquet file should be used as the input for the next step, as it will load faster and use less memory.  
 
 For most of the commands, specifying the output file (with subdirectory) should be sensible. The programs will make needed sub-directories.  
- 
+
+## Main Pipeline Steps 
 
 ### process_fastq_pairs.py
 
@@ -208,5 +209,23 @@ A spike-in barcode matrix (sbcm). Contains raw numbers of spike-in molecules for
 
 A real barcode matrix normalized by spike-ins (nbcm). The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. For most further analysis, this can be considered the canonical processing output file. 
 
-Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:
-	[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 
+## Auxiliary Utilities
+
+### make_countsplots.py
+```
+~/git/mapseq-processing/scripts/make_countsplots.py 
+	-v 
+	-C read_count 
+	-G label
+	-O ./plots.out 
+	readtable.out/M253.readtable.tsv
+```
+After the readtable has been created, so we know what values go with what labels (SSIs) we need to decide on a read_count minimum before creating the vbctable. This utility makes combined plots of read_count frequency distributions from the input. Reasonable choices for the groupby argument are 'label' (by sample) or 'site' (by target vs. injection). These plots can be used to choose the value for read_count minimum. Guidance for doing this can be found in this paper:     
+
+Kebschull, Justus M., and Anthony M. Zador. “Sources of PCR-Induced Distortions in High-Throughput Sequencing Data Sets.” Nucleic Acids Research 43, no. 21 (December 2, 2015): e143. https://doi.org/10.1093/nar/gkv717.
+
+##  Next Steps
+
+Code useful for further investigation,  inference, and visualization is contained in the mapseq-analysis project:   
+
+[https://github.com/ZadorLaboratory/mapseq-analysis](https://github.com/ZadorLaboratory/mapseq-analysis) 

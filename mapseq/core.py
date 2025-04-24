@@ -919,10 +919,14 @@ def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     return ndf
 
-def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunksize=50000000, dask_temp=None):
+def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunksize=50000000, dask_temp='./temp'):
     '''
     ASSUMES INPUT IS DASK DATAFRAME
     retain other columns and keep first value
+
+    Suggestions for partitions. 
+    https://stackoverflow.com/questions/44657631/strategy-for-partitioning-dask-dataframes-efficiently
+
     
     '''
     if dask_temp is not None:
