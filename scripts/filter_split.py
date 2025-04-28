@@ -17,7 +17,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
-
+from mapseq.plotting import *
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -180,18 +180,19 @@ if __name__ == '__main__':
                              drop = True,
                              cp=cp)
 
-    logging.info(f'making read_count frequency plots...')
-    make_counts_plots(df, 
-                      outdir=outdir, 
-                      groupby='label', column='read_count', cp=cp )
-
-    dir, base, ext = split_path(outfile)
 
     logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
     df.to_csv(args.outfile, sep='\t')
 
+    dir, base, ext = split_path(outfile)
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)    
+    df.to_parquet(outfile) 
+
+
+
+
+
+   
  

@@ -27,9 +27,10 @@ from Bio.SeqRecord import SeqRecord
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from dask.dataframe import from_pandas
 import dask
 import dask.dataframe as dd
+from dask.dataframe import from_pandas
+from dask.distributed import Client
 
 from mapseq.utils import *
 from mapseq.bowtie import *
@@ -506,7 +507,7 @@ def load_mapseq_matrix_df( infile, use_dask = False ):
     return df
     
     
-def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000):
+def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=False):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     
@@ -539,7 +540,7 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000)
         'vbctable'   : ['label','site','type','brain','region','source','ourtube'],        
         }
     
-    logging.info(f'loading {infile} as format {fformat} use_dask={use_dask} chunksize={chunksize}')
+    logging.info(f'loading {infile} as format {fformat} use_dask={use_dask} use_dask={use_arrow} ')
     if fformat not in FFORMATS :
         logging.warning(f'fformat {fformat} not in {FFORMATS} . Datatypes may be incorrect.')
     
@@ -588,7 +589,10 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, chunksize=50000000)
     
     elif ftype == 'parquet':
         if use_dask:
-            df = dd.read_parquet(infile)  
+            if use_arrow:
+                df = dd.read_parquet(infile, filesystem='arrow')
+            else:
+                df = dd.read_parquet(infile)  
         else:
             df = pd.read_parquet(infile) 
     return df       
@@ -919,7 +923,7 @@ def aggregate_reads_pd(seqdf, pcolumn='sequence'):
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     return ndf
 
-def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunksize=50000000, dask_temp='./temp'):
+def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunksize=50000000, dask_temp=None, cp=None):
     '''
     ASSUMES INPUT IS DASK DATAFRAME
     retain other columns and keep first value
@@ -927,13 +931,19 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunk
     Suggestions for partitions. 
     https://stackoverflow.com/questions/44657631/strategy-for-partitioning-dask-dataframes-efficiently
 
+    Limiting resource usage (CPU, memory)
+    https://stackoverflow.com/questions/59866151/limit-dask-cpu-and-memory-usage-single-node
     
     '''
-    if dask_temp is not None:
-        logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
-        dask.config.set(temporary_directory=os.path.abspath( os.path.expanduser(dask_temp)))
-    else:
-        logging.info(f'no dask_temp specified. letting dask use its default')
+    if cp is None:
+        cp = get_default_config()
+    
+    if dask_temp is None:
+        dask_temp = os.path.abspath( os.path.expanduser(cp.get('fastq','dask_temp')))
+    logging.debug(f'setting dask temp. dask_temp={dask_temp}')
+    if not os.path.isdir(dask_temp):
+        os.makedirs(dask_temp, exist_ok=True)        
+    dask.config.set(temporary_directory=dask_temp)
         
     initlen = len(seqdf)
     logging.debug(f'collapsing with read counts for col={column} len={len(seqdf)}')
@@ -960,6 +970,76 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunk
         logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
     logging.info(f'final output DF len={len(ndf)}')    
     return ndf
+
+
+
+def sequence_value_counts(x):
+    '''
+    Fuction to be handed to Dask client for scalable calculation. 
+    
+    '''
+    return x['sequence'].value_counts()
+
+
+def aggregate_reads_dd_client(df, 
+                              column='sequence', 
+                              outdir=None, 
+                              min_reads=1, 
+                              chunksize=50000000, 
+                              dask_temp='./temp'):
+    '''
+    ASSUMES INPUT IS DASK DATAFRAME
+    retain other columns and keep first value
+
+    Suggestions for partitions. 
+    https://stackoverflow.com/questions/44657631/strategy-for-partitioning-dask-dataframes-efficiently
+
+    Limiting resource usage (CPU, memory)
+    https://stackoverflow.com/questions/59866151/limit-dask-cpu-and-memory-usage-single-node
+    
+    '''
+    if dask_temp is not None:
+        logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
+        dask.config.set(temporary_directory=os.path.abspath( os.path.expanduser(dask_temp)))
+    else:
+        logging.info(f'no dask_temp specified. letting dask use its default')
+
+
+    client = Client( memory_limit='16GB', 
+                     processes=True,
+                     n_workers=8, 
+                     threads_per_worker=2)
+       
+    before_len = len(df)
+    logging.debug(f'collapsing with read counts for col={column} len={before_len}')
+    sent = client.submit(sequence_value_counts, df)
+    ndf = sent.result().compute()
+    client.close()
+    
+    ndf.reset_index(inplace=True, drop=True)
+    ndf.rename({'count':'read_count'}, inplace=True, axis=1)
+    logging.info(f'computed counts. new DF len={len(ndf)}')
+    
+    # get back all other columns from original set. e.g. 'source'
+    logging.info(f'merging to recover other columns from original DF')
+    ndf = dd.from_pandas(ndf)
+    #ndf = pd.merge(ndf, seqdf.drop_duplicates(subset=column,keep='first'),on=column, how='left')  
+    result = ndf.merge(seqdf.drop_duplicates(subset=column,keep='first'), on=column, how='left')  
+    ndf = result.compute()
+    logging.info(f'got merged DF=\n{ndf}')
+  
+    if min_reads > 1:
+        logging.info(f'Dropping reads with less than {min_reads} read_count.')
+        logging.debug(f'Length before read_count threshold={len(ndf)}')
+        ndf = ndf[ndf['read_count'] >= min_reads]
+        ndf.reset_index(inplace=True, drop=True)
+        logging.info(f'Length after read_count threshold={len(ndf)}')    
+    else:
+        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
+    logging.info(f'final output DF len={len(ndf)}')    
+    return ndf
+
+
 
 
     
@@ -1868,9 +1948,16 @@ def make_vbctable_qctables(df, outdir=None, cp=None,
             sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
         else:
             logging.info(f'no entries for {fname}')
-    
 
-def process_mapseq_all_XXX(infiles, sampleinfo, bcfile=None, outdir=None, expid=None, cp=None):    
+
+ 
+
+
+
+
+
+
+def process_mapseq_all_native(infiles, sampleinfo, outdir=None, force=False, cp=None):    
     '''
     DO NOT USE. NEEDS UPDATING FOR LARGE DATA
     
@@ -1879,12 +1966,8 @@ def process_mapseq_all_XXX(infiles, sampleinfo, bcfile=None, outdir=None, expid=
     '''
     if cp is None:
         cp = get_default_config()
-    
-    if expid is None:
-        expid = 'EXP'    
-    
-    if bcfile is None:
-        bcfile = cp.get('barcodes','ssifile')
+    bcfile = cp.get('barcodes','ssifile')
+    expid = cp.get('project','project_id')
     
     if outdir is None:
         outdir = os.path.abspath('./')

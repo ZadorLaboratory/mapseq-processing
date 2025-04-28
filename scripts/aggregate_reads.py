@@ -159,12 +159,7 @@ if __name__ == '__main__':
     else:
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
-
-    if args.dask_temp is not None:
-        dask_temp = os.path.expanduser(args.dask_temp)
-    else:
-        dask_temp = None
-    
+   
     if args.min_reads is None:
         min_reads= int( cp.get('fastq','min_reads') )
     else:
@@ -175,7 +170,7 @@ if __name__ == '__main__':
                            column=args.column,
                            outdir=outdir,
                            min_reads = min_reads,
-                           dask_temp = dask_temp 
+                           dask_temp = args.dask_temp 
                            )
     logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')

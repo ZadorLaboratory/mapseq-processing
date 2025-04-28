@@ -187,4 +187,11 @@ if __name__ == '__main__':
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile)
-    logging.info('Done with Parquet.')    
+    logging.info('Done with Parquet.')
+    
+    logging.info(f'making read_count frequency plots...')
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby='label', column='read_count', cp=cp )
+    
+        
