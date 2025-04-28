@@ -554,9 +554,7 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=False):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     
-    '''
-
-    
+    '''    
     logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
     if fformat not in FFORMATS :
         logging.warning(f'fformat {fformat} not in {FFORMATS} . Datatypes may be incorrect.')
@@ -1005,6 +1003,7 @@ def aggregate_reads(df,
     else:
         df = aggregate_reads_pd(df, column )
     
+    return df
     
 def aggregate_reads_pd(df, column='sequence'):
     initlen = len(df)

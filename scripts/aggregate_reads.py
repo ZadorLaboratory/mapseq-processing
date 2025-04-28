@@ -170,7 +170,7 @@ if __name__ == '__main__':
     else:
         min_reads = int(args.min_reads)
     
-    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
     df = aggregate_reads(  df, 
                            column=args.column,
                            outdir=outdir,
