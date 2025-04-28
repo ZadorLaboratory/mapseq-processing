@@ -38,6 +38,42 @@ from mapseq.barcode import *
 from mapseq.stats import *
 from mapseq.plotting import *
 
+#
+# STANDARD FORMATS AND DATATYPES
+#
+
+FFORMATS = ['reads','aggregated','filtered','collapsed','readtable','vbctable']
+
+STR_COLS = {
+    'reads'      : ['sequence'],
+    'aggregated' : ['sequence'],
+    'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
+    'collapsed'   : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
+    'readtable'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
+    'vbctable'   : ['vbc_read_col'],      
+    }
+
+INT_COLS = {
+    'reads'      : [],
+    'aggregated' : ['read_count'],
+    'filtered'   : ['read_count'],
+    'collapsed'   : ['read_count'],
+    'readtable'  : ['read_count'],
+    'vbctable'   : ['read_count','umi_count'],
+    }
+
+CAT_COLS = {
+    'reads'      : ['source'],
+    'aggregated' : ['source'],
+    'filtered'   : ['source'],
+    'collapsed'   : ['source'],
+    'readtable'  : ['label','site','type','brain','region','source','ourtube'],
+    'vbctable'   : ['label','site','type','brain','region','source','ourtube'],        
+    }
+
+#
+# Utility functions. 
+#
 
 def get_default_config():
     dc = os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf')
@@ -45,6 +81,9 @@ def get_default_config():
     cp.read(dc)
     return cp
 
+#
+#  XLSX Sampleinfo File Handling
+#
 
 def get_rtlist(sampledf):
     '''
@@ -68,8 +107,6 @@ def get_rtlist(sampledf):
         nrtlist = list(sampledf['rtprimer'].dropna())
     logging.debug(f'got rtlist = {nrtlist}')
     return nrtlist
-
-
 
 def guess_site(infile, sampdf):
     '''
@@ -145,13 +182,15 @@ def read_threshold_all(cp, alldf):
     return df_merged
        
     
-
-
+#
+#  Bowties/Tarjan utility functions. 
+#
 def edges_from_btdf(btdf):
     readlist = btdf.name_read.values.tolist()
     alignlist = btdf.name_align.values.tolist()  
     edgelist = [ list(t) for t in zip(readlist, alignlist)]
     return edgelist
+
 
 def get_components(edgelist, integers=True):
     '''
@@ -231,6 +270,10 @@ def tarjan(V):
     for v in V:
         if v.root is None:
             yield from strongconnect(v, [])
+
+
+
+
 
 
 def make_read_counts_df(config, seqdf, label=None):
@@ -512,35 +555,9 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=False):
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     
     '''
-    FFORMATS = ['reads','aggregated','filtered','collapsed','readtable','vbctable']
-    STR_COLS = {
-        'reads'      : ['sequence'],
-        'aggregated' : ['sequence'],
-        'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
-        'collapsed'   : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-        'readtable'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-        'vbctable'   : ['vbc_read_col'],      
-        }
-    
-    INT_COLS = {
-        'reads'      : [],
-        'aggregated' : ['read_count'],
-        'filtered'   : ['read_count'],
-        'collapsed'   : ['read_count'],
-        'readtable'  : ['read_count'],
-        'vbctable'   : ['read_count','umi_count'],
-        }
 
-    CAT_COLS = {
-        'reads'      : ['source'],
-        'aggregated' : ['source'],
-        'filtered'   : ['source'],
-        'collapsed'   : ['source'],
-        'readtable'  : ['label','site','type','brain','region','source','ourtube'],
-        'vbctable'   : ['label','site','type','brain','region','source','ourtube'],        
-        }
     
-    logging.info(f'loading {infile} as format {fformat} use_dask={use_dask} use_dask={use_arrow} ')
+    logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
     if fformat not in FFORMATS :
         logging.warning(f'fformat {fformat} not in {FFORMATS} . Datatypes may be incorrect.')
     
@@ -594,8 +611,44 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=False):
             else:
                 df = dd.read_parquet(infile)  
         else:
-            df = pd.read_parquet(infile) 
+            df = pd.read_parquet(infile)
+            df = fix_mapseq_df_types(df, fformat=fformat, use_arrow=use_arrow) 
     return df       
+
+
+def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
+    '''
+    confirm that columns are proper types. 
+    use string[pyarrow] for strings, else string
+    '''
+    logging.info(f'old dataframe dtypes=\n{df.dtypes}')
+    if fformat in FFORMATS:
+        if use_arrow:
+            tt = 'string[pyarrow]'
+        else:
+            tt = 'string[python]'
+            
+        for scol in STR_COLS[fformat]:
+            dt = df[scol].dtype 
+            if dt != tt:
+                logging.debug(f'converting col={scol} from {dt} to {tt} ...')
+                df[scol] = df[scol].astype(tt) 
+            
+        for icol in INT_COLS[fformat]:
+            dt = df[icol].dtype
+            if dt != 'int64':
+                logging.debug(f"converting col={icol} from {dt} to 'int64' ...")
+                df[icol] = df[icol].astype('int64')                
+            
+        for ccol in CAT_COLS[fformat]:
+            dt = df[ccol].dtype
+            if dt != 'category':
+                logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
+                df[ccol] = df[ccol].astype('category')        
+    else:
+        logging.warning('unrecognized mapseq format. return original')
+    logging.info(f'new dataframe dtypes=\n{df.dtypes}')
+    return df
     
  
 def process_fastq_pairs(infilelist, 
@@ -624,6 +677,9 @@ def process_fastq_pairs(infilelist,
                                       force=force, 
                                       cp=cp)    
     logging.info(f'done with FASTQ parsing.')
+    
+    
+    
     return df
 
 
@@ -913,17 +969,58 @@ def set_siteinfo(df, sampdf, column='sequence', cp=None):
     sdf = None    
     
     return df
-    
 
-def aggregate_reads_pd(seqdf, pcolumn='sequence'):
-    initlen = len(seqdf)
-    logging.debug(f'collapsing with read counts for sequence DF len={len(seqdf)}')
-    ndf = seqdf.value_counts()
-    ndf = ndf.reset_index()
+
+def aggregate_reads(df, 
+                    column='sequence',
+                    outdir=None, 
+                    min_reads=None, 
+                    use_dask=None, 
+                    dask_temp = None, 
+                    cp=None,
+                    ):
+    '''
+    Top leve entry for aggregate. Chooses underlying algorithm/system. 
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if use_dask is None:
+        use_dask = cp.getboolean('fastq', 'use_dask')
+    if use_dask:
+        if dask_temp is None:
+            dask_temp = os.path.abspath(os.path.expanduser( cp.get('fastq','dask_temp')))
+    if min_reads is None:
+        min_reads = int(cp.get('fastq','min_reads'))
+    else:
+        min_reads = int(min_reads)
+    
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    logging.info(f'aggregate_reads: use_dask={use_dask} dask_temp={dask_temp} min_reads={min_reads}')
+    
+    if use_dask:
+        pass
+    else:
+        df = aggregate_reads_pd(df, column )
+    
+    
+def aggregate_reads_pd(df, column='sequence'):
+    initlen = len(df)
+    logging.debug(f'aggregating read counts for sequence DF len={len(df)}')
+    vcs = df.value_counts([column, 'source'])
+    ndf = pd.DataFrame( vcs )
+    ndf.reset_index(inplace=True, drop=False)
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
+    logging.debug(f'DF len={len(ndf)}')
     return ndf
 
-def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunksize=50000000, dask_temp=None, cp=None):
+def aggregate_reads_dd(seqdf, 
+                       column='sequence', 
+                       outdir=None, 
+                       min_reads=1, 
+                       chunksize=50000000,
+                       dask_temp=None, 
+                       cp=None):
     '''
     ASSUMES INPUT IS DASK DATAFRAME
     retain other columns and keep first value
@@ -941,6 +1038,7 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunk
     if dask_temp is None:
         dask_temp = os.path.abspath( os.path.expanduser(cp.get('fastq','dask_temp')))
     logging.debug(f'setting dask temp. dask_temp={dask_temp}')
+    
     if not os.path.isdir(dask_temp):
         os.makedirs(dask_temp, exist_ok=True)        
     dask.config.set(temporary_directory=dask_temp)
@@ -970,8 +1068,6 @@ def aggregate_reads_dd(seqdf, column='sequence', outdir=None, min_reads=1, chunk
         logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
     logging.info(f'final output DF len={len(ndf)}')    
     return ndf
-
-
 
 def sequence_value_counts(x):
     '''
@@ -1040,9 +1136,6 @@ def aggregate_reads_dd_client(df,
     return ndf
 
 
-
-
-    
 def filter_counts_df(cp, countsdf, min_count):
     '''
     Assumes read_count column

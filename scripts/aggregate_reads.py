@@ -64,6 +64,12 @@ if __name__ == '__main__':
                     type=str, 
                     help='Combined read, read_count TSV') 
 
+    parser.add_argument('-D', '--use_dask', 
+                        action="store_true", 
+                        dest='use_dask',
+                        default=False, 
+                        help='Use Dask subsystem.')
+
     parser.add_argument('-t','--dask_temp', 
                     metavar='dask_temp',
                     required=False,
@@ -166,11 +172,13 @@ if __name__ == '__main__':
         min_reads = int(args.min_reads)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    df = aggregate_reads_dd(df, 
+    df = aggregate_reads(  df, 
                            column=args.column,
                            outdir=outdir,
                            min_reads = min_reads,
-                           dask_temp = args.dask_temp 
+                           use_dask = args.use_dask, 
+                           dask_temp = args.dask_temp,
+                           cp=cp 
                            )
     logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
     logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
