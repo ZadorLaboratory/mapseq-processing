@@ -64,7 +64,7 @@ if __name__ == '__main__':
                     type=str, 
                     help='Combined read, read_count TSV') 
 
-    parser.add_argument('-D', '--use_dask', 
+    parser.add_argument('-k', '--use_dask', 
                         action="store_true", 
                         dest='use_dask',
                         default=False, 
