@@ -984,8 +984,10 @@ def aggregate_reads(df,
     '''
     if cp is None:
         cp = get_default_config()
+    
     if use_dask is None:
         use_dask = cp.getboolean('fastq', 'use_dask')
+    
     if use_dask:
         if dask_temp is None:
             dask_temp = os.path.abspath(os.path.expanduser( cp.get('fastq','dask_temp')))

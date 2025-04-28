@@ -157,7 +157,7 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    df = load_mapseq_df( args.infile, fformat='reads', use_dask=True)
+    df = load_mapseq_df( args.infile, fformat='reads', use_dask=args.use_dask, use_arrow=True)
 
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
