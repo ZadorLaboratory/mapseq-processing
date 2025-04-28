@@ -67,7 +67,6 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--use_dask', 
                         action="store_true", 
                         dest='use_dask',
-                        default=False, 
                         help='Use Dask subsystem.')
 
     parser.add_argument('-t','--dask_temp', 
