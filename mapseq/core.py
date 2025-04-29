@@ -48,7 +48,7 @@ STR_COLS = {
     'reads'      : ['sequence'],
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
-    'collapsed'   : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
+    'collapsed'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
     'readtable'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
     'vbctable'   : ['vbc_read_col'],      
     }
@@ -67,8 +67,26 @@ CAT_COLS = {
     'aggregated' : ['source'],
     'filtered'   : ['source'],
     'collapsed'   : ['source'],
-    'readtable'  : ['label','site','type','brain','region','source','ourtube'],
-    'vbctable'   : ['label','site','type','brain','region','source','ourtube'],        
+    'readtable'  : ['label','site','type','brain','region','source','ourtube','rtprimer'],
+    'vbctable'   : ['label','site','type','brain','region','source','ourtube','rtprimer'],        
+    }
+
+FMT_DTYPES = {      'read_count'    : 'int64',
+                    'sequence'      : 'string[pyarrow]',
+                    'vbc_read'      : 'string[pyarrow]',
+                    'vbc_read_col'  : 'string[pyarrow]',        
+                    'spikeseq'      : 'string[pyarrow]',    
+                    'libtag'        : 'string[pyarrow]',    
+                    'umi'           : 'string[pyarrow]',    
+                    'ssi'           : 'string[pyarrow]',
+                    'source'        : 'category',
+                    'label'         : 'category',
+                    'rtprimer'      : 'category',
+                    'type'          : 'category',
+                    'site'          : 'category',
+                    'brain'         : 'category',
+                    'region'        : 'category',
+                    'ourtube'       : 'category',
     }
 
 #
@@ -573,32 +591,34 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
     
     if ftype == 'tsv':
         if use_dask:
-            df = dd.read_csv(infile, sep='\t')  
+            logging.debug(f'loading via Dask ftype=tsv use_dask=True with dtype dict...')
+            df = dd.read_csv(infile, sep='\t', dtype=FMT_DTYPES )  
         else:
-            df = pd.read_csv(infile, sep='\t', index_col=0)
+            logging.debug(f'loading via Pandas ftype=tsv use_dask=False with dtype dict...')
+            df = pd.read_csv(infile, sep='\t', index_col=0, dtype=FMT_DTYPES )
 
-        logging.debug(f'before: dtypes=\n{df.dtypes}')
-        
-        for col in STR_COLS[fformat]:
-            logging.debug(f'converting {col} to string[pyarrow]')
-            try:
-                df[col] = df[col].astype('string[pyarrow]')
-            except KeyError:
-                logging.warning(f'no {col} column {fformat}? continue...')
+        #logging.debug(f'before: dtypes=\n{df.dtypes}')
+        #
+        #for col in STR_COLS[fformat]:
+        #    logging.debug(f'converting {col} to string[pyarrow]')
+        #    try:
+        #        df[col] = df[col].astype('string[pyarrow]')
+        #    except KeyError:
+        #        logging.warning(f'no {col} column {fformat}? continue...')
             
-        for col in INT_COLS[fformat]:
-            logging.debug(f'converting {col} to integer')
-            try:
-                df[col] = df[col].astype('uint32')    
-            except KeyError:
-                logging.warning(f'no {col} column {fformat}? continue...')
+        #for col in INT_COLS[fformat]:
+        #    logging.debug(f'converting {col} to integer')
+        #    try:
+        #        df[col] = df[col].astype('uint32')    
+        #    except KeyError:
+        #        logging.warning(f'no {col} column {fformat}? continue...')
 
-        for col in CAT_COLS[fformat]:
-            logging.debug(f'converting {col} to category')
-            try:
-                df[col] = df[col].astype('category')    
-            except KeyError:
-                logging.warning(f'no {col} column {fformat}? continue...')
+        #for col in CAT_COLS[fformat]:
+        #    logging.debug(f'converting {col} to category')
+        #    try:
+        #        df[col] = df[col].astype('category')    
+        #    except KeyError:
+        #        logging.warning(f'no {col} column {fformat}? continue...')
       
         logging.debug(f'after: dtypes=\n{df.dtypes}')        
     
@@ -999,7 +1019,12 @@ def aggregate_reads(df,
     logging.info(f'aggregate_reads: use_dask={use_dask} dask_temp={dask_temp} min_reads={min_reads}')
     
     if use_dask:
-        pass
+        df = aggregate_reads_dd(df, 
+                                column, 
+                                outdir=outdir, 
+                                min_reads=1, 
+                                dask_temp=dask_temp, 
+                                cp=cp )
     else:
         df = aggregate_reads_pd(df, column )
     
@@ -1055,8 +1080,9 @@ def aggregate_reads_dd(seqdf,
     logging.info(f'merging to recover other columns from original DF')
     ndf = dd.from_pandas(ndf)
     #ndf = pd.merge(ndf, seqdf.drop_duplicates(subset=column,keep='first'),on=column, how='left')  
-    result = ndf.merge(seqdf.drop_duplicates(subset=column,keep='first'), on=column, how='left')  
+    result = ndf.merge(seqdf.drop_duplicates(subset=column, keep='first'), on=column, how='left')  
     ndf = result.compute()
+    ndf.drop('Unnamed: 0', inplace=True, axis=1 )
     logging.info(f'got merged DF=\n{ndf}')
   
     if min_reads > 1:
@@ -1069,6 +1095,7 @@ def aggregate_reads_dd(seqdf,
         logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
     logging.info(f'final output DF len={len(ndf)}')    
     return ndf
+
 
 def sequence_value_counts(x):
     '''
@@ -1498,7 +1525,7 @@ def process_make_readtable_pd(df,
     
     '''
         
-    logging.info(f'inbound df len={len(df)} columns={df.columns}')
+    logging.info(f'inbound df len={len(df)} columns={list( df.columns )}')
     if outdir is None:
         outdir = os.path.abspath('./')
     outdir = os.path.abspath(outdir)    
