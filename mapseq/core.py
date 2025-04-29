@@ -550,7 +550,7 @@ def load_mapseq_matrix_df( infile, use_dask = False ):
     return df
     
     
-def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=False):
+def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     
