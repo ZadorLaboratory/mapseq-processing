@@ -9,12 +9,15 @@ import numpy as np
 
 from natsort import natsorted
 
-def make_counts_plots(df, outdir=None, groupby='label', column='read_count', cp=None):
+def make_counts_plots(df, outdir=None, groupby='label', type=None, column='read_count', cp=None):
     '''
     take standard aggregated, readtable or vbctable DFs and create 
     read_count or umi_count frequency plots for all real targets.  
     
     confirm that groupby column value exists. 
+    
+    if type is None, include all. 
+    
     '''
     project_id = cp.get('project','project_id')
     before = len(df)
@@ -22,9 +25,19 @@ def make_counts_plots(df, outdir=None, groupby='label', column='read_count', cp=
     after = len(df)
     removed = before - after
     logging.debug(f'removed {removed} rows ( {before} - {after}) with no value for {groupby}')
+
+    if type != None:
+        before = len(df)
+        df = df[df['type'] != type]
+        after = len(df)
+        removed = before - after
+        logging.debug(f'removed {removed} rows ( {before} - {after}) with type != {type}')
+    else:
+        type = 'all'    
+    
     make_freqplot_combined_sns(df, 
-                               title=f'{project_id}: {column} frequency',  
-                               outfile=os.path.join(outdir, f'{project_id}_{column}_by{groupby}_frequency.pdf'),
+                               title=f'{project_id}:{type} {column} frequency',  
+                               outfile=os.path.join(outdir, f'{project_id}_{type}_{column}_by{groupby}_frequency.pdf'),
                                groupby=groupby, 
                                column=column,
                                scale='log10' )

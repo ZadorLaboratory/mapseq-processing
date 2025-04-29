@@ -178,8 +178,10 @@ if __name__ == '__main__':
     make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
 
     logging.debug(f'making frequency plots.')
-    make_counts_plots(df, outdir=outdir, cp=cp, column='umi_count' )
-     
+    make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
+    make_counts_plots(df, outdir=outdir, type='real', column='umi_count', cp=cp )
+    make_counts_plots(df, outdir=outdir, type='spike', column='umi_count', cp=cp )
+    
     df.to_csv(outfile, sep='\t')
     dir, base, ext = split_path(outfile)
     outfile = os.path.join( dir , f'{base}.parquet')

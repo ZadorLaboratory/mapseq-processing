@@ -49,7 +49,7 @@ STR_COLS = {
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
     'collapsed'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-    'readtable'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
+    'readtable'  : ['vbc_read_col','libtag', 'umi',  'ssi'],
     'vbctable'   : ['vbc_read_col'],      
     }
 
@@ -68,10 +68,11 @@ CAT_COLS = {
     'filtered'   : ['source'],
     'collapsed'   : ['source'],
     'readtable'  : ['label','site','type','brain','region','source','ourtube','rtprimer'],
-    'vbctable'   : ['label','site','type','brain','region','source','ourtube','rtprimer'],        
+    'vbctable'   : ['label','site','type','brain','region','ourtube'],        
     }
 
 FMT_DTYPES = {      'read_count'    : 'int64',
+                    'umi_count'     : 'int64',
                     'sequence'      : 'string[pyarrow]',
                     'vbc_read'      : 'string[pyarrow]',
                     'vbc_read_col'  : 'string[pyarrow]',        
@@ -87,7 +88,11 @@ FMT_DTYPES = {      'read_count'    : 'int64',
                     'brain'         : 'category',
                     'region'        : 'category',
                     'ourtube'       : 'category',
+
     }
+
+
+CONTROL_SITES=['target-negative','target-water-control','injection-water-control']
 
 #
 # Utility functions. 
@@ -1631,10 +1636,10 @@ def process_make_readtable_pd(df,
     
     # Identify and remove rows with nomatch for label and/or type
     # meaning nonsense libtag or unmatched SSI value. 
+    logging.info('Removing nomatch rows...')
     nmidf = df[ ['label','type'] ].copy()
     nmidf.replace('nomatch', np.nan, inplace=True)
     nmidf = nmidf[ nmidf.isna().any(axis=1) ]
-    
     nmdf = df.iloc[nmidf.index]
     
     logging.debug(f'dropping nomatch rows. before len={len(df)}')    
@@ -1716,13 +1721,13 @@ def process_make_vbctable_pd(df,
     thdf.reset_index(drop=True, inplace=True)
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
-    udf = thdf.groupby(['vbc_read_col','label','type']).agg( {'umi' : 'nunique',
-                                                              'read_count':'sum', 
-                                                              'brain':'first',
-                                                              'region':'first',
-                                                              'site':'first',
-                                                              'ourtube':'first',    
-                                                              } ).reset_index()
+    udf = thdf.groupby(['vbc_read_col','label','type'], observed=True ).agg( {'umi' : 'nunique',
+                                                                              'read_count':'sum', 
+                                                                              'brain':'first',
+                                                                              'region':'first',
+                                                                              'site':'first',
+                                                                              'ourtube':'first',    
+                                                                              } ).reset_index()
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
 
@@ -1744,6 +1749,11 @@ def process_make_vbctable_pd(df,
     lones.reset_index(inplace=True, drop=True)
     lones.to_csv(f'{outdir}/lones.tsv', sep='\t')
 
+    # output controls by SSI/site, save to TSV
+    controls = udf[ udf['site'].isin( CONTROL_SITES ) ]
+    controls.reset_index(inplace=True, drop=True)
+    controls.to_csv(f'{outdir}/vbc_controls.tsv', sep='\t')
+
     udf.reset_index(inplace=True, drop=True)  
     sh = get_default_stats()
     sh.add_value('/vbctable','n_vbcs', len(udf) )        
@@ -1764,7 +1774,6 @@ def process_filter_vbctable(df,
     -- remove l-ones
     -- <type>_min_umi against reals (but not spikes). 
 
-
     threshold logic. 
     inj_min_umi                VBC UMI must exceed to be kept.
     target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
@@ -1772,7 +1781,7 @@ def process_filter_vbctable(df,
     
     
     '''
-    CONTROLS=['target-negative','target-water-control','injection-water-control']
+
     
     if cp is None:
         cp = get_default_config()
@@ -1799,10 +1808,10 @@ def process_filter_vbctable(df,
     sh = get_default_stats() 
 
     # remove all controls by SSI/site, save to TSV
-    controls = df[ df['site'].isin( CONTROLS ) ]
-    df = df[ df['site'].isin( CONTROLS ) == False]
+    controls = df[ df['site'].isin( CONTROL_SITES ) ]
+    df = df[ df['site'].isin( CONTROL_SITES ) == False]
     controls.reset_index(inplace=True, drop=True)
-    controls.to_csv(f'{outdir}/controls.tsv', sep='\t')
+    controls.to_csv(f'{outdir}/removed_controls.tsv', sep='\t')
 
     # remove spikes and save them 
     # Spikes to NOT get thesholded by UMI 
@@ -1812,7 +1821,6 @@ def process_filter_vbctable(df,
     # Separate targets and injections for specific UMI thresholding. 
     targets = df[ df['site'].str.startswith('target') ]
     injections = df[ df['site'].str.startswith('injection') ]
-
 
     # threshold injection(s)
     if inj_min_umi > 1:
@@ -2004,7 +2012,9 @@ def process_make_matrices(df,
 
 
 
-def make_vbctable_qctables(df, outdir=None, cp=None, 
+def make_vbctable_qctables(df, 
+                           outdir=None, 
+                           cp=None, 
                            cols=['site','type'], 
                            vals = ['label','umi_count','read_count'], 
                            sort_by='umi_count' ):
