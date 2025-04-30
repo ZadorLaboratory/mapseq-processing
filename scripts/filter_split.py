@@ -190,7 +190,7 @@ if __name__ == '__main__':
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
     df.to_parquet(outfile) 
 
-
+    logging.info('Done filter_split.')
 
 
 

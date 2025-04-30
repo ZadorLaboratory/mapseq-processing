@@ -226,6 +226,6 @@ if __name__ == '__main__':
                         force=args.force
                         )
 
- 
+    logging.info('Done process_all.') 
  
    

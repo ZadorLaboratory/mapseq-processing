@@ -164,5 +164,7 @@ if __name__ == '__main__':
     
     outfile = os.path.join(dir, f'{base}.parquet')
     logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)  
+    df.to_parquet(outfile)
+    
+    logging.info('Done process_fastq_pairs')  
     
