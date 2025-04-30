@@ -1789,16 +1789,16 @@ def process_filter_vbctable(df,
         outdir = os.path.abspath('./')
         
     if inj_min_umi is None:
-        inj_min_umi = int(cp.get('vbctable','inj_min_umi'))
+        inj_min_umi = int(cp.get('vbcfilter','inj_min_umi'))
     if target_min_umi is None:
-        target_min_umi = int(cp.get('vbctable','target_min_umi'))   
+        target_min_umi = int(cp.get('vbcfilter','target_min_umi'))   
     if target_min_umi_absolute is None:
-        target_min_umi_absolute = int(cp.get('vbctable','target_min_umi_absolute'))
+        target_min_umi_absolute = int(cp.get('vbcfilter','target_min_umi_absolute'))
 
-    require_injection = cp.getboolean('vbctable','require_injection')
-    include_injection = cp.getboolean('vbctable','include_injection')
-    use_target_negative=cp.getboolean('vbctable','use_target_negative')
-    use_target_water_control=cp.getboolean('vbctable','use_target_water_control') 
+    require_injection = cp.getboolean('vbcfilter','require_injection')
+    include_injection = cp.getboolean('vbcfilter','include_injection')
+    use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
+    use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control') 
     
     max_negative = 1
     max_water_control = 1
