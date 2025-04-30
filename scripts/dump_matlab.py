@@ -256,7 +256,7 @@ if __name__ == '__main__':
     #write_config(cp, cfilename, timestamp=True)        
     
     if args.sampleinfo is not None:
-        sampdf = load_sample_info(cp, args.sampleinfo)
+        sampdf = load_sample_info(args.sampleinfo, cp=cp)
         logging.debug(f'\n{sampdf}')
     else:
         sampdf = None

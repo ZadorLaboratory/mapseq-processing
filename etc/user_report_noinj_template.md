@@ -57,7 +57,7 @@ The estimated amount of reused barcodes within each brain and across different b
 
 1. We have checked barcode amount in controls. 
 
-The UMI counts from negative controls are listed in the TSV named “controls.tsv”. This background looks normal. 
+The UMI counts from negative controls are listed in the TSV named “vbc_controls.tsv”. This background looks normal. 
 
 1. We have calculated false positive rates. For target sites, the false positive rate is 0 when the UMI threshold is set above 3\.  
 

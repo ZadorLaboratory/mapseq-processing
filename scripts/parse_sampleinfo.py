@@ -116,7 +116,7 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.info(f'Loading sample information...')
-    df = load_sample_info(cp, args.infile, args.samplesheet)
+    df = load_sample_info(args.infile, args.samplesheet, cp=cp)
     logging.debug(f'\n{df}')
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
     df.to_csv(outfile, sep='\t')

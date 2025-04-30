@@ -143,12 +143,12 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     if args.inj_min_reads is None:
-        inj_min_reads = int(cp.get('vbcfilter','inj_min_reads'))
+        inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
     else:
         inj_min_reads = args.inj_min_reads
 
     if args.target_min_reads is None:
-        target_min_reads = int(cp.get('vbcfilter','target_min_reads'))
+        target_min_reads = int(cp.get('vbctable','target_min_reads'))
     else:
         target_min_reads = args.target_min_reads
 

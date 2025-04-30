@@ -472,7 +472,7 @@ def threshold_read_counts(config, df, threshold=1):
 
 
 
-def load_sample_info(config, file_name, sheet_name='Sample information'):
+def load_sample_info(file_name, sheet_name='Sample information', cp=None):
     #
     # Parses Excel spreadsheet to get orderly sample metadata, saves as sampleinfo.tsv.     
     # OR Reads in sampleinfo.tsv
@@ -484,6 +484,10 @@ def load_sample_info(config, file_name, sheet_name='Sample information'):
     # If brain is not given, or is empty, all are set to 'brain1'. 
     # If region is not given, or is empty, all are set to <rtprimer>
     # 
+    
+    if cp is None:
+        cp = get_default_config()
+    
     
     # Mappings for excel columns. 
     sheet_to_sample = {
@@ -995,7 +999,7 @@ def set_siteinfo(df, sampdf, column='sequence', cp=None):
 
 
 def aggregate_reads(df, 
-                    column='sequence',
+                    column=['sequence','source'],
                     outdir=None, 
                     min_reads=None, 
                     use_dask=None, 
@@ -1035,10 +1039,10 @@ def aggregate_reads(df,
     
     return df
     
-def aggregate_reads_pd(df, column='sequence'):
+def aggregate_reads_pd(df, column=['sequence','source']):
     initlen = len(df)
     logging.debug(f'aggregating read counts for sequence DF len={len(df)}')
-    vcs = df.value_counts([column, 'source'])
+    vcs = df.value_counts( column )
     ndf = pd.DataFrame( vcs )
     ndf.reset_index(inplace=True, drop=False)
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
@@ -1046,7 +1050,7 @@ def aggregate_reads_pd(df, column='sequence'):
     return ndf
 
 def aggregate_reads_dd(seqdf, 
-                       column='sequence', 
+                       column=['sequence','source'], 
                        outdir=None, 
                        min_reads=1, 
                        chunksize=50000000,
@@ -1076,8 +1080,10 @@ def aggregate_reads_dd(seqdf,
         
     initlen = len(seqdf)
     logging.debug(f'collapsing with read counts for col={column} len={len(seqdf)}')
-    ndf = seqdf[column].value_counts().compute()
+    #ndf = seqdf[column].value_counts().compute()
+    ndf = seqdf.value_counts(column).compute()
     ndf = ndf.reset_index()
+    
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     logging.info(f'computed counts. new DF len={len(ndf)}')
     
@@ -1110,13 +1116,16 @@ def sequence_value_counts(x):
     return x['sequence'].value_counts()
 
 
-def aggregate_reads_dd_client(df, 
+def aggregate_reads_dd_clientXXX(df, 
                               column='sequence', 
                               outdir=None, 
                               min_reads=1, 
                               chunksize=50000000, 
                               dask_temp='./temp'):
     '''
+    
+    WARNING dask 
+    
     ASSUMES INPUT IS DASK DATAFRAME
     retain other columns and keep first value
 

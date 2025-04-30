@@ -142,7 +142,7 @@ if __name__ == '__main__':
     sh = StatsHandler(outdir=outdir, datestr=datestr)
 
     #logging.debug(f'loading sample DF...')
-    #sampdf = load_sample_info(cp, args.sampleinfo)
+    #sampdf = load_sample_info(args.sampleinfo, cp=cp)
     #logging.debug(f'\n{sampdf}')
     #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
 
