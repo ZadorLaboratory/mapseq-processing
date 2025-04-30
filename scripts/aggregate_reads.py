@@ -86,7 +86,7 @@ if __name__ == '__main__':
     parser.add_argument('-C','--column', 
                     metavar='column',
                     required=False,
-                    default='sequence', 
+                    default=['sequence','source'], 
                     type=str, 
                     help='Read column to aggregate.')
 

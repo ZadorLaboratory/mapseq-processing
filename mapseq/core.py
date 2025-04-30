@@ -1041,7 +1041,7 @@ def aggregate_reads(df,
     
 def aggregate_reads_pd(df, column=['sequence','source']):
     initlen = len(df)
-    logging.debug(f'aggregating read counts for sequence DF len={len(df)}')
+    logging.debug(f'aggregating read counts DF len={len(df)} column={column}')
     vcs = df.value_counts( column )
     ndf = pd.DataFrame( vcs )
     ndf.reset_index(inplace=True, drop=False)
@@ -1079,7 +1079,7 @@ def aggregate_reads_dd(seqdf,
     dask.config.set(temporary_directory=dask_temp)
         
     initlen = len(seqdf)
-    logging.debug(f'collapsing with read counts for col={column} len={len(seqdf)}')
+    logging.debug(f'aggregating read counts for col={column} len={len(seqdf)}')
     #ndf = seqdf[column].value_counts().compute()
     ndf = seqdf.value_counts(column).compute()
     ndf = ndf.reset_index()
