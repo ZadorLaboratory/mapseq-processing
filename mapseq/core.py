@@ -49,7 +49,7 @@ STR_COLS = {
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
     'collapsed'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-    'readtable'  : ['vbc_read_col','libtag', 'umi',  'ssi'],
+    'readtable'  : ['vbc_read_col','libtag', 'umi', 'ssi'],
     'vbctable'   : ['vbc_read_col'],      
     }
 
@@ -809,7 +809,6 @@ def get_fh(infile):
     return fh    
         
 
-
 def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
     '''
     Used by filter_split
@@ -865,6 +864,7 @@ def filter_reads_pd(df,
                     cp=None):
     '''
     Used by filter_split.
+    column should be nucleotide string. 
 
     '''
     if cp is None:
@@ -1535,11 +1535,12 @@ def process_make_readtable_pd(df,
     -- classify by site-type
     -- set brain label
     -- aggregate and sum read counts 
+    -- remove redudant info (SSI, libtag, spikeseg)
 
-    
     '''
         
     logging.info(f'inbound df len={len(df)} columns={list( df.columns )}')
+    n_initial = len(df)
     if outdir is None:
         outdir = os.path.abspath('./')
     outdir = os.path.abspath(outdir)    
@@ -1556,30 +1557,56 @@ def process_make_readtable_pd(df,
         bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
     
     logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile}')
-    
-    # map SSIs, set unknown to unmatched.
+
+    # Map label, rtprimer to SSIs    
     logging.debug(f'getting rt labels...')
     labels = get_rtlist(sampdf)
     logging.debug(f'rtlabels={labels}')
     bcdict = get_barcode_dict(bcfile, labels)
     rtdict = get_rtprimer_dict(bcfile, labels)
     logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
-    logging.info('filling in labels by SSI sequences...')
-    
+   
     logging.info('filling in label by SSI sequence...')
     df['label'] = df['ssi'].map(bcdict)
-    logging.info('labelling unmatched...')
-    df.fillna({'label': 'nomatch'}, inplace=True)
 
     logging.info('filling in rtprimer number by SSI sequence...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
-    logging.info('labelling unmatched...')
-    df.fillna({'rtprimer': 'nomatch'}, inplace=True)
-    
-    # spikeins
-    # make temporary column to check spikein. 
+
+    # We don't need the ssi sequence once label/rtprimer are set. 
+    df.drop('ssi', inplace=True, axis=1)
+
+    # identify and remove unmatched SSI sequences? 
+    badssidf = df[ df.isna().any(axis=1) ]
+    n_badssi = len(badssidf)
+    df.drop(badssidf.index, inplace=True)
+    df.reset_index(inplace=True, drop=True)    
+
+    of = os.path.join( outdir, 'bad_ssi.tsv')
+    badssidf.reset_index(inplace=True, drop=True)
+    badssidf.to_csv(of, sep='\t')
+    logging.info(f'Wrote bad_ssi DF len={len(badssidf)} to {of}')
+    badssidf = None   
+
+    # set site from rtprimer which should now be correct.      
+    sdf = sampdf[['rtprimer','siteinfo']]
+    sdf = sdf[sdf['siteinfo'] != '']
+    smap = dict(zip(sdf['rtprimer'], sdf['siteinfo']))
+    df['site'] = df['rtprimer'].map(smap)
+
+    badsitedf = df[ df.isna().any(axis=1) ]
+    n_badsite = len(badsitedf)
+    df.drop(badsitedf.index, inplace=True)
+    df.reset_index(inplace=True, drop=True)    
+
+    of = os.path.join( outdir, 'bad_site.tsv')
+    badsitedf.reset_index(inplace=True, drop=True)
+    badsitedf.to_csv(of, sep='\t')
+    logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
+    badsitedf = None   
+
+
+    # spikes and L1/L2 libtag
     # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
-   
     logging.info('identifying reals by libtag...')
     rmap = df['libtag'].str.match(realregex)
     df.loc[rmap, 'type'] = 'real'
@@ -1591,20 +1618,22 @@ def process_make_readtable_pd(df,
     logging.info('identifying spikeins by spikeseq matching...')
     smap = df['spikeseq'] == spikeseq
     df.loc[smap, 'type'] = 'spike'
+
+    # identify and remove bad type rows. 
+    badtypedf = df[ df.isna().any(axis=1) ]
+    n_badtype = len(badtypedf)
+    df.drop(badtypedf.index, inplace=True)
+    df.reset_index(inplace=True, drop=True)    
+
+    of = os.path.join( outdir, 'bad_type.tsv')
+    badtypedf.reset_index(inplace=True, drop=True)
+    badtypedf.to_csv(of, sep='\t')
+    logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
+    badtypedf = None   
     
-    df.fillna({'type': 'nomatch'}, inplace=True)
-    df.drop(['spikeseq'], inplace=True, axis=1)
+    df.drop(['spikeseq','libtag'], inplace=True, axis=1)
 
-    # REQUIRED VALUE, so nomatch     
-    # set site
-    sdf = sampdf[['rtprimer','siteinfo']]
-    sdf = sdf[sdf['siteinfo'] != '']
-    smap = dict(zip(sdf['rtprimer'], sdf['siteinfo']))
-    df['site'] = df['rtprimer'].map(smap)
-    df.fillna({'site': 'nomatch'}, inplace=True)
-    sdf = None    
-
-    # NOT REQUIRED VALUES, so '' vs. nomatch. 
+    # NOT REQUIRED VALUES, so replace NaNs 
     # set brain
     bdf = sampdf[['rtprimer','brain']]
     bdf = bdf[bdf['brain'] != '']
@@ -1639,28 +1668,25 @@ def process_make_readtable_pd(df,
     #n_nomatch = (df['type'] == 'nomatch')['read_count'].sum()
     #ndf = df.replace('nomatch', np.nan)
     
-    of = os.path.join( outdir, 'all_reads.tsv')
-    df.to_csv(of, sep='\t')
-    logging.info(f'Wrote all_reads DF len={len(df)} to {of}')
-    
+   
     # Identify and remove rows with nomatch for label and/or type
     # meaning nonsense libtag or unmatched SSI value. 
-    logging.info('Removing nomatch rows...')
-    nmidf = df[ ['label','type'] ].copy()
-    nmidf.replace('nomatch', np.nan, inplace=True)
-    nmidf = nmidf[ nmidf.isna().any(axis=1) ]
-    nmdf = df.iloc[nmidf.index]
+    #logging.info('Removing nomatch rows...')
+    #nmidf = df[ ['label','type'] ].copy()
+    #nmidf.replace('nomatch', np.nan, inplace=True)
+    #nmidf = nmidf[ nmidf.isna().any(axis=1) ]
+    #nmdf = df.iloc[nmidf.index]
     
-    logging.debug(f'dropping nomatch rows. before len={len(df)}')    
-    df.drop(nmidf.index, inplace=True)
-    df.reset_index(inplace=True, drop=True)
-    logging.debug(f'dropped nomatch rows. after len={len(df)}') 
+    #logging.debug(f'dropping nomatch rows. before len={len(df)}')    
+    #df.drop(nmidf.index, inplace=True)
+    #df.reset_index(inplace=True, drop=True)
+    #logging.debug(f'dropped nomatch rows. after len={len(df)}') 
 
-    of = os.path.join( outdir, 'nomatch.tsv')
-    nmdf.reset_index(inplace=True, drop=True)
-    nmdf.to_csv(of, sep='\t')
-    n_nomatch = len(nmdf)
-    logging.info(f'Wrote nomatch DF len={len(nmdf)} to {of}')
+    #of = os.path.join( outdir, 'nomatch.tsv')
+    #nmdf.reset_index(inplace=True, drop=True)
+    #nmdf.to_csv(of, sep='\t')
+    #n_nomatch = len(nmdf)
+    #logging.info(f'Wrote nomatch DF len={len(nmdf)} to {of}')
 
     # find and remove (at least) known template-switch rows from dataframe.
     # template switch type is L1 (from libtab) but is a valid target (from SSI) 
@@ -1673,13 +1699,14 @@ def process_make_readtable_pd(df,
     # remove known template switch from readtable
     df.drop(tsdf.index, inplace=True)
     df.reset_index(drop=True, inplace=True)
-     
+    n_final = len(df)
+    
+    sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
+    sh.add_value('/readtable', 'n_badssi', str(n_badssi) )
+    sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+    sh.add_value('/readtable', 'n_badsite', str(n_badsite) )
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
-    #sh.add_value('/readtable', 'n_spike', str(n_spike) )     
-    #sh.add_value('/readtable', 'n_lone', str(n_lone) )      
-    #sh.add_value('/readtable', 'n_real', str(n_real) )     
-    sh.add_value('/readtable', 'n_nomatch', str(n_nomatch) )    
-
+    sh.add_value('/readtable', 'n_final', str(n_final) )     
     return df
 
 
