@@ -16,7 +16,7 @@ from collections import defaultdict
 
 import pandas as pd
 import numpy as np
-from natsort import natsorted
+from natsort import natsorted, index_natsorted, order_by_index
 
 import scipy
 
@@ -2019,6 +2019,39 @@ def process_make_matrices(df,
     return norm_dict
 
 
+def make_report_xlsx(df,
+                     outdir=None,                      
+                     cp=None):
+    '''
+    
+    '''
+    TYPE=['real','spike']
+    
+    if cp is None:
+        cp = get_default_config()
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    project_id = cp.get('project','project_id')
+        
+    outfile = os.path.join(outdir, f'{project_id}.samplereport.xlsx')    
+    
+    vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    vdf.reset_index(inplace=True, drop=False)
+    vdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( vdf['label'])))
+    vdf.reset_index(inplace=True, drop=True)
+
+
+    sdf = df[df['type'] == 'spike']
+
+
+    rcdf = df.groupby(by=['label','type'],observed=False).agg( {'read_count':'sum'} )
+    rcdf.reset_index(inplace=True, drop=False)
+    rcdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rcdf['label'])))
+    rcdf.reset_index(inplace=True, drop=True)    
+
+    with pd.ExcelWriter(outfile) as writer:
+        vdf.to_excel(writer, sheet_name='Unique VBC')
+        rcdf.to_excel(writer, sheet_name='Read Count Sum')
 
 
 def make_vbctable_qctables(df, 
