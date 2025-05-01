@@ -2035,14 +2035,24 @@ def make_report_xlsx(df,
         
     outfile = os.path.join(outdir, f'{project_id}.samplereport.xlsx')    
     
+    logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
+    
     vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
     vdf.reset_index(inplace=True, drop=False)
     vdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( vdf['label'])))
     vdf.reset_index(inplace=True, drop=True)
 
-
     sdf = df[df['type'] == 'spike']
+    sdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    sdf.reset_index(inplace=True, drop=False)
+    sdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( sdf['label'])))
+    sdf.reset_index(inplace=True, drop=True)    
 
+    rdf = df[df['type'] == 'real']
+    rdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    rdf.reset_index(inplace=True, drop=False)
+    rdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rdf['label'])))
+    rdf.reset_index(inplace=True, drop=True)
 
     rcdf = df.groupby(by=['label','type'],observed=False).agg( {'read_count':'sum'} )
     rcdf.reset_index(inplace=True, drop=False)
@@ -2051,8 +2061,12 @@ def make_report_xlsx(df,
 
     with pd.ExcelWriter(outfile) as writer:
         vdf.to_excel(writer, sheet_name='Unique VBC')
+        sdf.to_excel(writer, sheet_name='Spike Unique VBC')
+        rdf.to_excel(writer, sheet_name='Real Unique VBC')
         rcdf.to_excel(writer, sheet_name='Read Count Sum')
 
+    logging.info(f'Wrote XLSX report: {outfile} ')
+    
 
 def make_vbctable_qctables(df, 
                            outdir=None, 
