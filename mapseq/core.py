@@ -49,7 +49,7 @@ STR_COLS = {
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
     'collapsed'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-    'readtable'  : ['vbc_read_col','libtag', 'umi', 'ssi'],
+    'readtable'  : ['vbc_read_col', 'umi' ],
     'vbctable'   : ['vbc_read_col'],      
     }
 
@@ -649,6 +649,7 @@ def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
     use string[pyarrow] for strings, else string
     '''
     logging.info(f'old dataframe dtypes=\n{df.dtypes}')
+    
     if fformat in FFORMATS:
         if use_arrow:
             tt = 'string[pyarrow]'
@@ -1707,6 +1708,8 @@ def process_make_readtable_pd(df,
     sh.add_value('/readtable', 'n_badsite', str(n_badsite) )
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     sh.add_value('/readtable', 'n_final', str(n_final) )     
+    
+    df = fix_mapseq_df_types(df, fformat='readtable')
     return df
 
 
@@ -1794,6 +1797,8 @@ def process_make_vbctable_pd(df,
     sh = get_default_stats()
     sh.add_value('/vbctable','n_vbcs', len(udf) )        
     log_objectinfo(udf, 'umi-df')
+    
+    udf = fix_mapseq_df_types(udf, fformat='vbctable')
     return udf
 
 
@@ -1943,6 +1948,9 @@ def process_filter_vbctable(df,
     df = pd.concat([spikes, df ])   
     df.reset_index(inplace=True, drop=True)
     logging.debug(f'output DF:\n{df}')
+    
+    df = fix_mapseq_df_types(df, fformat='vbctable')
+    
     return df
 
 

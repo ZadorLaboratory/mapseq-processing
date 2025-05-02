@@ -198,7 +198,6 @@ if __name__ == '__main__':
                       outdir=outdir,
                       cp=cp)
     
-    
-    
+
     logging.info('Done make_readtable.')
         
