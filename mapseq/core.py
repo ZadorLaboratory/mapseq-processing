@@ -1734,14 +1734,8 @@ def process_make_vbctable_pd(df,
     log_objectinfo(df, 'input-df')
     ndf = df
     
-    # remove unneeded columns
-    #  libtag:     we now know real/lone
-    #  ssi:        we have assigned label
-    #  rtprimer:     "  " 
-    #  vbc_read:   we have already collapsed
-    
-    logging.info(f'dropping redundant readtable columns: libtag ssi rtprimer vbc_read  ')
-    ndf.drop(labels=['libtag','ssi','rtprimer'], axis=1, inplace=True)   
+  
+  
     ndf.replace('nomatch',np.nan, inplace=True)
     #ndf = df.replace('nomatch' ,np.nan)
     logging.info(f'DF before removing nomatch: {len(ndf)}')
