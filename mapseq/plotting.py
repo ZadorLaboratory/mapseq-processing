@@ -146,4 +146,17 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     ax.set_title(title, fontsize=10)
 
 
+def calc_freq_threshold(df, fraction=0.9, column = 'read_count'):
+    '''
+    sorts column of input column
+    calculates index of point at which <fraction> of data points are less 
+    returns column value at that point + 1 
+    '''
+    ser = df[column].copy()
+    ser.sort_values(ascending = False, inplace=True)
+    ser.reset_index(drop=True, inplace=True)
+    idx = int(len(ser) * fraction)
+    t = int( ser.iloc[idx] + 1 )    
+    return t
+
    

@@ -2352,3 +2352,401 @@ def load_sample_info_old(config, file_name, sheet_name='Sample information'):
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
+
+
+def read_threshold_all(cp, alldf):
+    '''
+    we did not threshold BC by BC when processing fastqs, so we can threshold by proxy
+    using a ratio of UMIs to read_count behind them. 
+    '''
+    target_ratio = float( cp.get('ssifasta','target_read_ratio'))
+    injection_ratio = float( cp.get('ssifasta','injection_read_ratio'))
+    
+    alldf['read_ratio'] = alldf['read_count'] / alldf['umi_count']
+        
+    injdf = alldf[ alldf['site'].str.startswith('injection') ]
+    tardf = alldf[ alldf['site'].str.startswith('target') ]
+    injdf = injdf[ injdf['read_ratio'] > injection_ratio ]
+    tardf = tardf[ tardf['read_ratio'] > target_ratio ]
+    df_merged = pd.concat([injdf, tardf], ignore_index = True, sort=False)
+    logging.info(f'target_ratio = {target_ratio} injection_ratio = {injection_ratio} before len={len(alldf)} after len={len(df_merged)}')
+    return df_merged
+       
+def make_read_counts_df(config, seqdf, label=None):
+    '''
+    input dataframe with 'sequence' column
+    make counts column for identical sequences.  
+    optionally assign a label to set in new column
+    
+    '''
+    logging.debug(f'seqdf=\n{seqdf}')
+    ser = seqdf['sequence'].value_counts()
+    df = pd.DataFrame(columns=['sequence','read_count'])
+    df['sequence'] = ser.index
+    df['read_count'] = ser.values
+    logging.debug(f'counts df = \n{df}')
+    if label is not None:
+        df['label'] = label
+    return df
+
+def make_umi_counts_df(config, seqdf, label=None):
+    '''
+    input dataframe with 'sequence' column
+    make counts column for identical sequences.  
+    optionally assign a label to set in new column
+    combine values from collapsed read_counts 
+    sequence   read_count  label     
+    AAA        23           A
+    AAA        5            A
+    BBB        7            A
+    BBB        6            A
+    CCC        5            A
+    
+    ->
+    AAA    read_count  umi_count label
+    BBB    13           2          A
+    CCC    28           2          A
+    CCC    5            1          A
+    
+    https://stackoverflow.com/questions/73874908/value-counts-then-sum-of-a-different-column
+    https://stackoverflow.com/questions/46431243/how-to-get-groupby-sum-of-multiple-columns
+     
+    '''
+    logging.debug(f'seqdf=\n{seqdf}')
+    # keep original label
+    label = seqdf['label'].unique()[0]
+    vdf = seqdf.drop('label',axis=1).groupby('sequence').agg({'read_count':'sum','umi_count':'sum'}).reset_index()
+    #vdf = seqdf.groupby('sequence')['read_counts'].agg(count='count',sum='sum').reset_index()
+    #vdf.rename(columns={'count': 'umi_counts','sum': 'read_counts'}, inplace=True)
+    vdf.sort_values(by=['umi_count'], ascending=False, inplace=True)
+    vdf.reset_index(inplace=True, drop=True)
+    vdf['label'] = label
+    logging.debug(f'counts df = \n{vdf}')
+    return vdf
+
+
+
+
+def make_read_counts_dfs(config, filelist, outdir):
+    '''
+    
+    '''
+    dflist = []
+    for filepath in filelist:
+        logging.info(f'calculating counts for file {filepath} ...')    
+        dirname = os.path.dirname(filepath)
+        
+        if outdir is not None:
+            dirname = outdir
+        
+        filename = os.path.basename(filepath)
+        (base, ext) = os.path.splitext(filename)   
+        logging.debug(f'handling {filepath} base={base}')
+        
+        # make raw fasta TSV of barcode-splitter output for one barcode. 
+        # trim to 44 unique w/ counts. 
+        seqdf = make_fasta_df(config, filepath)
+        of = os.path.join(dirname , f'{base}.read.seq.tsv')
+        seqdf.to_csv(of, sep='\t')
+        
+        # to calculate threshold we need counts calculated. 
+        cdf = make_read_counts_df(config, seqdf, label=base)  
+        logging.debug(f'made counts df: {len(cdf)} reads.')
+        of = os.path.join(dirname , f'{base}.read.counts.tsv')
+        cdf.to_csv(of, sep='\t')
+        dflist.append(cdf)
+    logging.debug(f'returning list of {len(dflist)} counts DFs...')
+    return dflist 
+
+
+def filter_counts_df(cp, countsdf, min_count):
+    '''
+    Assumes read_count column
+    '''      
+    countsdf = countsdf[countsdf['read_count'] >= min_count]
+    countsdf.reset_index(drop=True, inplace=True)
+    logging.info(f'filtering by count: before={initlen} after={len(seqdf)} min_count={min_count} ')
+    return cdf    
+            
+def make_fasta_df(config, infile, ignore_n=True):
+    '''
+    input fasta 
+    ignore 'N' sequences.
+    '''   
+    slist = []
+    rcs = SeqIO.parse(infile, "fasta")
+    handled = 0
+    for sr in rcs:
+        s = sr.seq
+        if ('N' in sr) and ignore_n :
+            pass
+        else:
+            slist.append(str(s))
+        handled += 1    
+    logging.debug(f"kept {len(slist)} sequences out of {handled}")    
+    df = pd.DataFrame(slist, columns=['sequence'] )
+    return df
+
+def normalize_scale(df, columns = None, logscale='log2', min=0.0, max=1.0):
+    '''
+    Log scale whole matrix.   log10 or log2 ???
+    Set -inf to 0
+    Set NaN to 0
+    
+    
+    '''
+    #logging.debug(f'making rows sum to one...')
+    if logscale == 'log2':
+        ldf = np.log2(df)
+    elif logscale == 'log10':
+        ldf = np.log10(df)
+    
+    for c in ldf.columns:
+        ldf[c] = np.nan_to_num(ldf[c], neginf=0.0)
+    return ldf
+
+def set_siteinfo(df, sampdf, column='sequence', cp=None):
+    '''
+    This is a purely utility function to determine site type for
+    shoulder plots. 
+    
+    '''
+    if cp is None:
+        cp=get_default_config()
+    ssi_st = int(cp.get('mapseq','ssi_st') )
+    ssi_end = int(cp.get('mapseq','ssi_end') )
+    bcfile = os.path.expanduser( cp.get('barcodes','ssifile'))
+
+    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
+    df.drop( column, axis=1, inplace=True)
+
+    # set site
+    # map SSIs, set unknown to unmatched.
+    logging.debug(f'getting rt labels...')
+    labels = get_rtlist(sampdf)
+    logging.debug(f'rtlabels={labels}')
+    #bcdict = get_barcode_dict(bcfile, labels)
+    rtdict = get_rtprimer_dict(bcfile, labels)
+   
+    #logging.info('filling in labels by SSI sequences...')
+    #df['label'] = df['ssi'].map(bcdict)
+    #logging.info('labelling unmatched...')
+    #df.fillna({'label': 'nomatch'}, inplace=True)
+
+    logging.info('filling in rtprimer number by SSI sequences...')    
+    df['rtprimer'] = df['ssi'].map(rtdict)
+    logging.info('labelling unmatched...')
+    df.fillna({'rtprimer': 'nomatch'}, inplace=True)
+    
+    sdf = sampdf[['rtprimer','siteinfo']]
+    sdf = sdf[sdf['siteinfo'] != '']
+    smap = dict(zip(sdf['rtprimer'],sdf['siteinfo']))
+    df['site'] = df['rtprimer'].map(smap)
+    df.fillna({'site': 'nomatch'}, inplace=True)
+    sdf = None    
+    
+    return df
+
+def set_counts_df(seqdf, column='', cp=None):
+    '''
+    assumed sequence column 
+    calculates duplicates and sets read_count column
+ 
+    '''
+    initlen = len(seqdf)
+    logging.debug(f'setting read counts for sequence DF len={len(seqdf)}')
+    cdf = make_read_counts_df(cp, seqdf, label=None)
+    fmap = cdf.set_index('sequence')['read_count'].to_dict()
+    seqdf['read_count'] = seqdf['sequence'].map(fmap)
+    # change made to inbound df, but return anyway
+    return seqdf
+    
+
+def process_mapseq_all_native(infiles, sampleinfo, outdir=None, force=False, cp=None):    
+    '''
+    DO NOT USE. NEEDS UPDATING FOR LARGE DATA
+    
+    performs end-to-end default processing. fastq pairs to matrices
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+    bcfile = cp.get('barcodes','ssifile')
+    expid = cp.get('project','project_id')
+    
+    if outdir is None:
+        outdir = os.path.abspath('./')
+        logging.debug(f'outdir not provided, set to {outdir}')
+    else:
+        outdir = os.path.abspath(outdir)
+        logging.debug(f'outdir = {outdir} ')   
+   
+    logging.debug(f'ensuring outdir: {outdir} ')
+    os.makedirs(outdir, exist_ok=True)
+    logging.info(f'outdir={outdir}')
+
+   
+    # process_fastq_pairs
+    if (len(infiles) < 2)  or (len(infiles) % 2 != 0 ):
+        parser.print_help()
+        print('error: the following arguments are required: 2 or multiple of 2 infiles')
+        sys.exit(1)
+    infiles = package_pairs(infiles) 
+    
+    outfile = f'{outdir}/{expid}.reads.tsv'
+    df = process_fastq_pairs_pd(infiles, 
+                                 outdir,  
+                                 cp=cp)    
+
+    logging.debug(f'filtering by read quality. repeats. Ns.')
+    df = filter_reads_pd(df, 
+                           column='sequence' )
+    logging.debug(f'calc/set read counts on original reads.')    
+    df = set_counts_df(df, column='sequence')
+    logging.info(f'dropping sequence column to slim.')
+    df.drop('sequence', axis=1, inplace=True)    
+    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
+    df.to_csv(outfile, sep='\t')
+    dir, base, ext = split_path(outfile)
+    outfile = os.path.join( dir , f'{base}.parquet')
+    logging.info(f'df len={len(df)} as parquet to {outfile}...')
+    df.to_parquet(outfile)
+    logging.info(f'process_fastq_pairs done.')
+    
+    # align_collapse    
+    outfile = f'{outdir}/{expid}.collapse.tsv'
+    df = align_collapse_pd(df, 
+                           outdir=outdir, 
+                           cp=cp)
+    logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
+    df.to_csv(outfile, sep='\t')
+    dir, base, ext = split_path(outfile)
+    outfile = os.path.join(dir, f'{base}.parquet')
+    logging.info(f'df len={len(df)} as parquet to {outfile}...')
+    df.to_parquet(outfile)    
+    logging.info(f'align_collapse done.')
+    
+    # make_readtable
+    outfile = f'{outdir}/{expid}.readtable.tsv'
+    logging.debug(f'loading sample DF...')
+    sampdf = load_sample_info(cp, sampleinfo)
+    logging.debug(f'\n{sampdf}')
+    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    
+    df = process_make_readtable_pd(df,
+                                   sampdf,
+                                   bcfile=bcfile, 
+                                   outdir=outdir, 
+                                   cp=cp)
+
+    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    df.to_csv(outfile, sep='\t')
+    dir, base, ext = split_path(outfile)
+    outfile = os.path.join(dir, f'{base}.parquet')
+    logging.info(f'df len={len(df)} as parquet to {outfile}...')
+    df.to_parquet(outfile)
+    logging.info(f'make_readtable done.')    
+
+    # make_vbctable
+    outfile = f'{outdir}/{expid}.vbctable.tsv'
+    df = process_make_vbctable_pd(df,
+                               outdir=outdir,
+                               cp=cp)
+
+    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
+    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
+    df.to_csv(outfile, sep='\t')
+    
+    dir, base, ext = split_path(outfile)
+    outfile = os.path.join( dir , f'{base}.parquet')
+    logging.info(f'df len={len(df)} as parquet to {outfile}...')
+    df.to_parquet(outfile)    
+    
+    # make_matrices
+    process_make_matrices_pd(df,
+                               exp_id = expid,  
+                               outdir=outdir, 
+                               cp=cp)
+    
+
+def filter_counts_fasta(cp, infile, 
+                        outfile, 
+                        datestr=None, 
+                        min_count = 2 ):
+    '''
+    we want to go FASTA to FASTA, but filter by read counts.  
+    '''
+    sdf = read_fasta_to_df(infile)
+    logging.debug(f'got {len(sdf)} sequences.')
+    fdf = filter_counts_df(cp, sdf, min_count)
+    logging.info(f'got {len(fdf)} filtered sequences. Writing to {outfile} FASTA.')
+    write_fasta_from_df(fdf, outfile)
+    logging.debug(f'Wrote {outfile}')
+    
+def calc_min_threshold(config, df, site='target-negative'):
+    '''
+    retrieve maximum umi_count value for provided site type. 
+    returns max max value...
+
+    '''
+    logging.debug(f'getting UMI threshold type={site}')
+    countlist = []
+    min_threshold = 0
+    df['umi_count'] = df['umi_count'].astype(int)
+    tndf = df[ df['site'] == site]
+    lablist = list(tndf['label'].dropna().unique())
+    for label in lablist:
+        ldf = tndf[tndf['label'] == label]
+        if len(ldf) > 0:
+            maxumi = ldf['umi_count'].max()
+            logging.debug(f'max umi_count for label {label} = {maxumi}')
+            countlist.append( maxumi )
+    if len(countlist) > 0:
+        min_threshold = max(countlist)
+        logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
+    return min_threshold
+
+
+def threshold_read_counts(config, df, threshold=1):
+    '''
+    
+    '''
+    logging.debug(f'threshold counts threshold={threshold}')
+    threshold= int(threshold)   
+    df = df[df['read_count'] >= threshold].copy()
+    return df
+
+
+def get_read_count_threshold(config, cdf, site=None):
+    '''
+    site = ['target-X','injection-X'] where X is '', lone, control, negative  
+        Will use relevant threshold. If None, will use default threshold
+    
+    target_threshold=100
+    target_ctrl_threshold=1000
+    inj_threshold=2
+    inj_ctrl_threshold=2
+    
+    '''
+    logging.debug(f'getting info for site={site}')
+    count_threshold=1
+    if site is None:
+        count_threshold = int(config.get('ssifasta', 'default_threshold'))
+    else:
+        count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
+    logging.debug(f'count threshold for {site} = {count_threshold}')
+    return count_threshold
+
+                 
+def add_rowlist_column(rowlist, colval):
+    """
+    For use during dataframe construction. Adds col to list of rows with specified.
+       
+    """
+    for row in rowlist:
+        row.append(colval)
+    return rowlist
+
+
+

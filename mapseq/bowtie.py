@@ -54,13 +54,11 @@ OPT_MAP = { 'score'     : 'AS',
             }
 
 
-
 class NonZeroReturnException(Exception):
     """
     Thrown when a command has non-zero return code. 
     """
     
-
 
 def run_bowtie(config, infile, outfile, tool='bowtie'):
     '''

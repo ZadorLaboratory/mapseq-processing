@@ -494,6 +494,7 @@ def get_rtprimer_dict(bcfile, labels=None):
     logging.debug(f'got dict len={len(rtdict)}')
     return rtdict
 
+
 def get_barcode_dict(bcfile, labels=None):
     '''
     read barcode file, parse into dict. 

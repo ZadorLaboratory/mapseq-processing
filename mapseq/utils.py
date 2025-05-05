@@ -31,9 +31,9 @@ from Bio.SeqRecord import SeqRecord
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
-
 #
-# Multiprocessing  using explicity command running. 
+#            SIMPLE MULTIPROCESSING 
+# 
 #            jstack = JobStack()
 #            cmd = ['program','-a','arg1','-b','arg2','arg3']
 #            jstack.addjob(cmd)
@@ -42,6 +42,8 @@ numba_logger.setLevel(logging.WARNING)
 #
 #            will block until all jobs in jobstack are done, using <max_processes> jobrunners that
 #            pull from the stack.
+#
+
 class JobSet(object):
     def __init__(self, max_processes, jobstack):
         self.max_processes = max_processes
@@ -179,6 +181,9 @@ def run_command_shell(cmd):
 
 
 
+#
+#        UTILITY FUNCTIONS
+#
 
 def setup_logging(level):
     """ 
@@ -194,12 +199,18 @@ def setup_logging(level):
     logger.setLevel(level)
 
 def get_configstr(cp):
+    '''
+     ConfigParser a standard string object. 
+    '''
     with io.StringIO() as ss:
         cp.write(ss)
         ss.seek(0)  # rewind
         return ss.read()
 
 def format_config(cp):
+    '''
+        Pretty print ConfigParser to standard string for logging.  
+    '''
     cdict = {section: dict(cp[section]) for section in cp.sections()}
     s = pprint.pformat(cdict, indent=4)
     return s
@@ -259,7 +270,6 @@ def flatten_list(listoflists):
 def fix_columns_float(df, columns):
     for col in columns:
         try:
-            logging.debug(f'trying to fix col {col}')
             fixed = np.array(df[col], np.float64)
             df[col] = fixed
         except ValueError:
@@ -277,20 +287,14 @@ def fix_columns_int(df, columns):
     for col in columns:
         with np.errstate(invalid='raise'):
             try:
-                logging.debug(f'trying to fix col {col}')
                 fixed = np.array(df[col], np.int16)
-                logging.debug(f'fixed=\n{fixed}')
                 df[col] = fixed
-                
             except KeyError:
                 logging.warning(f'no column {col}')
-            
             except ValueError:
                 logging.debug(f'invalid literal in {col}')
-            
             except FloatingPointError:
-                logging.debug(f'invalid cast value in {col}')
-                
+                logging.debug(f'invalid cast value in {col}')                
             except TypeError:
                 logging.debug(f'invalid type in {col}')
     return df
@@ -302,7 +306,6 @@ def fix_columns_str(df, columns):
     '''
     for col in columns:
         try:
-            logging.debug(f'trying to fix col {col}')
             df[col] = df[col].replace(0,'0')
             df[col] = df[col].replace(np.nan,'')
             df[col] = df[col].astype('string')
@@ -314,16 +317,32 @@ def fix_columns_str(df, columns):
             logging.warning(traceback.format_exc(None))
     return df
 
-                 
-def add_rowlist_column(rowlist, colval):
-    """
-    For use during dataframe construction. Adds col to list of rows with specified.
-       
-    """
-    for row in rowlist:
-        row.append(colval)
-    return rowlist
+
+def get_mainbase(filepath):
+    '''
+    for any full or relative filename XXXXX.y.z.w.ext 
+    returns just XXXXX (first portion before dot). 
     
+    '''
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)
+    base = base.split('.')[0]
+    return base
+
+
+def modulo_filter(inlist, divisor, remainder):
+    """
+    Takes a list, returns list containing items in inlist that 
+    have the given remainder modulo divisor. 
+    """
+    newlist = []
+    for e in inlist:
+        if string_modulo(e, divisor) == remainder:
+            newlist.append(e)
+    logging.debug(f'inlist len={len(inlist)}, {divisor} servers, {remainder} server idx. outlist len={len(newlist)}')
+    return newlist
+
 
 def package_pairs(itemlist):
     '''
@@ -370,35 +389,9 @@ def string_modulo(instring, divisor):
     encoded = instring.encode('utf-8')
     hstring = encoded.hex()
     intval = int(hstring, 16)
-    return intval % divisor
+    return intval % divisor    
 
 
-def modulo_filter(inlist, divisor, remainder):
-    """
-    Takes a list, returns list containing items in inlist that 
-    have the given remainder modulo divisor. 
-    """
-    newlist = []
-    for e in inlist:
-        if string_modulo(e, divisor) == remainder:
-            newlist.append(e)
-    logging.debug(f'inlist len={len(inlist)}, {divisor} servers, {remainder} server idx. outlist len={len(newlist)}')
-    return newlist
-    
-
-
-
-def get_mainbase(filepath):
-    '''
-    for any full or relative filename XXXXX.y.z.w.ext 
-    returns just XXXXX (first portion before dot). 
-    
-    '''
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)
-    base = base.split('.')[0]
-    return base
 
 
 

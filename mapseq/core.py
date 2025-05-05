@@ -91,6 +91,8 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 
     }
 
+#                 Sample Information metadata site labels
+#
 # TARGET
 # target-negative            user-defined    treated but expected to be low
 
@@ -101,15 +103,13 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 
 # injection-water-control    core added      empty sample
 
-
-
 CONTROL_SITES=['target-negative-control', 
                'target-wt-control',
                'target-water-control',
                'injection-water-control']
 
 #
-# Utility functions. 
+#             MAPSEQ UTILITY 
 #
 
 def get_default_config():
@@ -118,9 +118,192 @@ def get_default_config():
     cp.read(dc)
     return cp
 
+    
+def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
+    '''
+    Abstracted loading code for all MAPseq pipeline dataframe formats. 
+    
+    '''    
+    logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
+    if fformat not in FFORMATS :
+        logging.warning(f'fformat {fformat} not in {FFORMATS} . Datatypes may be incorrect.')
+    
+    ftype = None
+    df = None
+    
+    if infile.endswith('.tsv'):
+         ftype = 'tsv'
+    elif infile.endswith('.parquet'):
+       ftype = 'parquet'
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
+    logging.debug(f'input filetype={ftype}')
+    
+    if ftype == 'tsv':
+        if use_dask:
+            logging.debug(f'loading via Dask ftype=tsv use_dask=True with dtype dict...')
+            df = dd.read_csv(infile, sep='\t', dtype=FMT_DTYPES )  
+        else:
+            logging.debug(f'loading via Pandas ftype=tsv use_dask=False with dtype dict...')
+            df = pd.read_csv(infile, sep='\t', index_col=0, dtype=FMT_DTYPES )     
+        logging.debug(f'after: dtypes=\n{df.dtypes}')        
+    
+    elif ftype == 'parquet':
+        if use_dask:
+            if use_arrow:
+                df = dd.read_parquet(infile, filesystem='arrow')
+            else:
+                df = dd.read_parquet(infile)  
+        else:
+            df = pd.read_parquet(infile)
+            df = fix_mapseq_df_types(df, fformat=fformat, use_arrow=use_arrow) 
+    return df       
+
+
+def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
+    '''
+    confirm that columns are proper types. 
+    use string[pyarrow] for strings, else string
+    '''
+    logging.info(f'old dataframe dtypes=\n{df.dtypes}')
+    
+    if fformat in FFORMATS:
+        if use_arrow:
+            tt = 'string[pyarrow]'
+        else:
+            tt = 'string[python]'
+            
+        for scol in STR_COLS[fformat]:
+            dt = df[scol].dtype 
+            if dt != tt:
+                logging.debug(f'converting col={scol} from {dt} to {tt} ...')
+                df[scol] = df[scol].astype(tt) 
+            
+        for icol in INT_COLS[fformat]:
+            dt = df[icol].dtype
+            if dt != 'int64':
+                logging.debug(f"converting col={icol} from {dt} to 'int64' ...")
+                df[icol] = df[icol].astype('int64')                
+            
+        for ccol in CAT_COLS[fformat]:
+            dt = df[ccol].dtype
+            if dt != 'category':
+                logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
+                df[ccol] = df[ccol].astype('category')        
+    else:
+        logging.warning('unrecognized mapseq format. return original')
+    logging.info(f'new dataframe dtypes=\n{df.dtypes}')
+    return df
+
+
+def load_mapseq_matrix_df( infile, use_dask = False ):
+    '''
+    convenience method to align with load_mapseq_df()
+    just ensures validity, data type. 
+    
+    '''
+    df = None
+    if infile.endswith('.tsv'):
+        if use_dask:
+            df = dd.read_csv(infile, sep='\t')  
+        else:
+            df = pd.read_csv(infile, sep='\t', index_col=0)
+
+    elif infile.endswith('.parquet'):
+        if use_dask:
+            df = dd.read_parquet(infile)  
+        else:
+            df = pd.read_parquet(infile)
+    else:
+        logging.error('input file must have relevant extension .tsv or .parquet')
+        sys.exit(1)
+    
+    logging.debug(f'naive: dtypes=\n{df.dtypes}')    
+    return df    
+
+
 #
-#  XLSX Sampleinfo File Handling
+#          SAMPLEINFO/METADATA UTILITY
 #
+
+def load_sample_info(file_name, sheet_name='Sample information', cp=None):
+    #
+    # Parses Excel spreadsheet to get orderly sample metadata, saves as ./sampleinfo.tsv.     
+    # OR Reads in sampleinfo.tsv
+    # Assumes various properties of spreadsheet that need to stay static. 
+    #
+    #   ['Tube # by user', 'Our Tube #', 'Sample names provided by user',
+    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
+    #
+    # If brain is not given, or is empty, all are set to 'brain1'. 
+    # If region is not given, or is empty, all are set to <rtprimer>
+    # 
+    
+    if cp is None:
+        cp = get_default_config()
+    
+    # Mappings for excel columns. 
+    sheet_to_sample = {
+            'Tube # by user'                  : 'usertube', 
+            'Our Tube #'                      : 'ourtube', 
+            'Sample names provided by user'   : 'samplename', 
+            'Site information'                : 'siteinfo',
+            'RT primers for MAPseq'           : 'rtprimer',
+            'Brain'                           : 'brain',
+            'Region'                          : 'region',
+            'Matrix Column'                   : 'matrixcolumn',
+        }
+    
+    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
+
+    if file_name.endswith('.xlsx'):
+        edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1, dtype=str)        
+        sdf = pd.DataFrame()
+        
+        for ecol in edf.columns:
+            ecol_stp = ecol.strip()    
+            try:
+                # map using stripped column name, retrieve using actual excel column name
+                # which may have trailing spaces...
+                scol = sheet_to_sample[ecol_stp]
+                logging.debug(f'found mapping {ecol} -> {scol}')
+                cser = edf[ecol]
+                sdf[scol] = cser
+            
+            except KeyError:
+                logging.debug(f'no mapping for {ecol} continuing...')
+            
+            except Exception as ex:
+                logging.error(f'error while handling {ecol} ')
+                logging.info(traceback.format_exc(None))
+        
+        # Only keep rows with rtprimer info. 
+        sdf = sdf[sdf['rtprimer'].isna() == False]
+        sdf.fillna('', inplace=True)
+
+        # Ensure required columns are present, fill in with reasonable values.         
+        for scol in sample_columns:
+            try:
+                ser = sdf[scol]
+            except KeyError as ke:
+                logging.info(f'no column {scol}, required. Creating...')
+                if scol == 'samplename':
+                    sdf[scol] = sdf['ourtube']
+                elif scol == 'region':
+                    sdf[scol] = sdf['rtprimer']
+        logging.info(f'loaded DF from Excel {file_name}')
+        
+    elif file_name.endswith('.tsv'):
+        sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
+        sdf = sdf.astype('str', copy=False)    
+    else:
+        logging.error(f'file {file_name} neither .xlsx or .tsv')
+        sdf = None
+        
+    logging.debug(f'created reduced sample info df:\n{sdf}')
+    return sdf
+
 
 def get_rtlist(sampledf):
     '''
@@ -138,12 +321,12 @@ def get_rtlist(sampledf):
             logging.debug(f'ignoring bad int() input.')
         
     if len(nrtlist) > 1: 
-    #rtlist = [int(x) for x in rtlist]
         nrtlist = [f'BC{x}' for x in nrtlist]
     else:
         nrtlist = list(sampledf['rtprimer'].dropna())
     logging.debug(f'got rtlist = {nrtlist}')
     return nrtlist
+
 
 def guess_site(infile, sampdf):
     '''
@@ -196,31 +379,11 @@ def guess_site(infile, sampdf):
 
     logging.debug(f'got site={site} for rtprimer guessed from {infile}')
     return (rtprimer_num, site, brain, region )
-    
 
 
-
-def read_threshold_all(cp, alldf):
-    '''
-    we did not threshold BC by BC when processing fastqs, so we can threshold by proxy
-    using a ratio of UMIs to read_count behind them. 
-    '''
-    target_ratio = float( cp.get('ssifasta','target_read_ratio'))
-    injection_ratio = float( cp.get('ssifasta','injection_read_ratio'))
-    
-    alldf['read_ratio'] = alldf['read_count'] / alldf['umi_count']
-        
-    injdf = alldf[ alldf['site'].str.startswith('injection') ]
-    tardf = alldf[ alldf['site'].str.startswith('target') ]
-    injdf = injdf[ injdf['read_ratio'] > injection_ratio ]
-    tardf = tardf[ tardf['read_ratio'] > target_ratio ]
-    df_merged = pd.concat([injdf, tardf], ignore_index = True, sort=False)
-    logging.info(f'target_ratio = {target_ratio} injection_ratio = {injection_ratio} before len={len(alldf)} after len={len(df_merged)}')
-    return df_merged
-       
-    
+  
 #
-#  Bowties/Tarjan utility functions. 
+#  BOWTIE/TARJAN FUNCTIONS
 #
 def edges_from_btdf(btdf):
     readlist = btdf.name_read.values.tolist()
@@ -309,390 +472,13 @@ def tarjan(V):
             yield from strongconnect(v, [])
 
 
+####################################################################
+#    PIPELINE PHASES
+####################################################################
 
-
-
-
-def make_read_counts_df(config, seqdf, label=None):
-    '''
-    input dataframe with 'sequence' column
-    make counts column for identical sequences.  
-    optionally assign a label to set in new column
-    
-    '''
-    logging.debug(f'seqdf=\n{seqdf}')
-    ser = seqdf['sequence'].value_counts()
-    df = pd.DataFrame(columns=['sequence','read_count'])
-    df['sequence'] = ser.index
-    df['read_count'] = ser.values
-    logging.debug(f'counts df = \n{df}')
-    if label is not None:
-        df['label'] = label
-    return df
-
-def make_umi_counts_df(config, seqdf, label=None):
-    '''
-    input dataframe with 'sequence' column
-    make counts column for identical sequences.  
-    optionally assign a label to set in new column
-    combine values from collapsed read_counts 
-    sequence   read_count  label     
-    AAA        23           A
-    AAA        5            A
-    BBB        7            A
-    BBB        6            A
-    CCC        5            A
-    
-    ->
-    AAA    read_count  umi_count label
-    BBB    13           2          A
-    CCC    28           2          A
-    CCC    5            1          A
-    
-    https://stackoverflow.com/questions/73874908/value-counts-then-sum-of-a-different-column
-    https://stackoverflow.com/questions/46431243/how-to-get-groupby-sum-of-multiple-columns
-     
-    '''
-    logging.debug(f'seqdf=\n{seqdf}')
-    # keep original label
-    label = seqdf['label'].unique()[0]
-    vdf = seqdf.drop('label',axis=1).groupby('sequence').agg({'read_count':'sum','umi_count':'sum'}).reset_index()
-    #vdf = seqdf.groupby('sequence')['read_counts'].agg(count='count',sum='sum').reset_index()
-    #vdf.rename(columns={'count': 'umi_counts','sum': 'read_counts'}, inplace=True)
-    vdf.sort_values(by=['umi_count'], ascending=False, inplace=True)
-    vdf.reset_index(inplace=True, drop=True)
-    vdf['label'] = label
-    logging.debug(f'counts df = \n{vdf}')
-    return vdf
-
-
-def make_fasta_df(config, infile, ignore_n=True):
-    '''
-    input fasta 
-    ignore 'N' sequences.
-    '''   
-    slist = []
-    rcs = SeqIO.parse(infile, "fasta")
-    handled = 0
-    for sr in rcs:
-        s = sr.seq
-        if ('N' in sr) and ignore_n :
-            pass
-        else:
-            slist.append(str(s))
-        handled += 1    
-    logging.debug(f"kept {len(slist)} sequences out of {handled}")    
-    df = pd.DataFrame(slist, columns=['sequence'] )
-    return df
-
-def calc_min_umi_threshold(df, site='target-negative', cp=None):
-    '''
-    retrieve maximum umi_count value for provided site type. 
-    returns max max value...
-
-    '''
-    if cp is None:
-        cp = get_default_config()
-    
-    logging.debug(f'getting UMI threshold type={site}')
-    countlist = []
-    min_threshold = 0
-    #df['umi_count'] = df['umi_count'].astype(int)
-    tndf = df[ df['site'] == site]
-    lablist = list(tndf['label'].dropna().unique())
-    for label in lablist:
-        ldf = tndf[tndf['label'] == label]
-        if len(ldf) > 0:
-            maxumi = ldf['umi_count'].max()
-            logging.debug(f'max umi_count for label {label} = {maxumi}')
-            countlist.append( maxumi )
-    if len(countlist) > 0:
-        min_threshold = max(countlist)
-        logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
-    return min_threshold
-
-
-
-def calc_min_threshold(config, df, site='target-negative'):
-    '''
-    retrieve maximum umi_count value for provided site type. 
-    returns max max value...
-
-    '''
-    logging.debug(f'getting UMI threshold type={site}')
-    countlist = []
-    min_threshold = 0
-    df['umi_count'] = df['umi_count'].astype(int)
-    tndf = df[ df['site'] == site]
-    lablist = list(tndf['label'].dropna().unique())
-    for label in lablist:
-        ldf = tndf[tndf['label'] == label]
-        if len(ldf) > 0:
-            maxumi = ldf['umi_count'].max()
-            logging.debug(f'max umi_count for label {label} = {maxumi}')
-            countlist.append( maxumi )
-    if len(countlist) > 0:
-        min_threshold = max(countlist)
-        logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
-    return min_threshold
-
-
-   
-
-
-def get_read_count_threshold(config, cdf, site=None):
-    '''
-    site = ['target-X','injection-X'] where X is '', lone, control, negative  
-        Will use relevant threshold. If None, will use default threshold
-    
-    target_threshold=100
-    target_ctrl_threshold=1000
-    inj_threshold=2
-    inj_ctrl_threshold=2
-    
-    '''
-    logging.debug(f'getting info for site={site}')
-    count_threshold=1
-    if site is None:
-        count_threshold = int(config.get('ssifasta', 'default_threshold'))
-    else:
-        count_threshold = int(config.get('ssifasta', f'{site}_threshold'))
-    logging.debug(f'count threshold for {site} = {count_threshold}')
-    return count_threshold
-
-
-def calc_freq_threshold(df, fraction=0.9, column = 'read_count'):
-    '''
-    sorts column of input column
-    calculates index of point at which <fraction> of data points are less 
-    returns column value at that point + 1 
-    '''
-    ser = df[column].copy()
-    ser.sort_values(ascending = False, inplace=True)
-    ser.reset_index(drop=True, inplace=True)
-    idx = int(len(ser) * fraction)
-    t = int( ser.iloc[idx] + 1 )    
-    return t
-        
-
-def threshold_read_counts(config, df, threshold=1):
-    '''
-    
-    '''
-    logging.debug(f'threshold counts threshold={threshold}')
-    threshold= int(threshold)   
-    df = df[df['read_count'] >= threshold].copy()
-    return df
-
-
-
-def load_sample_info(file_name, sheet_name='Sample information', cp=None):
-    #
-    # Parses Excel spreadsheet to get orderly sample metadata, saves as sampleinfo.tsv.     
-    # OR Reads in sampleinfo.tsv
-    # Assumes various properties of spreadsheet that need to stay static. 
-    #
-    #   ['Tube # by user', 'Our Tube #', 'Sample names provided by user',
-    #   'Site information', 'RT primers for MAPseq', 'Brain ', 'Column#']
-    #
-    # If brain is not given, or is empty, all are set to 'brain1'. 
-    # If region is not given, or is empty, all are set to <rtprimer>
-    # 
-    
-    if cp is None:
-        cp = get_default_config()
-    
-    
-    # Mappings for excel columns. 
-    sheet_to_sample = {
-            'Tube # by user'                  : 'usertube', 
-            'Our Tube #'                      : 'ourtube', 
-            'Sample names provided by user'   : 'samplename', 
-            'Site information'                : 'siteinfo',
-            'RT primers for MAPseq'           : 'rtprimer',
-            'Brain'                           : 'brain',
-            'Region'                          : 'region',
-            'Matrix Column'                   : 'matrixcolumn',
-        }
-    
-    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
-
-    if file_name.endswith('.xlsx'):
-        edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1, dtype=str)        
-        sdf = pd.DataFrame()
-        
-        for ecol in edf.columns:
-            ecol_stp = ecol.strip()    
-            try:
-                # map using stripped column name, retrieve using actual excel column name
-                # which may have trailing spaces...
-                scol = sheet_to_sample[ecol_stp]
-                logging.debug(f'found mapping {ecol} -> {scol}')
-                cser = edf[ecol]
-                sdf[scol] = cser
-            
-            except KeyError:
-                logging.debug(f'no mapping for {ecol} continuing...')
-            
-            except Exception as ex:
-                logging.error(f'error while handling {ecol} ')
-                logging.info(traceback.format_exc(None))
-        
-        # Only keep rows with rtprimer info. 
-        sdf = sdf[sdf['rtprimer'].isna() == False]
-        sdf.fillna('', inplace=True)
-
-        # Ensure required columns are present, fill in with reasonable values.         
-        for scol in sample_columns:
-            try:
-                ser = sdf[scol]
-            except KeyError as ke:
-                logging.info(f'no column {scol}, required. Creating...')
-                if scol == 'samplename':
-                    sdf[scol] = sdf['ourtube']
-                elif scol == 'region':
-                    sdf[scol] = sdf['rtprimer']
-        logging.info(f'loaded DF from Excel {file_name}')
-        
-    elif file_name.endswith('.tsv'):
-        sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
-        sdf = sdf.astype('str', copy=False)    
-    else:
-        logging.error(f'file {file_name} neither .xlsx or .tsv')
-        sdf = None
-        
-    logging.debug(f'created reduced sample info df:\n{sdf}')
-    return sdf
-
-
-def load_mapseq_matrix_df( infile, use_dask = False ):
-    '''
-    convenience method to align with load_mapseq_df()
-    just ensures validity, data type. 
-    
-    '''
-    df = None
-    if infile.endswith('.tsv'):
-        if use_dask:
-            df = dd.read_csv(infile, sep='\t')  
-        else:
-            df = pd.read_csv(infile, sep='\t', index_col=0)
-
-    elif infile.endswith('.parquet'):
-        if use_dask:
-            df = dd.read_parquet(infile)  
-        else:
-            df = pd.read_parquet(infile)
-    else:
-        logging.error('input file must have relevant extension .tsv or .parquet')
-        sys.exit(1)
-    
-    logging.debug(f'naive: dtypes=\n{df.dtypes}')    
-    return df
-    
-    
-def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
-    '''
-    Abstracted loading code for all MAPseq pipeline dataframe formats. 
-    
-    '''    
-    logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
-    if fformat not in FFORMATS :
-        logging.warning(f'fformat {fformat} not in {FFORMATS} . Datatypes may be incorrect.')
-    
-    ftype = None
-    df = None
-    
-    if infile.endswith('.tsv'):
-         ftype = 'tsv'
-    elif infile.endswith('.parquet'):
-       ftype = 'parquet'
-    else:
-        logging.error('input file must have relevant extension .tsv or .parquet')
-        sys.exit(1)
-    logging.debug(f'input filetype={ftype}')
-    
-    if ftype == 'tsv':
-        if use_dask:
-            logging.debug(f'loading via Dask ftype=tsv use_dask=True with dtype dict...')
-            df = dd.read_csv(infile, sep='\t', dtype=FMT_DTYPES )  
-        else:
-            logging.debug(f'loading via Pandas ftype=tsv use_dask=False with dtype dict...')
-            df = pd.read_csv(infile, sep='\t', index_col=0, dtype=FMT_DTYPES )
-
-        #logging.debug(f'before: dtypes=\n{df.dtypes}')
-        #
-        #for col in STR_COLS[fformat]:
-        #    logging.debug(f'converting {col} to string[pyarrow]')
-        #    try:
-        #        df[col] = df[col].astype('string[pyarrow]')
-        #    except KeyError:
-        #        logging.warning(f'no {col} column {fformat}? continue...')
-            
-        #for col in INT_COLS[fformat]:
-        #    logging.debug(f'converting {col} to integer')
-        #    try:
-        #        df[col] = df[col].astype('uint32')    
-        #    except KeyError:
-        #        logging.warning(f'no {col} column {fformat}? continue...')
-
-        #for col in CAT_COLS[fformat]:
-        #    logging.debug(f'converting {col} to category')
-        #    try:
-        #        df[col] = df[col].astype('category')    
-        #    except KeyError:
-        #        logging.warning(f'no {col} column {fformat}? continue...')
-      
-        logging.debug(f'after: dtypes=\n{df.dtypes}')        
-    
-    elif ftype == 'parquet':
-        if use_dask:
-            if use_arrow:
-                df = dd.read_parquet(infile, filesystem='arrow')
-            else:
-                df = dd.read_parquet(infile)  
-        else:
-            df = pd.read_parquet(infile)
-            df = fix_mapseq_df_types(df, fformat=fformat, use_arrow=use_arrow) 
-    return df       
-
-
-def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
-    '''
-    confirm that columns are proper types. 
-    use string[pyarrow] for strings, else string
-    '''
-    logging.info(f'old dataframe dtypes=\n{df.dtypes}')
-    
-    if fformat in FFORMATS:
-        if use_arrow:
-            tt = 'string[pyarrow]'
-        else:
-            tt = 'string[python]'
-            
-        for scol in STR_COLS[fformat]:
-            dt = df[scol].dtype 
-            if dt != tt:
-                logging.debug(f'converting col={scol} from {dt} to {tt} ...')
-                df[scol] = df[scol].astype(tt) 
-            
-        for icol in INT_COLS[fformat]:
-            dt = df[icol].dtype
-            if dt != 'int64':
-                logging.debug(f"converting col={icol} from {dt} to 'int64' ...")
-                df[icol] = df[icol].astype('int64')                
-            
-        for ccol in CAT_COLS[fformat]:
-            dt = df[ccol].dtype
-            if dt != 'category':
-                logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
-                df[ccol] = df[ccol].astype('category')        
-    else:
-        logging.warning('unrecognized mapseq format. return original')
-    logging.info(f'new dataframe dtypes=\n{df.dtypes}')
-    return df
-    
- 
+#
+#    FASTQ  HANDLING 
+#
 def process_fastq_pairs(infilelist, 
                         outdir,                         
                         force=True,
@@ -708,7 +494,6 @@ def process_fastq_pairs(infilelist,
                                       outdir, 
                                       force=args.force, 
                                       cp=cp) 
-
     '''
     if cp is None:
         cp = get_default_config()
@@ -719,9 +504,6 @@ def process_fastq_pairs(infilelist,
                                       force=force, 
                                       cp=cp)    
     logging.info(f'done with FASTQ parsing.')
-    
-    
-    
     return df
 
 
@@ -822,196 +604,12 @@ def get_fh(infile):
     else:
         fh = open(infile, 'rt')
     return fh    
-        
-
-def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
-    '''
-    Used by filter_split
-    
-    spike_st=24
-    spike_end = 32
-    libtag_st=30
-    libtag_end=32
-    umi_st = 32
-    umi_end = 44
-    ssi_st = 44
-    ssi_end = 52
-    
-    '''    
-    logging.info(f'pulling out MAPseq fields...')
-    if cp is None:
-        cp = get_default_config()
-        
-    vbc_st = int(cp.get('mapseq', 'vbc_st'))
-    vbc_end = int(cp.get('mapseq', 'vbc_end'))        
-    spike_st=int(cp.get('mapseq', 'spike_st'))
-    spike_end = int(cp.get('mapseq', 'spike_end'))
-    libtag_st= int(cp.get('mapseq', 'libtag_st'))
-    libtag_end= int(cp.get('mapseq', 'libtag_end'))
-    umi_st = int(cp.get('mapseq', 'umi_st'))
-    umi_end = int(cp.get('mapseq', 'umi_end'))
-    ssi_st = int(cp.get('mapseq', 'ssi_st'))
-    ssi_end = int(cp.get('mapseq', 'ssi_end'))
-    
-    df['vbc_read'] = df[column].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
-    df['spikeseq'] = df[column].str.slice(spike_st,spike_end).astype('string[pyarrow]')
-    df['libtag'] = df[column].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
-    df['umi'] = df[column].str.slice(umi_st,umi_end).astype('string[pyarrow]')
-    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
-    sh = get_default_stats()
-    
-    if drop:
-        logging.info(f'dropping {column} column to slim.')
-        df.drop( column, axis=1, inplace=True)
-    else:
-        logging.info(f'drop is false. keeping {column} column.')
-    logging.info(f'df done. len={len(df)} returning...')
-    # changes in-place, but return as well. 
-    return df
 
 
-def filter_reads_pd(df,
-                    max_repeats=None,
-                    max_n_bases=None,
-                    min_reads=None, 
-                    column='sequence',
-                    remove=True,
-                    cp=None):
-    '''
-    Used by filter_split.
-    column should be nucleotide string. 
 
-    '''
-    if cp is None:
-        cp = get_default_config()
-    if min_reads is None:
-        min_reads = int(cp.get('fastq','min_reads'))
-    if max_repeats is None:
-        max_repeats = int(cp.get('fastq','max_repeats')) 
-    if max_n_bases is None:
-        max_n_bases = int(cp.get('fastq','max_n_bases'))    
-
-    logging.info(f'max_repeats = {max_repeats} max_n_bases={max_n_bases} min_reads={min_reads}')
-    num_initial = str(len(df))
-    
-    sh = get_default_stats()
-    
-    # Filter by read_count 
-    if min_reads > 1:
-        logging.debug(f'Dropping reads with less than {min_reads} read_count.')
-        logging.info(f'Length before read_count threshold={len(df)}')
-        df = df[df['read_count'] >= min_reads]
-        df.reset_index(inplace=True, drop=True)
-        logging.info(f'Length after read_count threshold={len(df)}')    
-    else:
-        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
-    
-    # Find Ns
-    df['nb_valid'] = ~df[column].str.contains('N')
-    num_has_n = str( len(df) - df['nb_valid'].sum() )
-    
-    # Find homopolymer runs
-    df['nr_valid'] = True
-    for nt in ['A','C','G','T']:
-        rnt =  nt * (max_repeats + 1)
-        logging.info(f'checking for {rnt}')
-        rmap = ~df[column].str.contains(rnt)
-        n_bad = len(df) - rmap.sum()
-        logging.info(f'found {n_bad} max_repeat sequences for {nt}') 
-        sh.add_value('/fastq',f'n_repeat_{nt}', str(n_bad) )
-        df['nr_valid'] = df['nr_valid'] & rmap
-        
-    logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
-    num_has_repeats = str( len(df) - df['nr_valid'].sum() )
-    
-    if remove:
-        validmap = df['nr_valid'] & df['nb_valid']
-        df = df[validmap]
-        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
-        df.reset_index(drop=True, inplace=True)
-        logging.info(f'remove=True, new len={len(df)}')
-    logging.debug(f'types = {df.dtypes}')
-    sh.add_value('/fastq_filter','num_initial', num_initial )
-    sh.add_value('/fastq_filter','max_repeats', max_repeats )
-    sh.add_value('/fastq_filter','num_has_repeats', num_has_repeats )
-    sh.add_value('/fastq_filter','num_has_n', num_has_n )
-    sh.add_value('/fastq_filter','num_kept', str(len(df)) )
-    # changes made to inbound df, but return anyway
-    
-    return df
-
-
-def filter_counts_fasta(cp, infile, 
-                        outfile, 
-                        datestr=None, 
-                        min_count = 2 ):
-    '''
-    we want to go FASTA to FASTA, but filter by read counts.  
-    '''
-    sdf = read_fasta_to_df(infile)
-    logging.debug(f'got {len(sdf)} sequences.')
-    fdf = filter_counts_df(cp, sdf, min_count)
-    logging.info(f'got {len(fdf)} filtered sequences. Writing to {outfile} FASTA.')
-    write_fasta_from_df(fdf, outfile)
-    logging.debug(f'Wrote {outfile}')
-
-
-def set_counts_df(seqdf, column='', cp=None):
-    '''
-    assumed sequence column 
-    calculates duplicates and sets read_count column
- 
-    '''
-    initlen = len(seqdf)
-    logging.debug(f'setting read counts for sequence DF len={len(seqdf)}')
-    cdf = make_read_counts_df(cp, seqdf, label=None)
-    fmap = cdf.set_index('sequence')['read_count'].to_dict()
-    seqdf['read_count'] = seqdf['sequence'].map(fmap)
-    # change made to inbound df, but return anyway
-    return seqdf
-
-def set_siteinfo(df, sampdf, column='sequence', cp=None):
-    '''
-    This is a purely utility function to determine site type for
-    shoulder plots. 
-    
-    '''
-    if cp is None:
-        cp=get_default_config()
-    ssi_st = int(cp.get('mapseq','ssi_st') )
-    ssi_end = int(cp.get('mapseq','ssi_end') )
-    bcfile = os.path.expanduser( cp.get('barcodes','ssifile'))
-
-    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
-    df.drop( column, axis=1, inplace=True)
-
-    # set site
-    # map SSIs, set unknown to unmatched.
-    logging.debug(f'getting rt labels...')
-    labels = get_rtlist(sampdf)
-    logging.debug(f'rtlabels={labels}')
-    #bcdict = get_barcode_dict(bcfile, labels)
-    rtdict = get_rtprimer_dict(bcfile, labels)
-   
-    #logging.info('filling in labels by SSI sequences...')
-    #df['label'] = df['ssi'].map(bcdict)
-    #logging.info('labelling unmatched...')
-    #df.fillna({'label': 'nomatch'}, inplace=True)
-
-    logging.info('filling in rtprimer number by SSI sequences...')    
-    df['rtprimer'] = df['ssi'].map(rtdict)
-    logging.info('labelling unmatched...')
-    df.fillna({'rtprimer': 'nomatch'}, inplace=True)
-    
-    sdf = sampdf[['rtprimer','siteinfo']]
-    sdf = sdf[sdf['siteinfo'] != '']
-    smap = dict(zip(sdf['rtprimer'],sdf['siteinfo']))
-    df['site'] = df['rtprimer'].map(smap)
-    df.fillna({'site': 'nomatch'}, inplace=True)
-    sdf = None    
-    
-    return df
-
+#
+#        AGGREGATE  READS 
+#
 
 def aggregate_reads(df, 
                     column=['sequence','source'],
@@ -1022,7 +620,7 @@ def aggregate_reads(df,
                     cp=None,
                     ):
     '''
-    Top leve entry for aggregate. Chooses underlying algorithm/system. 
+    Top level entry point for aggregate. Chooses underlying algorithm/system. 
     '''
     if cp is None:
         cp = get_default_config()
@@ -1054,10 +652,14 @@ def aggregate_reads(df,
                                 column, 
                                 outdir=outdir, 
                                 min_reads=1 )
-    
     return df
     
-def aggregate_reads_pd(df, column=['sequence','source']):
+    
+    
+def aggregate_reads_pd(df, 
+                       column=['sequence','source'], 
+                       outdir=None, 
+                       min_reads=1):
     initlen = len(df)
     logging.debug(f'aggregating read counts DF len={len(df)} column={column}')
     vcs = df.value_counts( column )
@@ -1207,347 +809,387 @@ def aggregate_reads_dd_clientXXX(df,
     return ndf
 
 
-def filter_counts_df(cp, countsdf, min_count):
+#
+#    SPLIT MAPSEQ COLUMNS, FILTER             
+#
+
+def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
     '''
-    Assumes read_count column
-    '''      
-    countsdf = countsdf[countsdf['read_count'] >= min_count]
-    countsdf.reset_index(drop=True, inplace=True)
-    logging.info(f'filtering by count: before={initlen} after={len(seqdf)} min_count={min_count} ')
-    return cdf    
-            
+    Used by filter_split
+    
+    spike_st=24
+    spike_end = 32
+    libtag_st=30
+    libtag_end=32
+    umi_st = 32
+    umi_end = 44
+    ssi_st = 44
+    ssi_end = 52
+    
+    '''    
+    logging.info(f'pulling out MAPseq fields...')
+    if cp is None:
+        cp = get_default_config()
+        
+    vbc_st = int(cp.get('mapseq', 'vbc_st'))
+    vbc_end = int(cp.get('mapseq', 'vbc_end'))        
+    spike_st=int(cp.get('mapseq', 'spike_st'))
+    spike_end = int(cp.get('mapseq', 'spike_end'))
+    libtag_st= int(cp.get('mapseq', 'libtag_st'))
+    libtag_end= int(cp.get('mapseq', 'libtag_end'))
+    umi_st = int(cp.get('mapseq', 'umi_st'))
+    umi_end = int(cp.get('mapseq', 'umi_end'))
+    ssi_st = int(cp.get('mapseq', 'ssi_st'))
+    ssi_end = int(cp.get('mapseq', 'ssi_end'))
+    
+    df['vbc_read'] = df[column].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
+    df['spikeseq'] = df[column].str.slice(spike_st,spike_end).astype('string[pyarrow]')
+    df['libtag'] = df[column].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
+    df['umi'] = df[column].str.slice(umi_st,umi_end).astype('string[pyarrow]')
+    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
+    sh = get_default_stats()
+    
+    if drop:
+        logging.info(f'dropping {column} column to slim.')
+        df.drop( column, axis=1, inplace=True)
+    else:
+        logging.info(f'drop is false. keeping {column} column.')
+    logging.info(f'df done. len={len(df)} returning...')
+    # changes in-place, but return as well. 
+    return df
 
 
-
-def make_read_counts_dfs(config, filelist, outdir):
+def filter_reads_pd(df,
+                    max_repeats=None,
+                    max_n_bases=None,
+                    min_reads=None, 
+                    column='sequence',
+                    remove=True,
+                    cp=None):
     '''
+    Used by filter_split.
+    column should be nucleotide string. 
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if min_reads is None:
+        min_reads = int(cp.get('fastq','min_reads'))
+    if max_repeats is None:
+        max_repeats = int(cp.get('fastq','max_repeats')) 
+    if max_n_bases is None:
+        max_n_bases = int(cp.get('fastq','max_n_bases'))    
+
+    logging.info(f'max_repeats = {max_repeats} max_n_bases={max_n_bases} min_reads={min_reads}')
+    num_initial = str(len(df))
+    
+    sh = get_default_stats()
+    
+    # Filter by read_count 
+    if min_reads > 1:
+        logging.debug(f'Dropping reads with less than {min_reads} read_count.')
+        logging.info(f'Length before read_count threshold={len(df)}')
+        df = df[df['read_count'] >= min_reads]
+        df.reset_index(inplace=True, drop=True)
+        logging.info(f'Length after read_count threshold={len(df)}')    
+    else:
+        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
+    
+    # Find Ns
+    df['nb_valid'] = ~df[column].str.contains('N')
+    num_has_n = str( len(df) - df['nb_valid'].sum() )
+    
+    # Find homopolymer runs
+    df['nr_valid'] = True
+    for nt in ['A','C','G','T']:
+        rnt =  nt * (max_repeats + 1)
+        logging.info(f'checking for {rnt}')
+        rmap = ~df[column].str.contains(rnt)
+        n_bad = len(df) - rmap.sum()
+        logging.info(f'found {n_bad} max_repeat sequences for {nt}') 
+        sh.add_value('/fastq',f'n_repeat_{nt}', str(n_bad) )
+        df['nr_valid'] = df['nr_valid'] & rmap
+        
+    logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
+    num_has_repeats = str( len(df) - df['nr_valid'].sum() )
+    
+    if remove:
+        validmap = df['nr_valid'] & df['nb_valid']
+        df = df[validmap]
+        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
+        df.reset_index(drop=True, inplace=True)
+        logging.info(f'remove=True, new len={len(df)}')
+    logging.debug(f'types = {df.dtypes}')
+    sh.add_value('/fastq_filter','num_initial', num_initial )
+    sh.add_value('/fastq_filter','max_repeats', max_repeats )
+    sh.add_value('/fastq_filter','num_has_repeats', num_has_repeats )
+    sh.add_value('/fastq_filter','num_has_n', num_has_n )
+    sh.add_value('/fastq_filter','num_kept', str(len(df)) )
+    # changes made to inbound df, but return anyway
+    return df
+
+#
+#    ALIGN, COLLAPSE BY VBC             
+#
+
+
+
+
+
+def align_collapse_pd(df,
+                      column='vbc_read',
+                      pcolumn='read_count', 
+                      max_mismatch=None, 
+                      outdir=None, 
+                      datestr=None, 
+                      cp=None):
+    '''
+    Assumes dataframe with sequence and read_count columns
+    Use read_count to choose parent sequence.
+    Speed up use of pandas, map() function rather than apply()
+    
+    relationship between read_count on full_read sequences (52nt), and 
+        value_counts() on unique VBCs (30nts)
     
     '''
-    dflist = []
-    for filepath in filelist:
-        logging.info(f'calculating counts for file {filepath} ...')    
-        dirname = os.path.dirname(filepath)
-        
-        if outdir is not None:
-            dirname = outdir
-        
-        filename = os.path.basename(filepath)
-        (base, ext) = os.path.splitext(filename)   
-        logging.debug(f'handling {filepath} base={base}')
-        
-        # make raw fasta TSV of barcode-splitter output for one barcode. 
-        # trim to 44 unique w/ counts. 
-        seqdf = make_fasta_df(config, filepath)
-        of = os.path.join(dirname , f'{base}.read.seq.tsv')
-        seqdf.to_csv(of, sep='\t')
-        
-        # to calculate threshold we need counts calculated. 
-        cdf = make_read_counts_df(config, seqdf, label=base)  
-        logging.debug(f'made counts df: {len(cdf)} reads.')
-        of = os.path.join(dirname , f'{base}.read.counts.tsv')
-        cdf.to_csv(of, sep='\t')
-        dflist.append(cdf)
-    logging.debug(f'returning list of {len(dflist)} counts DFs...')
-    return dflist 
-        
-
-
-
-def normalize_weight(df, weightdf, columns=None):
-    '''   
-    Weight values in realdf by spikedf, by column groups
-    Assumes matrix index is sequence.
-    Assumes matrices have same columns!!  
-    If column numbers are mis-matched, will create empty column
-    If columns is none, use/weight all columns
+    # housekeeping...
+    if cp is None:
+        cp = get_default_config()
     
-    !! only use target columns. 
+    aligner = cp.get('collapse','tool')    
+    if max_mismatch is None:
+        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    else:
+        max_mismatch = int(max_mismatch)
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    if outdir is None:
+        outdir = './'
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
+    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
+    
+    sh = get_default_stats()      
+    sh.add_value('/collapse','n_full_sequences', len(df) )
+
+    # get reduced dataframe of unique head sequences
+    logging.info('Getting unique DF...')    
+    #udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
+    udf = df[column].value_counts().reset_index() 
+    sh.add_value('/collapse','n_unique_sequences', len(udf) )    
+
+    of = os.path.join( outdir , f'{column}.unique.tsv')
+    logging.info(f'Writing unique DF to {of}')
+    udf.to_csv(of, sep='\t') 
+    
+    of = os.path.join( outdir , f'{column}.unique.fasta')
+    logging.info(f'Writing uniques as FASTA to {of}')
+    seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
+
+    of = os.path.join(outdir, f'{column}.fulldf.tsv')
+    logging.info(f'Writing slimmed full DF to {of}')    
+    df.to_csv(of, sep='\t', columns=[column, pcolumn])
+
+    # run allXall bowtiex
+    of = os.path.join( outdir , f'unique_sequences.bt2.sam')
+    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
+    btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
+    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
+    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
+    of = os.path.join( outdir , f'unique_sequences.btdf.tsv')
+    btdf.to_csv(of, sep='\t') 
+    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
+
+    # perform collapse...      
+    logging.info('Calculating Hamming components...')
+    edgelist = edges_from_btdf(btdf)
+    btdf = None  # help memory usage
+    sh.add_value('/collapse','n_edges', len(edgelist) )
+    
+    of = os.path.join( outdir , f'edgelist.txt')
+    writelist(of, edgelist)
+    logging.debug(f'edgelist len={len(edgelist)}')
+    
+    components = get_components(edgelist)
+    logging.debug(f'all components len={len(components)}')
+    sh.add_value('/collapse','n_components', len(components) )
+    of = os.path.join( outdir , f'components.txt')
+    writelist(of, components)
+    edgelist = None  # help memory usage    
+
+    # assess components...
+    # components is list of lists.
+    data = [ len(c) for c in components]
+    data.sort(reverse=True)
+    ccount = pd.Series(data)
+    of = os.path.join( outdir , f'component_count.tsv')
+    ccount.to_csv(of, sep='\t')            
+
+    mcomponents = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(mcomponents)}')
+    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
+    of = os.path.join( outdir , f'multi_components.json')
+    logging.debug(f'writing components len={len(components)} t {of}')
+    with open(of, 'w') as fp:
+        json.dump(mcomponents, fp, indent=4)
+
+    logging.info(f'Collapsing {len(components)} components...')
+    newdf = collapse_by_components_pd(df, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newcol = f'{column}_col'        
+    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
+
+    rdf = newdf[[ column, newcol, 'read_count' ]]
+    of = os.path.join( outdir , f'read_collapsed.tsv')
+    logging.info(f'Writing reduced mapping TSV to {of}')
+    rdf.to_csv(of, sep='\t')
+    
+    newdf.drop(column, inplace=True, axis=1)
+    #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
+    #of = os.path.join( outdir , f'collapsed.fasta')
+    #logging.info(f'Writing collapsed fasta to {of}')
+    #write_fasta_from_df(joindf, of)        
+    return newdf        
+
+def build_seqmapdict(udf, components, column='vbc_read'):
+    '''
+    Create mappings from all unique sequences to component sequence
+    '''
+    seqmapdict = {}
+    comphandled = 0
+    comphandled_interval = 100000
+    comp_len = len(components)
+    
+    for comp in components:
+        ser = list(udf[column].iloc[comp])
+        t = ser[0]
+        for s in ser: 
+            seqmapdict[s]= t    
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'[{comphandled}/{comp_len}] t = {t}')
+        comphandled += 1
+    return seqmapdict
+
+
+def build_seqmapdict_pd(udf, components, column='vbc_read', pcolumn='count'):
+    '''
+    Create mappings from all unique sequences to component sequence
+    Can we do this faster? Choose most abundant variant?
+    dict should be oldsequence -> newsequence
     
     '''
-    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
+    seqmapdict = {}
+    comphandled = 0
+    pcolumn='count'
+    logging.debug(f'udf len={len(udf)} components len={len(components)} column={column} pcolumn={pcolumn} ')
+    comphandled_interval = 1000
+    comp_len = len(components)    
+    for i, indexlist in enumerate( components):
+        cdf = udf[[column, pcolumn]].iloc[indexlist]
+        cdf.reset_index(inplace=True, drop=True)
+        #logging.debug(f'component [{i}/{comp_len}]: len={len(cdf)}')
+        maxid = int(cdf[pcolumn].idxmax())
+        t = cdf[column].iloc[maxid]
+        for compseq in list(cdf[column]): 
+            #logging.debug(f'compseq={compseq} -> {t}')
+            seqmapdict[compseq]= t    
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'[{i}/{comp_len}]: len={len(cdf)} seq = {t} ')
+        comphandled += 1
+    return seqmapdict
+
+
+def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdir=None):
+    #
+    # *** Assumes components are multi-element components only ***
+    #
+    # components consist of indices within the uniqdf. 
+    # assumes component elements are integers, as they are used as dataframe indices. 
+    # create map of indices in original full DF that correspond to all members of a (multi-)component
+    # from alignment
+    # hash key is index of first appearance of sequence in full DF (i.e. its index in uniqdf.) 
+    # 
+    # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
+    #
+    #  SETUP
+    #  infile is all reads...
+    #      fdf = read_fasta_to_df(infile, seq_length=32)
+    #      udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
+    #      components = remove_singletons(components)
     
-    # sanity checks, fixes. 
-    if len(df.columns) != len(weightdf.columns):
-        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
-        
-    #which SSI has highest spikein?
-    sumlist = []
-    for col in weightdf.columns:
-        sum = weightdf[col].sum()
-        sumlist.append(sum)
-    sum_array = np.array(sumlist)
-    maxidx = np.argmax(sum_array)
-    maxval = sum_array[maxidx]  
-    maxcol = weightdf.columns[maxidx]
-    logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
-    factor_array =  maxval / sum_array
-    logging.debug(f'factor array= {list(factor_array)}')
-
-    max_list = []
-    sum_list = []
-    for col in df.columns:
-        max_list.append(df[col].max())
-        sum_list.append(df[col].sum())
-    logging.debug(f'real max_list={max_list}')
-    logging.debug(f'real sum_list={sum_list}')
+    logging.debug(f'multi-element components len={len(components)}')
+    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
+    logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
+    smd = build_seqmapdict_pd(uniqdf, components,  column, pcolumn)
+      
+    # Make new full df:
+    logging.info('seqmapdict built. Applying.')
+    if outdir is not None:
+        outfile = f'{outdir}/seqmapdict.json'
+        logging.debug(f'writing seqmapdict len={len(smd)} tp {outfile}')
+        with open(outfile, 'w') as fp:
+            json.dump(smd, fp, indent=4)
+    else:
+        logging.debug(f'no outdir given.')
+    logging.info(f'applying seqmapdict...')
+    # make deep copy of original sequence column
+    fulldf.loc[:, f'{column}_col'] = fulldf.loc[:, column]    
+    # map old to new
+    fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
+    # fill in NaN with original values. 
     
-    normdf = df.copy()
-    for i, col in enumerate(normdf.columns):
-        logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
-        normdf[col] = (normdf[col] * factor_array[i] ) 
+    fulldf.fillna( { 'vbc_read_col' : fulldf['vbc_read'] }, inplace=True)    
+    logging.info(f'New collapsed df = \n{fulldf}')
+    log_objectinfo(fulldf, 'fulldf')
+    return fulldf
 
-    max_list = []
-    sum_list = []
-    for col in normdf.columns:
-        max_list.append(normdf[col].max())
-        sum_list.append(normdf[col].sum())
-    logging.debug(f'norm max_list={max_list}')
-    logging.debug(f'norm sum_list={sum_list}')
-
-    return normdf
        
 
-def normalize_weight_grouped(df, weightdf, columns=None):
+def collapse_only_pd(fdf, udf, mcomponents, column, pcolumn, outdir, cp ):
     '''
-     Weight values in df by weightdf, by column groups
+    Handle partially completed align-collapse. 
+    Inputs:
+       fulldf TSV
+       uniqudf TSV
+       multi-components list. 
     
-    df   dataframe to be scaled, weightdf is spikeins
-    columns is list of column groupings. weighting will done within the groups.     
-   
-    Assumes matrix index is sequence.
-    Assumes matrices have same columns  
-    If column numbers are mis-matched, will create empty column
-    If columns is none, use/weight all columns
-    Will only return columns somewhere in columns. 
-
+    Output:
+        collapsed DF. 
+        df = collapse_pd(fulldf,
+                     uniquedf,
+                     mcomponents,   
+                     column=args.column,
+                     pcolumn=args.parent_column,
+                     outdir=outdir, 
+                     cp=cp)
     '''
-    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf} columns={columns}')
-    
-    # sanity checks, fixes. 
-    if len(df.columns) != len(weightdf.columns):
-        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
-    
-    if columns is None:
-        columns = [ list( df.columns ) ]    
-    
-    outdf = None
-    
-    for i, group in enumerate( columns ):
-        logging.debug(f'handling group {i} of {len(group)} columns.')
-        # we may get empty categories, depending on experiment. 
-        if len(group) > 0:
-            try: 
-                gwdf = weightdf[group]
-                gdf = df[group]
-                sumlist = []
-                for col in group:
-                    sum = gwdf[col].sum()
-                    sumlist.append(sum)
-                sum_array = np.array(sumlist)
-                maxidx = np.argmax(sum_array)
-                maxval = sum_array[maxidx]  
-                maxcol = gwdf.columns[maxidx]
-                logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
-                factor_array =  maxval / sum_array
-                logging.debug(f'factor array= {list(factor_array)}')
-            
-                max_list = []
-                sum_list = []
-                for col in gdf.columns:
-                    max_list.append(gdf[col].max())
-                    sum_list.append(gdf[col].sum())
-                logging.debug(f'real max_list={max_list}')
-                logging.debug(f'real sum_list={sum_list}')
-                
-                normdf = gdf.copy()
-                for i, col in enumerate(normdf.columns):
-                    logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
-                    normdf[col] = (normdf[col] * factor_array[i] ) 
-            
-                max_list = []
-                sum_list = []
-                for col in normdf.columns:
-                    max_list.append(normdf[col].max())
-                    sum_list.append(normdf[col].sum())
-                logging.debug(f'norm max_list={max_list}')
-                logging.debug(f'norm sum_list={sum_list}')
-                if outdf is None:
-                    logging.debug(f'outdf is None, setting to new.')
-                    outdf = normdf
-                else:
-                    logging.debug(f'outdf not None, before: len={len(outdf)}. cols={len(outdf.columns)}')
-                    outdf = pd.concat([ outdf, normdf], axis=1)
-                    logging.debug(f'after: len={len(outdf)}. cols={len(outdf.columns)}')
-            except Exception as e:
-                logging.warning(f'got exception processing a group.')    
-        else:
-            logging.warning('column group is empty, ignoring...')
-         
-         
-    logging.info(f'normalizing done.len={len(outdf)}. cols={len(outdf.columns)} ')
-    return outdf
+  
+    # assess components...
+    sh = get_default_stats()
+    logging.debug(f'multi-element components len={len(mcomponents)}')
+    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
+
+    logging.info(f'Collapsing {len(mcomponents)} mcomponents...')
+    newdf = collapse_by_components_pd(fdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
+
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newcol = f'{column}_col'        
+    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
+
+    rdf = newdf[[ column, newcol, 'read_count' ]]
+    of = os.path.join( outdir , f'read_collapsed.tsv')
+    logging.info(f'Writing reduced mapping TSV to {of}')
+    rdf.to_csv(of, sep='\t')
+    logging.debug(f'dropping {column}')
+    newdf.drop(column, inplace=True, axis=1)   
+    return newdf        
 
 
-def normalize_scale(df, columns = None, logscale='log2', min=0.0, max=1.0):
-    '''
-    Log scale whole matrix.   log10 or log2 ???
-    Set -inf to 0
-    Set NaN to 0
-    
-    
-    '''
-    #logging.debug(f'making rows sum to one...')
-    if logscale == 'log2':
-        ldf = np.log2(df)
-    elif logscale == 'log10':
-        ldf = np.log10(df)
-    
-    for c in ldf.columns:
-        ldf[c] = np.nan_to_num(ldf[c], neginf=0.0)
-    return ldf
-
-
-def sync_columns(df1, df2, fillval=0.0):
-    '''
-    If two DFs don't have same columns, add empty columns to make the same. 
-    Note columns may be missing in either DF, so number of columns is not enough to compare...
-    '''
-    x = set(df1.columns)
-    y = set(df2.columns)
-    w = x.difference(y) # columns to be added to df2
-    z = y.difference(x) # columns to be added to df1    
-
-    # only process if there is a problem...
-    if len(w) > 0 or len(z) > 0:
-        logging.debug('mismatched matrix columns, fixing..')
-        for c in w:
-            df2[c] = fillval
-        for c in z:
-            df1[c] = fillval
-        
-        scol = natsorted(list(df1.columns))
-        df1 = df1[scol]
-        scol = natsorted(list(df2.columns))
-        df2 = df2[scol]    
-        logging.debug(f'df1 col={df1.columns}')
-        logging.debug(f'df2 col={df2.columns}')    
-    else:
-        logging.debug('matrix columns match.')
-    
-    return (df1, df2)
-
-
-def filter_non_injection(rtdf, ridf, min_injection=1):
-    '''
-    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
-    remove rows from rtdf that do not have at least <min_injection> value in the row 
-    of ridf with the same index (VBC sequence)
-    Does an inner join() on the dataframes, keyed on sequence. 
-    Keeps values and columns from first argument (rtdf)
-    
-    '''
-    logging.info(f'filtering non-injection. min_injection={min_injection}')
-    logging.debug(f'before threshold inj df len={len(ridf)}')
-    ridf = ridf[ridf.umi_count >= min_injection]
-    ridf.reset_index(inplace=True, drop=True)
-    logging.debug(f'before threshold inj df len={len(ridf)}')   
-    
-    
-    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
-    incol = mdf.columns
-    outcol = []
-    selcol =[]
-    for c in incol:
-        if not c.endswith('_y'):
-            selcol.append(c)
-            outcol.append(c.replace('_x',''))
-    mdf = mdf[selcol]
-    mdf.columns = outcol
-    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
-    return mdf
-
-
-def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
-    '''
-    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate 
-    matters.
-    remove rows from rtdf that do not have at least <min_injection> value in the row 
-    of ridf with the same index (VBC sequence)
-    Does an inner join() on the dataframes, keyed on sequence. 
-    Keeps values and columns from first argument (rtdf)
-    
-    '''
-    logging.info(f'filtering non-injection. inj_min_umi={inj_min_umi}')
-    logging.debug(f'before threshold inj df len={len(ridf)}')
-    ridf = ridf[ridf.umi_count >= inj_min_umi]
-    ridf.reset_index(inplace=True, drop=True)
-    
-    logging.debug(f'before threshold inj df len={len(ridf)}')   
-    if write_out:
-        ridf.to_csv('./ridf.tsv', sep='\t')
-        rtdf.to_csv('./rtdf.tsv', sep='\t')
-
-    # get target VBCs that are in injection
-    mtdf = merge_and_filter(rtdf, ridf)
-
-    # get injection VBCs that are in at least one target, similarly 
-    midf = merge_and_filter(ridf, rtdf)
-    
-    return ( mtdf, midf)
-
-
-
-
-def merge_and_filter(adf,  bdf, on='vbc_read_col', indicator=True, how='outer'):
-    '''
-    Return filtered ADF consisting of only entries in ADF that also exist in BDF as joined on 
-    the 'on' column.  
-    
-    
-    '''
-    #suffixes=('_a','_b')
-    # get targets in injection merge using vbc_read_col as common field. 
-    #mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
-    mdf = adf.merge(bdf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_a','_b'))
-    # only keep target VBCs that are in injection
-    mdf = mdf[mdf['_merge'] == 'both']    
-    incol = mdf.columns
-    outcol = []
-    selcol =[]
-    for c in incol:
-        if not c.endswith('_b'):
-            # _t or join column. 
-            selcol.append(c)
-            outcol.append(c.replace('_a',''))
-    mdf = mdf[selcol]
-    mdf.columns = outcol
-    logging.debug(f'before drop_duplicates. len={len(mdf)}')
-    mdf.drop_duplicates(inplace=True)
-    mdf.drop('_merge', inplace=True, axis=1)
-    mdf.reset_index(drop=True, inplace=True)
-    logging.debug(f'after drop_duplicates. len={len(mdf)} columns={mdf.columns}')
-    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
-    return mdf
-
-
-def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
-    '''
-    filter dataframe where *all* are less than a threshold. 
-    
-    takes df, groups by key_col and sums val_col. 
-    keeps *all* rows for keys where *any* val_col > threshold for that key.  
-    '''
-    logging.debug(f'inbound df len={len(df)}')
-    maxdf = df.groupby(key_col)[val_col].max()
-    logging.debug(f'maxdf: unique  key_col len={len(maxdf)}')
-    fmdf = maxdf[maxdf > threshold]
-    logging.debug(f'fmdf: unique keys that pass threshold len={len(fmdf)}')
-    keeplist = list(fmdf.index)
-    logging.debug(f'keep list len={len(keeplist)}')
-    outdf = df[df[key_col].isin(keeplist)]
-    outdf.reset_index(inplace=True, drop=True)
-    logging.debug(f'outdf len={len(outdf)}')
-    return outdf
+#
+#            READTABLE,  READ FREQUENCY PLOTS
+#
 
 def process_make_readtable_pd(df,
                           sampdf,
@@ -1740,6 +1382,9 @@ def process_make_readtable_pd(df,
     df = fix_mapseq_df_types(df, fformat='readtable')
     return df
 
+#
+#            VBCTABLE
+#
 
 def process_make_vbctable_pd(df,
                           outdir=None,
@@ -1792,7 +1437,6 @@ def process_make_vbctable_pd(df,
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
 
-
     # remove internal controls that end user needn't see
     # remove L1s
     # pull out L1 VBCs expected to have L1 libtag. 
@@ -1823,6 +1467,9 @@ def process_make_vbctable_pd(df,
     udf = fix_mapseq_df_types(udf, fformat='vbctable')
     return udf
 
+#
+#        VBCFILTER
+#
 
 def process_filter_vbctable(df, 
                                inj_min_umi = None,
@@ -1842,10 +1489,7 @@ def process_filter_vbctable(df,
     target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
     target_min_umi_absolute    hard threshold cutoff
     
-    
     '''
-
-    
     if cp is None:
         cp = get_default_config()
     if outdir is None:
@@ -1864,15 +1508,12 @@ def process_filter_vbctable(df,
     use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
     use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control')
      
-    
     max_negative = 1
     max_water_control = 1
     
     logging.debug(f'inj_min_umi={inj_min_umi} target_min_umi={target_min_umi} use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
-
     sh = get_default_stats() 
 
-    
     # select all controls by SSI/site, save to TSV
     controls = df[ df['site'].isin( CONTROL_SITES ) ]
     controls.reset_index(inplace=True, drop=True)
@@ -1982,6 +1623,147 @@ def process_filter_vbctable(df,
     return df
 
 
+def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate 
+    matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and columns from first argument (rtdf)
+    
+    '''
+    logging.info(f'filtering non-injection. inj_min_umi={inj_min_umi}')
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.umi_count >= inj_min_umi]
+    ridf.reset_index(inplace=True, drop=True)
+    
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    if write_out:
+        ridf.to_csv('./ridf.tsv', sep='\t')
+        rtdf.to_csv('./rtdf.tsv', sep='\t')
+
+    # get target VBCs that are in injection
+    mtdf = merge_and_filter(rtdf, ridf)
+
+    # get injection VBCs that are in at least one target, similarly 
+    midf = merge_and_filter(ridf, rtdf)
+    return ( mtdf, midf)
+
+
+
+def filter_non_injection(rtdf, ridf, min_injection=1):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and columns from first argument (rtdf)
+    
+    '''
+    logging.info(f'filtering non-injection. min_injection={min_injection}')
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.umi_count >= min_injection]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf
+
+
+def merge_and_filter(adf,  bdf, on='vbc_read_col', indicator=True, how='outer'):
+    '''
+    Return filtered ADF consisting of only entries in ADF that also exist in BDF as joined on 
+    the 'on' column.  
+    
+    
+    '''
+    #suffixes=('_a','_b')
+    # get targets in injection merge using vbc_read_col as common field. 
+    #mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
+    mdf = adf.merge(bdf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_a','_b'))
+    # only keep target VBCs that are in injection
+    mdf = mdf[mdf['_merge'] == 'both']    
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_b'):
+            # _t or join column. 
+            selcol.append(c)
+            outcol.append(c.replace('_a',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'before drop_duplicates. len={len(mdf)}')
+    mdf.drop_duplicates(inplace=True)
+    mdf.drop('_merge', inplace=True, axis=1)
+    mdf.reset_index(drop=True, inplace=True)
+    logging.debug(f'after drop_duplicates. len={len(mdf)} columns={mdf.columns}')
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf
+
+
+def filter_all_lt(df, key_col='sequence', val_col='umi_count', threshold=5):
+    '''
+    filter dataframe where *all* are less than a threshold. 
+    
+    takes df, groups by key_col and sums val_col. 
+    keeps *all* rows for keys where *any* val_col > threshold for that key.  
+    '''
+    logging.debug(f'inbound df len={len(df)}')
+    maxdf = df.groupby(key_col)[val_col].max()
+    logging.debug(f'maxdf: unique  key_col len={len(maxdf)}')
+    fmdf = maxdf[maxdf > threshold]
+    logging.debug(f'fmdf: unique keys that pass threshold len={len(fmdf)}')
+    keeplist = list(fmdf.index)
+    logging.debug(f'keep list len={len(keeplist)}')
+    outdf = df[df[key_col].isin(keeplist)]
+    outdf.reset_index(inplace=True, drop=True)
+    logging.debug(f'outdf len={len(outdf)}')
+    return outdf
+
+
+def calc_min_umi_threshold(df, site='target-negative', cp=None):
+    '''
+    retrieve maximum umi_count value for provided site type. 
+    returns max max value...
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    
+    logging.debug(f'getting UMI threshold type={site}')
+    countlist = []
+    min_threshold = 0
+    #df['umi_count'] = df['umi_count'].astype(int)
+    tndf = df[ df['site'] == site]
+    lablist = list(tndf['label'].dropna().unique())
+    for label in lablist:
+        ldf = tndf[tndf['label'] == label]
+        if len(ldf) > 0:
+            maxumi = ldf['umi_count'].max()
+            logging.debug(f'max umi_count for label {label} = {maxumi}')
+            countlist.append( maxumi )
+    if len(countlist) > 0:
+        min_threshold = max(countlist)
+        logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
+    return min_threshold
+
+#
+#    MATRICES
+#
+
 
 def process_make_matrices(df,
                           outdir=None,
@@ -2080,6 +1862,181 @@ def process_make_matrices(df,
         
     logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
     return norm_dict
+
+
+def sync_columns(df1, df2, fillval=0.0):
+    '''
+    If two DFs don't have same columns, add empty columns to make the same. 
+    Note columns may be missing in either DF, so number of columns is not enough to compare...
+    '''
+    x = set(df1.columns)
+    y = set(df2.columns)
+    w = x.difference(y) # columns to be added to df2
+    z = y.difference(x) # columns to be added to df1    
+
+    # only process if there is a problem...
+    if len(w) > 0 or len(z) > 0:
+        logging.debug('mismatched matrix columns, fixing..')
+        for c in w:
+            df2[c] = fillval
+        for c in z:
+            df1[c] = fillval
+        
+        scol = natsorted(list(df1.columns))
+        df1 = df1[scol]
+        scol = natsorted(list(df2.columns))
+        df2 = df2[scol]    
+        logging.debug(f'df1 col={df1.columns}')
+        logging.debug(f'df2 col={df2.columns}')    
+    else:
+        logging.debug('matrix columns match.')
+    
+    return (df1, df2)
+
+
+def normalize_weight(df, weightdf, columns=None):
+    '''   
+    Weight values in realdf by spikedf, by column groups
+    Assumes matrix index is sequence.
+    Assumes matrices have same columns!!  
+    If column numbers are mis-matched, will create empty column
+    If columns is none, use/weight all columns
+    
+    !! only use target columns. 
+    
+    '''
+    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
+    
+    # sanity checks, fixes. 
+    if len(df.columns) != len(weightdf.columns):
+        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
+        
+    #which SSI has highest spikein?
+    sumlist = []
+    for col in weightdf.columns:
+        sum = weightdf[col].sum()
+        sumlist.append(sum)
+    sum_array = np.array(sumlist)
+    maxidx = np.argmax(sum_array)
+    maxval = sum_array[maxidx]  
+    maxcol = weightdf.columns[maxidx]
+    logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
+    factor_array =  maxval / sum_array
+    logging.debug(f'factor array= {list(factor_array)}')
+
+    max_list = []
+    sum_list = []
+    for col in df.columns:
+        max_list.append(df[col].max())
+        sum_list.append(df[col].sum())
+    logging.debug(f'real max_list={max_list}')
+    logging.debug(f'real sum_list={sum_list}')
+    
+    normdf = df.copy()
+    for i, col in enumerate(normdf.columns):
+        logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
+        normdf[col] = (normdf[col] * factor_array[i] ) 
+
+    max_list = []
+    sum_list = []
+    for col in normdf.columns:
+        max_list.append(normdf[col].max())
+        sum_list.append(normdf[col].sum())
+    logging.debug(f'norm max_list={max_list}')
+    logging.debug(f'norm sum_list={sum_list}')
+
+    return normdf
+       
+
+def normalize_weight_grouped(df, weightdf, columns=None):
+    '''
+     Weight values in df by weightdf, by column groups
+    
+    df   dataframe to be scaled, weightdf is spikeins
+    columns is list of column groupings. weighting will done within the groups.     
+   
+    Assumes matrix index is sequence.
+    Assumes matrices have same columns  
+    If column numbers are mis-matched, will create empty column
+    If columns is none, use/weight all columns
+    Will only return columns somewhere in columns. 
+
+    '''
+    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf} columns={columns}')
+    
+    # sanity checks, fixes. 
+    if len(df.columns) != len(weightdf.columns):
+        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
+    
+    if columns is None:
+        columns = [ list( df.columns ) ]    
+    
+    outdf = None
+    
+    for i, group in enumerate( columns ):
+        logging.debug(f'handling group {i} of {len(group)} columns.')
+        # we may get empty categories, depending on experiment. 
+        if len(group) > 0:
+            try: 
+                gwdf = weightdf[group]
+                gdf = df[group]
+                sumlist = []
+                for col in group:
+                    sum = gwdf[col].sum()
+                    sumlist.append(sum)
+                sum_array = np.array(sumlist)
+                maxidx = np.argmax(sum_array)
+                maxval = sum_array[maxidx]  
+                maxcol = gwdf.columns[maxidx]
+                logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
+                factor_array =  maxval / sum_array
+                logging.debug(f'factor array= {list(factor_array)}')
+            
+                max_list = []
+                sum_list = []
+                for col in gdf.columns:
+                    max_list.append(gdf[col].max())
+                    sum_list.append(gdf[col].sum())
+                logging.debug(f'real max_list={max_list}')
+                logging.debug(f'real sum_list={sum_list}')
+                
+                normdf = gdf.copy()
+                for i, col in enumerate(normdf.columns):
+                    logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
+                    normdf[col] = (normdf[col] * factor_array[i] ) 
+            
+                max_list = []
+                sum_list = []
+                for col in normdf.columns:
+                    max_list.append(normdf[col].max())
+                    sum_list.append(normdf[col].sum())
+                logging.debug(f'norm max_list={max_list}')
+                logging.debug(f'norm sum_list={sum_list}')
+                if outdf is None:
+                    logging.debug(f'outdf is None, setting to new.')
+                    outdf = normdf
+                else:
+                    logging.debug(f'outdf not None, before: len={len(outdf)}. cols={len(outdf.columns)}')
+                    outdf = pd.concat([ outdf, normdf], axis=1)
+                    logging.debug(f'after: len={len(outdf)}. cols={len(outdf.columns)}')
+            except Exception as e:
+                logging.warning(f'got exception processing a group.')    
+        else:
+            logging.warning('column group is empty, ignoring...')
+         
+         
+    logging.info(f'normalizing done.len={len(outdf)}. cols={len(outdf.columns)} ')
+    return outdf
+
+
+
+
+
+#
+#         REPORTS / QC
+#
+
+
 
 
 def make_report_xlsx(df,
@@ -2198,383 +2155,5 @@ def make_vbctable_qctables(df,
             sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
         else:
             logging.info(f'no entries for {fname}')
-
-
  
-
-
-
-
-
-
-def process_mapseq_all_native(infiles, sampleinfo, outdir=None, force=False, cp=None):    
-    '''
-    DO NOT USE. NEEDS UPDATING FOR LARGE DATA
-    
-    performs end-to-end default processing. fastq pairs to matrices
-    
-    '''
-    if cp is None:
-        cp = get_default_config()
-    bcfile = cp.get('barcodes','ssifile')
-    expid = cp.get('project','project_id')
-    
-    if outdir is None:
-        outdir = os.path.abspath('./')
-        logging.debug(f'outdir not provided, set to {outdir}')
-    else:
-        outdir = os.path.abspath(outdir)
-        logging.debug(f'outdir = {outdir} ')   
    
-    logging.debug(f'ensuring outdir: {outdir} ')
-    os.makedirs(outdir, exist_ok=True)
-    logging.info(f'outdir={outdir}')
-
-   
-    # process_fastq_pairs
-    if (len(infiles) < 2)  or (len(infiles) % 2 != 0 ):
-        parser.print_help()
-        print('error: the following arguments are required: 2 or multiple of 2 infiles')
-        sys.exit(1)
-    infiles = package_pairs(infiles) 
-    
-    outfile = f'{outdir}/{expid}.reads.tsv'
-    df = process_fastq_pairs_pd(infiles, 
-                                 outdir,  
-                                 cp=cp)    
-
-    logging.debug(f'filtering by read quality. repeats. Ns.')
-    df = filter_reads_pd(df, 
-                           column='sequence' )
-    logging.debug(f'calc/set read counts on original reads.')    
-    df = set_counts_df(df, column='sequence')
-    logging.info(f'dropping sequence column to slim.')
-    df.drop('sequence', axis=1, inplace=True)    
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    df.to_csv(outfile, sep='\t')
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join( dir , f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)
-    logging.info(f'process_fastq_pairs done.')
-    
-    # align_collapse    
-    outfile = f'{outdir}/{expid}.collapse.tsv'
-    df = align_collapse_pd(df, 
-                           outdir=outdir, 
-                           cp=cp)
-    logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
-    df.to_csv(outfile, sep='\t')
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join(dir, f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)    
-    logging.info(f'align_collapse done.')
-    
-    # make_readtable
-    outfile = f'{outdir}/{expid}.readtable.tsv'
-    logging.debug(f'loading sample DF...')
-    sampdf = load_sample_info(cp, sampleinfo)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-    
-    df = process_make_readtable_pd(df,
-                                   sampdf,
-                                   bcfile=bcfile, 
-                                   outdir=outdir, 
-                                   cp=cp)
-
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    df.to_csv(outfile, sep='\t')
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join(dir, f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)
-    logging.info(f'make_readtable done.')    
-
-    # make_vbctable
-    outfile = f'{outdir}/{expid}.vbctable.tsv'
-    df = process_make_vbctable_pd(df,
-                               outdir=outdir,
-                               cp=cp)
-
-    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    df.to_csv(outfile, sep='\t')
-    
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join( dir , f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)    
-    
-    # make_matrices
-    process_make_matrices_pd(df,
-                               exp_id = expid,  
-                               outdir=outdir, 
-                               cp=cp)
-    
-    
-
-
-def build_seqmapdict(udf, components, column='vbc_read'):
-    '''
-    Create mappings from all unique sequences to component sequence
-    '''
-    seqmapdict = {}
-    comphandled = 0
-    comphandled_interval = 100000
-    comp_len = len(components)
-    
-    for comp in components:
-        ser = list(udf[column].iloc[comp])
-        t = ser[0]
-        for s in ser: 
-            seqmapdict[s]= t    
-        if comphandled % comphandled_interval == 0:
-            logging.debug(f'[{comphandled}/{comp_len}] t = {t}')
-        comphandled += 1
-    return seqmapdict
-
-
-def build_seqmapdict_pd(udf, components, column='vbc_read', pcolumn='count'):
-    '''
-    Create mappings from all unique sequences to component sequence
-    Can we do this faster? Choose most abundant variant?
-    dict should be oldsequence -> newsequence
-    
-    '''
-    seqmapdict = {}
-    comphandled = 0
-    pcolumn='count'
-    logging.debug(f'udf len={len(udf)} components len={len(components)} column={column} pcolumn={pcolumn} ')
-    comphandled_interval = 1000
-    comp_len = len(components)    
-    for i, indexlist in enumerate( components):
-        cdf = udf[[column, pcolumn]].iloc[indexlist]
-        cdf.reset_index(inplace=True, drop=True)
-        #logging.debug(f'component [{i}/{comp_len}]: len={len(cdf)}')
-        maxid = int(cdf[pcolumn].idxmax())
-        t = cdf[column].iloc[maxid]
-        for compseq in list(cdf[column]): 
-            #logging.debug(f'compseq={compseq} -> {t}')
-            seqmapdict[compseq]= t    
-        if comphandled % comphandled_interval == 0:
-            logging.debug(f'[{i}/{comp_len}]: len={len(cdf)} seq = {t} ')
-        comphandled += 1
-    return seqmapdict
-
-
-def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdir=None):
-    #
-    # *** Assumes components are multi-element components only ***
-    #
-    # components consist of indices within the uniqdf. 
-    # assumes component elements are integers, as they are used as dataframe indices. 
-    # create map of indices in original full DF that correspond to all members of a (multi-)component
-    # from alignment
-    # hash key is index of first appearance of sequence in full DF (i.e. its index in uniqdf.) 
-    # 
-    # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
-    #
-    #  SETUP
-    #  infile is all reads...
-    #      fdf = read_fasta_to_df(infile, seq_length=32)
-    #      udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
-    #      components = remove_singletons(components)
-    
-    logging.debug(f'multi-element components len={len(components)}')
-    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
-    logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
-    smd = build_seqmapdict_pd(uniqdf, components,  column, pcolumn)
-      
-    # Make new full df:
-    logging.info('seqmapdict built. Applying.')
-    if outdir is not None:
-        outfile = f'{outdir}/seqmapdict.json'
-        logging.debug(f'writing seqmapdict len={len(smd)} tp {outfile}')
-        with open(outfile, 'w') as fp:
-            json.dump(smd, fp, indent=4)
-    else:
-        logging.debug(f'no outdir given.')
-    logging.info(f'applying seqmapdict...')
-    # make deep copy of original sequence column
-    fulldf.loc[:, f'{column}_col'] = fulldf.loc[:, column]    
-    # map old to new
-    fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
-    # fill in NaN with original values. 
-    # /Users/hover/git/mapseq-processing/mapseq/core.py:1930: FutureWarning: A value is trying to 
-    # be set on a copy of a DataFrame or Series through chained assignment using an inplace method.
-    # The behavior will change in pandas 3.0. This inplace method will never work because the 
-    # intermediate object on which we are setting values always behaves as a copy.
-    # For example, when doing 'df[col].method(value, inplace=True)', try using 'df.method({col: value}, inplace=True)' 
-    #  or df[col] = df[col].method(value) instead, to perform the operation inplace on the original object.
-    # fulldf['vbc_read_col'].fillna(fulldf['vbc_read'], inplace=True)
-    
-    # initial method:
-    #  fulldf['vbc_read_col'].fillna(fulldf['vbc_read'], inplace=True)
-    
-    fulldf.fillna( { 'vbc_read_col' : fulldf['vbc_read'] }, inplace=True)    
-    logging.info(f'New collapsed df = \n{fulldf}')
-    log_objectinfo(fulldf, 'fulldf')
-    return fulldf
-
-
-
-def align_collapse_pd(df,
-                      column='vbc_read',
-                      pcolumn='read_count', 
-                      max_mismatch=None, 
-                      outdir=None, 
-                      datestr=None, 
-                      cp=None):
-    '''
-    Assumes dataframe with sequence and read_count columns
-    Use read_count to choose parent sequence.
-    Speed up use of pandas, map() function rather than apply()
-    
-    relationship between read_count on full_read sequences (52nt), and 
-        value_counts() on unique VBCs (30nts)
-    
-    '''
-    # housekeeping...
-    if cp is None:
-        cp = get_default_config()
-    
-    aligner = cp.get('collapse','tool')    
-    if max_mismatch is None:
-        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
-    else:
-        max_mismatch = int(max_mismatch)
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    if outdir is None:
-        outdir = './'
-    outdir = os.path.abspath(outdir)    
-    os.makedirs(outdir, exist_ok=True)
-    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
-    
-    sh = get_default_stats()      
-    sh.add_value('/collapse','n_full_sequences', len(df) )
-
-    # get reduced dataframe of unique head sequences
-    logging.info('Getting unique DF...')    
-    #udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
-    udf = df[column].value_counts().reset_index() 
-    sh.add_value('/collapse','n_unique_sequences', len(udf) )    
-
-    of = os.path.join( outdir , f'{column}.unique.tsv')
-    logging.info(f'Writing unique DF to {of}')
-    udf.to_csv(of, sep='\t') 
-    
-    of = os.path.join( outdir , f'{column}.unique.fasta')
-    logging.info(f'Writing uniques as FASTA to {of}')
-    seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
-
-    of = os.path.join(outdir, f'{column}.fulldf.tsv')
-    logging.info(f'Writing slimmed full DF to {of}')    
-    df.to_csv(of, sep='\t', columns=[column, pcolumn])
-
-    # run allXall bowtiex
-    of = os.path.join( outdir , f'unique_sequences.bt2.sam')
-    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
-    btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
-    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
-    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
-    of = os.path.join( outdir , f'unique_sequences.btdf.tsv')
-    btdf.to_csv(of, sep='\t') 
-    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
-
-    # perform collapse...      
-    logging.info('Calculating Hamming components...')
-    edgelist = edges_from_btdf(btdf)
-    btdf = None  # help memory usage
-    sh.add_value('/collapse','n_edges', len(edgelist) )
-    
-    of = os.path.join( outdir , f'edgelist.txt')
-    writelist(of, edgelist)
-    logging.debug(f'edgelist len={len(edgelist)}')
-    
-    components = get_components(edgelist)
-    logging.debug(f'all components len={len(components)}')
-    sh.add_value('/collapse','n_components', len(components) )
-    of = os.path.join( outdir , f'components.txt')
-    writelist(of, components)
-    edgelist = None  # help memory usage    
-
-    # assess components...
-    # components is list of lists.
-    data = [ len(c) for c in components]
-    data.sort(reverse=True)
-    ccount = pd.Series(data)
-    of = os.path.join( outdir , f'component_count.tsv')
-    ccount.to_csv(of, sep='\t')            
-
-    mcomponents = remove_singletons(components)
-    logging.debug(f'multi-element components len={len(mcomponents)}')
-    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
-    of = os.path.join( outdir , f'multi_components.json')
-    logging.debug(f'writing components len={len(components)} t {of}')
-    with open(of, 'w') as fp:
-        json.dump(mcomponents, fp, indent=4)
-
-    logging.info(f'Collapsing {len(components)} components...')
-    newdf = collapse_by_components_pd(df, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
-    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-    newcol = f'{column}_col'        
-    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
-    logging.info(f'Got collapsed DF. len={len(newdf)}')
-
-    rdf = newdf[[ column, newcol, 'read_count' ]]
-    of = os.path.join( outdir , f'read_collapsed.tsv')
-    logging.info(f'Writing reduced mapping TSV to {of}')
-    rdf.to_csv(of, sep='\t')
-    
-    newdf.drop(column, inplace=True, axis=1)
-    #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
-    #of = os.path.join( outdir , f'collapsed.fasta')
-    #logging.info(f'Writing collapsed fasta to {of}')
-    #write_fasta_from_df(joindf, of)        
-    return newdf        
-
-       
-
-def collapse_only_pd(fdf, udf, mcomponents, column, pcolumn, outdir, cp ):
-    '''
-    Handle partially completed align-collapse. 
-    Inputs:
-       fulldf TSV
-       uniqudf TSV
-       multi-components list. 
-    
-    Output:
-        collapsed DF. 
-        df = collapse_pd(fulldf,
-                     uniquedf,
-                     mcomponents,   
-                     column=args.column,
-                     pcolumn=args.parent_column,
-                     outdir=outdir, 
-                     cp=cp)
-    '''
-  
-    # assess components...
-    sh = get_default_stats()
-    logging.debug(f'multi-element components len={len(mcomponents)}')
-    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
-
-    logging.info(f'Collapsing {len(mcomponents)} mcomponents...')
-    newdf = collapse_by_components_pd(fdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
-
-    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-    newcol = f'{column}_col'        
-    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
-    logging.info(f'Got collapsed DF. len={len(newdf)}')
-
-    rdf = newdf[[ column, newcol, 'read_count' ]]
-    of = os.path.join( outdir , f'read_collapsed.tsv')
-    logging.info(f'Writing reduced mapping TSV to {of}')
-    rdf.to_csv(of, sep='\t')
-    logging.debug(f'dropping {column}')
-    newdf.drop(column, inplace=True, axis=1)   
-    return newdf        
