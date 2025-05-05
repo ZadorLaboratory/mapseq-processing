@@ -91,8 +91,22 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 
     }
 
+# TARGET
+# target-negative            user-defined    treated but expected to be low
 
-CONTROL_SITES=['target-negative','target-water-control','injection-water-control']
+# CONTROLS
+# target-negative-control    user-provided   untreated sample
+# target-wt-control          core added      untreated biological sample
+# target-water-control       core added      empty sample
+
+# injection-water-control    core added      empty sample
+
+
+
+CONTROL_SITES=['target-negative-control', 
+               'target-wt-control',
+               'target-water-control',
+               'injection-water-control']
 
 #
 # Utility functions. 
@@ -1832,8 +1846,10 @@ def process_filter_vbctable(df,
 
     require_injection = cp.getboolean('vbcfilter','require_injection')
     include_injection = cp.getboolean('vbcfilter','include_injection')
+    include_controls = cp.getboolean('vbcfilter','include_controls')
     use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
-    use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control') 
+    use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control')
+     
     
     max_negative = 1
     max_water_control = 1
@@ -1842,11 +1858,15 @@ def process_filter_vbctable(df,
 
     sh = get_default_stats() 
 
-    # remove all controls by SSI/site, save to TSV
+    
+    # select all controls by SSI/site, save to TSV
     controls = df[ df['site'].isin( CONTROL_SITES ) ]
-    df = df[ df['site'].isin( CONTROL_SITES ) == False]
     controls.reset_index(inplace=True, drop=True)
     controls.to_csv(f'{outdir}/removed_controls.tsv', sep='\t')
+    
+    # optinally keep/remove for inclusion in each brain matrix. 
+    if not include_controls:
+        df = df[ df['site'].isin( CONTROL_SITES ) == False]
 
     # remove spikes and save them 
     # Spikes to NOT get thesholded by UMI 

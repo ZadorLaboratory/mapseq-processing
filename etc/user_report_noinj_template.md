@@ -46,20 +46,11 @@ The columns for all the matrices represent the 'ourtube' ID contained in the 'sa
 Spike-in counts are mostly uniform across all projections sites.  
 We have seen at most 2-3 folds difference in spike-in counts between projection sites, which is considered normal. 
 
-1. We have estimated the fraction of neurons labeled with the same barcodes using barcode diversity (\~20M for the current library) and unique barcodes recovered. 
-
-The estimated amount of reused barcodes within each brain and across different brains are listed in the form below:
-
-|  | B 1 | B 2 |
-| :---- | :---- | :---- |
-| B 1 | 1 | 3 |
-| B 2 | 3 | 4 |
-
 1. We have checked barcode amount in controls. 
 
 The UMI counts from negative controls are listed in the TSV named “vbc_controls.tsv”. This background looks normal. 
 
-1. We have calculated false positive rates. For target sites, the false positive rate is 0 when the UMI threshold is set above 3\.  
+1. We have calculated false positive rates. For target sites, the false positive rate is 0 when the UMI threshold is set to {{ conf['vbcfilter']['target_min_umi'] }}.  
 
 
 ## Further Analysis
