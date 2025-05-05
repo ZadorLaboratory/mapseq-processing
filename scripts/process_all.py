@@ -41,7 +41,11 @@ DIRMAP = { 'process_fastq_pairs': 'reads',
     }
 
 
-def process_mapseq_all(config_file, sampleinfo_file, infiles , outdir=None, force=False ):    
+def process_mapseq_all(config_file, 
+                       sampleinfo_file, 
+                       infiles , 
+                       outdir=None, 
+                       force=False ):    
     '''    
     performs end-to-end default processing. 
     executes each pipeline script in an external process. 
@@ -98,50 +102,6 @@ def process_mapseq_all(config_file, sampleinfo_file, infiles , outdir=None, forc
             elapsed =  end - start
             logging.debug(f"ran cmd='{cmd}' return={cp.returncode} {elapsed.seconds} seconds.")        
         
-
-            
-             
-def old_code(config_file, sampleinfo_file, infiles , outdir=None, force=False ):
-    
-    # process_fasq_pairs.py
-
-    log_file = os.path.join(outdir, f'process_fastq_pairs.log')
-    cmd = [ os.path.join(dirpath, 'process_fastq_pairs.py'),
-           '-d',
-           '-c', config_file, 
-           '-L', log_file ,
-           '-o', outfile
-           ]
-
-    for fn in infiles:
-        cmd.append( fn)
-    logging.debug(f'will run {cmd} Logging to ')
-    start = dt.datetime.now()
-    cp = run_command_shell(cmd)
-    end = dt.datetime.now()
-    elapsed =  end - start
-    logging.debug(f"ran cmd='{cmd}' return={cp.returncode} {elapsed.seconds} seconds.")
-    
-    # aggregate_reads.py
-    
-    # filter_split.py
-    
-    # align_collapse.py
-    
-    # make_readtable.py
-    
-    # make vbctable.py
-    
-    # filter_vbctable.py
-    
-    # make_matrices.py
-
-
-
-
-
-
-
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -217,7 +177,9 @@ if __name__ == '__main__':
     os.makedirs(outdir, exist_ok=True)
     
     datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    sh = StatsHandler(outdir=outdir, datestr=datestr)
+    
+    # Since we're callling subprocesses, no need for root statshandler...
+    #sh = StatsHandler(outdir=outdir, datestr=datestr)
 
     process_mapseq_all( config_file=args.config, 
                         sampleinfo_file=args.sampleinfo, 
