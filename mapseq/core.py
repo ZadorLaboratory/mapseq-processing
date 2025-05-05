@@ -1050,7 +1050,10 @@ def aggregate_reads(df,
                                 dask_temp=dask_temp, 
                                 cp=cp )
     else:
-        df = aggregate_reads_pd(df, column )
+        df = aggregate_reads_pd(df, 
+                                column, 
+                                outdir=outdir, 
+                                min_reads=1 )
     
     return df
     
@@ -1062,6 +1065,17 @@ def aggregate_reads_pd(df, column=['sequence','source']):
     ndf.reset_index(inplace=True, drop=False)
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
     logging.debug(f'DF len={len(ndf)}')
+    
+    if min_reads > 1:
+        logging.info(f'Dropping reads with less than {min_reads} read_count.')
+        logging.debug(f'Length before read_count threshold={len(ndf)}')
+        ndf = ndf[ndf['read_count'] >= min_reads]
+        ndf.reset_index(inplace=True, drop=True)
+        logging.info(f'Length after read_count threshold={len(ndf)}')    
+    else:
+        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
+    logging.info(f'final output DF len={len(ndf)}')
+    
     return ndf
 
 def aggregate_reads_dd(seqdf, 
