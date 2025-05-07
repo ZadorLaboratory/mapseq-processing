@@ -131,8 +131,8 @@ if __name__ == '__main__':
     
     # set recursion
     logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
-    if args.recursion is not None:
-        rlimit = int(args.recursion)
+    if args.max_recursion is not None:
+        rlimit = int(args.max_recursion)
         logging.info(f'set new recursionlimit={rlimit}')
         sys.setrecursionlimit(rlimit)
        
