@@ -79,8 +79,8 @@ if __name__ == '__main__':
                         help='Max mismatch for collapse.')
 
 
-    parser.add_argument('-r','--recursion', 
-                        metavar='recursion',
+    parser.add_argument('-r','--max_recursion', 
+                        metavar='max_recursion',
                         required=False,
                         default=None,
                         type=int, 
