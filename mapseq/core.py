@@ -932,10 +932,6 @@ def filter_reads_pd(df,
 #    ALIGN, COLLAPSE BY VBC             
 #
 
-
-
-
-
 def align_collapse_pd(df,
                       column='vbc_read',
                       pcolumn='read_count', 
@@ -1950,7 +1946,7 @@ def normalize_weight(df, weightdf, columns=None):
 
 def normalize_weight_grouped(df, weightdf, columns=None):
     '''
-     Weight values in df by weightdf, by column groups
+    Weight values in df by weightdf, by column groups
     
     df   dataframe to be scaled, weightdf is spikeins
     columns is list of column groupings. weighting will done within the groups.     
@@ -2029,16 +2025,9 @@ def normalize_weight_grouped(df, weightdf, columns=None):
     return outdf
 
 
-
-
-
 #
 #         REPORTS / QC
 #
-
-
-
-
 def make_report_xlsx(df,
                      outdir=None,                      
                      cp=None):
@@ -2087,6 +2076,7 @@ def make_report_xlsx(df,
 
     logging.info(f'Wrote XLSX report: {outfile} ')
     
+
 
 def make_vbctable_qctables(df, 
                            outdir=None, 
@@ -2156,4 +2146,3 @@ def make_vbctable_qctables(df,
         else:
             logging.info(f'no entries for {fname}')
  
-   

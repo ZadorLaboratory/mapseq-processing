@@ -146,6 +146,14 @@ if __name__ == '__main__':
                     default=False, 
                     help='Recalculate even if output exists.') 
 
+    parser.add_argument('-H','--halt', 
+                        metavar='halt',
+                        required=False,
+                        default=None,
+                        type=str, 
+                        help='Step name to stop after.')
+
+
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
