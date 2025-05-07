@@ -935,7 +935,8 @@ def filter_reads_pd(df,
 def align_collapse_pd(df,
                       column='vbc_read',
                       pcolumn='read_count', 
-                      max_mismatch=None, 
+                      max_mismatch=None,
+                      max_recursion=None, 
                       outdir=None, 
                       datestr=None, 
                       cp=None):
@@ -957,10 +958,24 @@ def align_collapse_pd(df,
         max_mismatch = int(cp.get('collapse', 'max_mismatch'))
     else:
         max_mismatch = int(max_mismatch)
+
+    if max_recursion is not None:
+        rlimit = int(max_recursion)
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)
+    else:
+        rlimit = int(cp.get('collapse','max_recursion'))
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)        
+
     if datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     if outdir is None:
         outdir = './'
+    
+
+    
+    
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
     logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    

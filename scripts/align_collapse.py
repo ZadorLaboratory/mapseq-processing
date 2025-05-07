@@ -82,7 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('-r','--recursion', 
                         metavar='recursion',
                         required=False,
-                        default=20000,
+                        default=None,
                         type=int, 
                         help='Max recursion. Handle larger input to collapse() System default ~3000.')
 
@@ -190,6 +190,7 @@ if __name__ == '__main__':
                            column=args.column,
                            pcolumn=args.parent_column,
                            max_mismatch=args.max_mismatch,
+                           max_recursion=args.max_recursion,
                            outdir=outdir, 
                            cp=cp)
     logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
