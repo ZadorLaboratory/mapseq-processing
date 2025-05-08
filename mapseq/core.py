@@ -1344,32 +1344,6 @@ def process_make_readtable_pd(df,
     sh = get_default_stats()    
     sh.add_value('/readtable','n_full_sequences', str(len(df)) )
     
-    #n_spike = (df['type'] == 'spike')['read_count'].sum() 
-    #n_lone =  (df['type'] == 'lone')['read_count'].sum()  
-    #n_real =  (df['type'] == 'real')['read_count'].sum() 
-    #n_nomatch = (df['type'] == 'nomatch')['read_count'].sum()
-    #ndf = df.replace('nomatch', np.nan)
-    
-   
-    # Identify and remove rows with nomatch for label and/or type
-    # meaning nonsense libtag or unmatched SSI value. 
-    #logging.info('Removing nomatch rows...')
-    #nmidf = df[ ['label','type'] ].copy()
-    #nmidf.replace('nomatch', np.nan, inplace=True)
-    #nmidf = nmidf[ nmidf.isna().any(axis=1) ]
-    #nmdf = df.iloc[nmidf.index]
-    
-    #logging.debug(f'dropping nomatch rows. before len={len(df)}')    
-    #df.drop(nmidf.index, inplace=True)
-    #df.reset_index(inplace=True, drop=True)
-    #logging.debug(f'dropped nomatch rows. after len={len(df)}') 
-
-    #of = os.path.join( outdir, 'nomatch.tsv')
-    #nmdf.reset_index(inplace=True, drop=True)
-    #nmdf.to_csv(of, sep='\t')
-    #n_nomatch = len(nmdf)
-    #logging.info(f'Wrote nomatch DF len={len(nmdf)} to {of}')
-
     # find and remove (at least) known template-switch rows from dataframe.
     # template switch type is L1 (from libtab) but is a valid target (from SSI) 
     tsdf = df[ ((df['type'] == 'lone') & ( df['site'].str.startswith('target'))) ]
@@ -2067,13 +2041,13 @@ def make_report_xlsx(df,
     vdf.reset_index(inplace=True, drop=True)
 
     sdf = df[df['type'] == 'spike']
-    sdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    sdf = sdf.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
     sdf.reset_index(inplace=True, drop=False)
     sdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( sdf['label'])))
     sdf.reset_index(inplace=True, drop=True)    
 
     rdf = df[df['type'] == 'real']
-    rdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    rdf = rdf.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
     rdf.reset_index(inplace=True, drop=False)
     rdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rdf['label'])))
     rdf.reset_index(inplace=True, drop=True)
