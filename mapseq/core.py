@@ -938,13 +938,20 @@ def align_collapse_pd(df,
                       max_mismatch=None,
                       max_recursion=None, 
                       outdir=None, 
-                      datestr=None, 
+                      datestr=None,
+                      force=False, 
                       cp=None):
     '''
     Assumes dataframe with sequence and read_count columns
     Use read_count to choose parent sequence.
+    max_recursion appears to be important, rather than memory reqs. 40000 or 50000 
+        novaseq (1.5B reads) may be needed. 
+    By default, picking up wherever the algorithm left off, depending on
+        file availability. Force overrides and recalculates from beginning. 
+      
+
+    TODO:
     Speed up use of pandas, map() function rather than apply()
-    
     relationship between read_count on full_read sequences (52nt), and 
         value_counts() on unique VBCs (30nts)
     
@@ -1254,14 +1261,15 @@ def process_make_readtable_pd(df,
     logging.info('filling in rtprimer number by SSI sequence...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
 
-    # We don't need the ssi sequence once label/rtprimer are set. 
-    df.drop('ssi', inplace=True, axis=1)
-
     # identify and remove unmatched SSI sequences? 
     badssidf = df[ df.isna().any(axis=1) ]
     n_badssi = len(badssidf)
     df.drop(badssidf.index, inplace=True)
     df.reset_index(inplace=True, drop=True)    
+
+    # We don't need the ssi sequence once label/rtprimer are set and we've
+    # removed and written the bad ones.  
+    df.drop('ssi', inplace=True, axis=1)
 
     of = os.path.join( outdir, 'bad_ssi.tsv')
     badssidf.reset_index(inplace=True, drop=True)
@@ -1301,7 +1309,10 @@ def process_make_readtable_pd(df,
     smap = df['spikeseq'] == spikeseq
     df.loc[smap, 'type'] = 'spike'
 
-    # identify and remove bad type rows. 
+    # identify and remove bad type rows.
+    # must not be spikein, and libtag must not match L1 or L2 
+    # i.e. neither all purines or all pyrimidenes
+    #  
     badtypedf = df[ df.isna().any(axis=1) ]
     n_badtype = len(badtypedf)
     df.drop(badtypedf.index, inplace=True)
@@ -1562,7 +1573,7 @@ def process_filter_vbctable(df,
     logging.debug(f'min_target UMI count after all constraints = {target_min_umi}')   
 
     #
-    # target_min_umi  if any (SSI) label exceeds, include for all labels
+    # target_min_umi if any (SSI) label exceeds, include for all labels
     #
     alllabels = list( targets['label'].unique())
     alllabels.sort()
@@ -1581,7 +1592,7 @@ def process_filter_vbctable(df,
     
     # get injection-filtered real target table, and target-filtered real injection table
     # in case either is needed. 
-    (finjection, ftargets) = filter_non_inj_umi(targets, injections, inj_min_umi=inj_min_umi)            
+    (ftargets, finjection, ) = filter_non_inj_umi(targets, injections, inj_min_umi=inj_min_umi)            
     logging.debug(f'{len(ftargets)} real target VBCs after injection filtering.')
     logging.debug(f'{len(finjection)} real injection VBCs after target filtering.')
 
@@ -1667,7 +1678,7 @@ def filter_non_injection(rtdf, ridf, min_injection=1):
     return mdf
 
 
-def merge_and_filter(adf,  bdf, on='vbc_read_col', indicator=True, how='outer'):
+def merge_and_filter(adf, bdf, on='vbc_read_col', indicator=True, how='outer'):
     '''
     Return filtered ADF consisting of only entries in ADF that also exist in BDF as joined on 
     the 'on' column.  
@@ -2093,7 +2104,7 @@ def make_vbctable_qctables(df,
         outdir = os.path.abspath(outdir)
         logging.debug(f'outdir = {outdir} ')
     
-    
+    project_id = cp.get('project','project_id')
     sh = get_default_stats()
     #sh.add_value('/vbctable','n_vbcs', len(udf) )    
         
@@ -2114,6 +2125,9 @@ def make_vbctable_qctables(df,
     logging.debug(f'arglist = {alist}')
     combinations = list(itertools.product(*alist))
     
+    xlout = outfile = os.path.join(outdir, f'{project_id}.controls.xlsx')
+    writer = pd.ExcelWriter( xlout  )
+    
     for tup in combinations:
         logging.debug(f'handling columnset {tup}')
         tsvname = []
@@ -2131,7 +2145,13 @@ def make_vbctable_qctables(df,
             ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
             ndf.reset_index(inplace=True, drop=True)
             ndf.to_csv(outfile, sep='\t')
+            for s in CONTROL_SITES:
+                if s in tsvname:
+                    if 'real' in tsvname:
+                        logging.debug(f'writing {fname} to {xlout}')
+                        ndf.to_excel(writer, sheet_name=fname)
             sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
         else:
             logging.info(f'no entries for {fname}')
- 
+
+    writer.close()

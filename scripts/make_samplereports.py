@@ -147,6 +147,5 @@ if __name__ == '__main__':
     make_report_xlsx(df,
                       outdir=outdir,
                       cp=cp)
-
     
     logging.info('Done make_samplereports.')
