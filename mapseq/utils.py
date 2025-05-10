@@ -804,8 +804,39 @@ def log_objectinfo(obj, label):
     '''
     ot = type(obj)
     size_gb = ((( sys.getsizeof(obj) ) / 1024 ) / 1024 ) / 1024
-    logging.debug(f"variable= '{label}' type={ot} size={size_gb:.4f} GB.")
+    logging.debug(f"variable= '{label}' type={ot} size={size_gb:.3f} GB.")
 
+
+
+def log_transferinfo(filenames, time_seconds):
+    '''
+    calculate and log a read/write/transfer speed for a local file.
+    Express in MB/second to assess disk/network.
+    
+    Filename can also be a list. Add together for size. 
+       
+    '''
+    if type(filenames) is str:
+        filenames = [filenames]
+    
+    filesize_bytes = 0
+    try:
+        for filename in filenames:
+            filename = os.path.abspath( os.path.expanduser(filename))
+            filesize_bytes += os.path.getsize(filename)        
+        
+        if time_seconds < 1:
+            time_seconds = 1
+        
+        size_mb = filesize_bytes / 1024
+        size_gb = size_mb / 1024
+        mb_per_sec = size_mb / time_seconds
+        logging.debug(f"read/wrote/transferred {size_gb:.3f}GB in {time_seconds}s: {mb_per_sec:.2f} MB/s")
+    
+    except FileNotFoundError:
+        logging.error(f"file {filename} doesn't exist or isn't readable" )
+    
+    
     
 class DotConfigParser(ConfigParser):
     def __init__(self):

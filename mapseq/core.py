@@ -122,6 +122,7 @@ def get_default_config():
 def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
+    Uses dtypes above FMT_DTYPES
     
     '''    
     logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
@@ -136,9 +137,11 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
     elif infile.endswith('.parquet'):
        ftype = 'parquet'
     else:
-        logging.error('input file must have relevant extension .tsv or .parquet')
+        logging.error('input file must have extension .tsv or .parquet')
         sys.exit(1)
     logging.debug(f'input filetype={ftype}')
+    
+    start = dt.datetime.now()
     
     if ftype == 'tsv':
         if use_dask:
@@ -152,12 +155,21 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
     elif ftype == 'parquet':
         if use_dask:
             if use_arrow:
+                logging.debug(f'loading via Dask ftype=parquet use_dask=True filesystem=arrow')
                 df = dd.read_parquet(infile, filesystem='arrow')
             else:
+                logging.debug(f'loading via Dask ftype=parquet use_dask=True filesystem=fsspec (default)')
                 df = dd.read_parquet(infile)  
         else:
+            logging.debug(f'loading via Pandas ftype=parquet use_dask=False use_arrow={use_arrow}')
             df = pd.read_parquet(infile)
             df = fix_mapseq_df_types(df, fformat=fformat, use_arrow=use_arrow) 
+    
+    end = dt.datetime.now()
+    delta_seconds = (dt.datetime.now() - start).seconds
+    
+    log_transferinfo(infile, delta_seconds)
+    log_objectinfo(df, 'loaded_df')
     return df       
 
 
@@ -507,7 +519,6 @@ def process_fastq_pairs(infilelist,
     return df
 
 
-
 def process_fastq_pairs_pd_chunked( infilelist, 
                                     outdir,                         
                                     force=False, 
@@ -547,7 +558,7 @@ def process_fastq_pairs_pd_chunked( infilelist,
     for (read1file, read2file) in infilelist:
         source_label = parse_sourcefile(read1file, source_regex)
         logging.info(f'handling {read1file}, {read2file} source_label={source_label}')
-
+        start = dt.datetime.now()
         fh1 = get_fh(read1file)
         dfi1 = pd.read_csv(fh1, 
                            header=None, 
@@ -584,10 +595,15 @@ def process_fastq_pairs_pd_chunked( infilelist,
 
         logging.debug(f'handled pair number {pairnum}')
         
+        # Measure file read speed.
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo( [read1file, read2file] , delta_seconds)
         pair_len = len(df) - old_len
         old_len = len(df)
-        sh.add_value('/fastq',f'pair{pairnum}_len', pair_len )
         pairnum += 1
+        sh.add_value('/fastq',f'pair{pairnum}_len', pair_len )
+
     logging.debug(f'dtypes =\n{df.dtypes}')
     logging.info('Finished processing all input.')
     sh.add_value('/fastq','reads_handled', len(df) )
@@ -631,6 +647,7 @@ def aggregate_reads(df,
     if use_dask:
         if dask_temp is None:
             dask_temp = os.path.abspath(os.path.expanduser( cp.get('fastq','dask_temp')))
+    
     if min_reads is None:
         min_reads = int(cp.get('fastq','min_reads'))
     else:
@@ -644,14 +661,14 @@ def aggregate_reads(df,
         df = aggregate_reads_dd(df, 
                                 column, 
                                 outdir=outdir, 
-                                min_reads=1, 
+                                min_reads=min_reads, 
                                 dask_temp=dask_temp, 
                                 cp=cp )
     else:
         df = aggregate_reads_pd(df, 
                                 column, 
                                 outdir=outdir, 
-                                min_reads=1 )
+                                min_reads=min_reads )
     return df
     
     
@@ -1592,7 +1609,7 @@ def process_filter_vbctable(df,
     
     # get injection-filtered real target table, and target-filtered real injection table
     # in case either is needed. 
-    (ftargets, finjection, ) = filter_non_inj_umi(targets, injections, inj_min_umi=inj_min_umi)            
+    (ftargets, finjection ) = filter_non_inj_umi(targets, injections, inj_min_umi=inj_min_umi)            
     logging.debug(f'{len(ftargets)} real target VBCs after injection filtering.')
     logging.debug(f'{len(finjection)} real injection VBCs after target filtering.')
 
