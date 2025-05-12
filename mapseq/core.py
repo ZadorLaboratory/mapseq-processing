@@ -601,8 +601,9 @@ def process_fastq_pairs_pd_chunked( infilelist,
         log_transferinfo( [read1file, read2file] , delta_seconds)
         pair_len = len(df) - old_len
         old_len = len(df)
-        pairnum += 1
         sh.add_value('/fastq',f'pair{pairnum}_len', pair_len )
+        pairnum += 1
+
 
     logging.debug(f'dtypes =\n{df.dtypes}')
     logging.info('Finished processing all input.')
@@ -2142,33 +2143,31 @@ def make_vbctable_qctables(df,
     logging.debug(f'arglist = {alist}')
     combinations = list(itertools.product(*alist))
     
-    xlout = outfile = os.path.join(outdir, f'{project_id}.controls.xlsx')
-    writer = pd.ExcelWriter( xlout  )
-    
-    for tup in combinations:
-        logging.debug(f'handling columnset {tup}')
-        tsvname = []
-        ndf = df.copy()
-        for i, col_name in enumerate(cols):
-            col_val = tup[i]
-            tsvname.append(col_val)
-            logging.debug(f'filtering {col_name} by value={col_val}')
-            ndf = ndf[ ndf[col_name] == col_val ]
-        fname = '.'.join(tsvname)
-        outfile = os.path.join(outdir, f'{fname}.tsv')
-        if len(ndf) > 1:
-            logging.debug(f'writing to {outfile}')
-            ndf = ndf[vals]
-            ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
-            ndf.reset_index(inplace=True, drop=True)
-            ndf.to_csv(outfile, sep='\t')
-            for s in CONTROL_SITES:
-                if s in tsvname:
-                    if 'real' in tsvname:
-                        logging.debug(f'writing {fname} to {xlout}')
-                        ndf.to_excel(writer, sheet_name=fname)
-            sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
-        else:
-            logging.info(f'no entries for {fname}')
-
-    writer.close()
+    xlout = os.path.join(outdir, f'{project_id}.controls.xlsx')
+    logging.debug(f'writing to {xlout}')
+    with pd.ExcelWriter( xlout) as writer:
+        for tup in combinations:
+            logging.debug(f'handling columnset {tup}')
+            tsvname = []
+            ndf = df.copy()
+            for i, col_name in enumerate(cols):
+                col_val = tup[i]
+                tsvname.append(col_val)
+                logging.debug(f'filtering {col_name} by value={col_val}')
+                ndf = ndf[ ndf[col_name] == col_val ]
+            fname = '.'.join(tsvname)
+            outfile = os.path.join(outdir, f'{fname}.tsv')
+            if len(ndf) > 1:
+                logging.debug(f'writing to {outfile}')
+                ndf = ndf[vals]
+                ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
+                ndf.reset_index(inplace=True, drop=True)
+                ndf.to_csv(outfile, sep='\t')
+                for s in CONTROL_SITES:
+                    if s in fname:
+                        if 'real' in fname:
+                            logging.debug(f'writing {fname} to {xlout}')
+                            ndf.to_excel(writer, sheet_name=fname)
+                sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
+            else:
+                logging.info(f'no entries for {fname}')
