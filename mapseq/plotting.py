@@ -9,6 +9,8 @@ import numpy as np
 
 from natsort import natsorted
 
+logging.getLogger('matplotlib.font_manager').disabled = True
+
 def make_counts_plots(df, outdir=None, groupby='label', type=None, column='read_count', cp=None):
     '''
     take standard aggregated, readtable or vbctable DFs and create 

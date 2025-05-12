@@ -2163,11 +2163,15 @@ def make_vbctable_qctables(df,
                 ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
                 ndf.reset_index(inplace=True, drop=True)
                 ndf.to_csv(outfile, sep='\t')
+                sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) )
+                # If it is a real control, add to control report. 
                 for s in CONTROL_SITES:
-                    if s in fname:
-                        if 'real' in fname:
-                            logging.debug(f'writing {fname} to {xlout}')
-                            ndf.to_excel(writer, sheet_name=fname)
-                sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) ) 
+                    if ( ( s in fname) and ('real' in fname)):
+                        logging.debug(f"writing control '{fname}' len={len(ndf)} to {xlout}")
+                        ndf.to_excel(writer, sheet_name=fname)
+                    else:
+                        pass
+                        #logging.debug(f"'{fname}' tuple not {s} and 'real'.")                    
             else:
                 logging.info(f'no entries for {fname}')
+        logging.debug(f'done with all tuples in {combinations}')
