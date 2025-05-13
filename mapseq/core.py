@@ -1470,6 +1470,7 @@ def process_make_vbctable_pd(df,
 
     # output controls by SSI/site, save to TSV
     controls = udf[ udf['site'].isin( CONTROL_SITES ) ]
+    controls = controls[ controls['type'] == 'real' ]
     controls.reset_index(inplace=True, drop=True)
     controls.to_csv(f'{outdir}/vbc_controls.tsv', sep='\t')
 
