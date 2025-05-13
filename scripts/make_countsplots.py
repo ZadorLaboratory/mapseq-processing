@@ -157,5 +157,8 @@ if __name__ == '__main__':
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
     make_counts_plots(df, outdir=outdir, groupby=args.groupby, column=args.column, cp=cp )
     
-    logging.info(f'Plots written to {outdir}')
+    make_read_report_xlsx(df,
+                      outdir=outdir,
+                      cp=cp)
+    logging.info(f'Plots and report written to {outdir}')
    

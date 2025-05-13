@@ -15,7 +15,7 @@
 
 ## Table and Matrix information
 
-{{ conf['project']['project_id'] }}.vbcfiltered.tsv:		All viral barcode (VBC) sequences, broken down by type (real, spike-in) and target region.  
+{{ conf['project']['project_id'] }}.vbctable.tsv:		All viral barcode (VBC) sequences, broken down by type (real, spike-in) and target region.  
 			Barcode sequences may appear more than once, if found in multiple target areas. \`\`  
 umi\_count is the number of unique UMIs seen, with read\_count representing the total number of reads behind those UMIs (the allocation of reads to UMIs is not included). 
 

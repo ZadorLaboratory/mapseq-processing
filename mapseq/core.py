@@ -2046,7 +2046,7 @@ def normalize_weight_grouped(df, weightdf, columns=None):
 #
 #         REPORTS / QC
 #
-def make_report_xlsx(df,
+def make_read_report_xlsx(df,
                      outdir=None,                      
                      cp=None):
     '''
@@ -2070,19 +2070,19 @@ def make_report_xlsx(df,
     vdf.reset_index(inplace=True, drop=True)
 
     sdf = df[df['type'] == 'spike']
-    sdf = sdf.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    sdf = sdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read_col':'nunique'} )
     sdf.reset_index(inplace=True, drop=False)
     sdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( sdf['label'])))
     sdf.reset_index(inplace=True, drop=True)    
 
     rdf = df[df['type'] == 'real']
-    rdf = rdf.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    rdf = rdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read_col':'nunique'} )
     rdf.reset_index(inplace=True, drop=False)
     rdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rdf['label'])))
     rdf.reset_index(inplace=True, drop=True)
 
-    rcdf = df.groupby(by=['label','type'],observed=False).agg( {'read_count':'sum'} )
-    rcdf.reset_index(inplace=True, drop=False)
+    rcdf = df.groupby(by=['label','type'],observed=True).agg( {'read_count':'sum'} )
+    rcdf.reset_index(inplace=True,drop=False)
     rcdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rcdf['label'])))
     rcdf.reset_index(inplace=True, drop=True)    
 
