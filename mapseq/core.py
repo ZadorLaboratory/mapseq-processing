@@ -239,7 +239,9 @@ def load_mapseq_matrix_df( infile, use_dask = False ):
 #          SAMPLEINFO/METADATA UTILITY
 #
 
-def load_sample_info(file_name, sheet_name='Sample information', cp=None):
+def load_sample_info(file_name, 
+                     sheet_name='Sample information', 
+                     cp=None):
     #
     # Parses Excel spreadsheet to get orderly sample metadata, saves as ./sampleinfo.tsv.     
     # OR Reads in sampleinfo.tsv
