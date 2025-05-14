@@ -2,36 +2,35 @@
 
 ## Processing Pipeline Overview
 
-1. Raw paired-end sequencing data is parsed and assembled into single blocks consisting of barcode, UMI, and SSI.   
-   During this stage all resulting reads with 'N's are filtered, along with any reads containing sections longer than {{stats['fastq_filter']['max_repeats']}} bp containing the same base (since homopolymers introduce errors).   
-1. We take the barcodes of all remaining reads, and perform an all-against-all alignment and find all sets of barcodes with Hamming distance of 3 or less from each other (based on 30 bp of barcode length). These sets are then used to 'collapse' the barcode in all the full sequences (VBC+UMI+SSI) to a single unique sequence, essentially 'fixing' replication and sequencing errors in the barcodes.   
-1. We then take the full sequences and sort them all according to SSIs (which correspond to unique brain areas), and then determine the molecule number of a barcode in a certain brain area by counting UMIs. As this is done we aggregate the original read counts for each VBC+UMI+SSI. 
+1. Raw paired-end sequencing data is parsed and assembled into single blocks consisting of barcode, UMI, and SSI. During this stage all resulting reads with 'N's are filtered, along with any reads containing sections longer than {{stats['fastq_filter']['max_repeats']}} bp containing the same base (since homopolymers introduce errors).   
+1. We take the barcodes of all remaining reads, and perform an all-against-all alignment to find all sets of barcodes with Hamming distance of 3 or less from each other (based on 30 bp of barcode length). These sets are then used to 'collapse' the barcode in all the full sequences (VBC+UMI+SSI) to a single unique sequence, essentially 'fixing' replication and sequencing errors in the barcodes.   
+1. We then take the full sequences and sort them all according to SSIs (which correspond to unique brain areas), and then determine the molecule number of a unique barcode in a certain brain area by counting the UMIs associated with it. As this is done we aggregate the original read counts for each VBC+UMI+SSI. 
 1. Within each SSI we separate out spike-in and real sequences based on their properties.   
 1. We then create a full aggregate table {{ conf['project']['project_id'] }}.vbctable.tsv. This is the step at which we apply a minimum read count threshold of {{ conf['vbctable']['target_min_reads'] }}.         
 1. We then apply all filters and thresholds to create {{ conf['project']['project_id'] }}.vbfiltered.tsv. This table represents only data that will be included in the per-brain matrices.     
 1. The filtered table can now be converted to connection matrices, with the number of each real and spike-in barcode in each brain area. In this matrix, each row is one barcode, each column is a brain area, and the element of the matrix corresponds to the molecule number of the barcode in the brain area.  
-7. Lastly, we normalized the number of molecules of each barcode in each brain area to the total number of spike-in molecules in the corresponding brain area. This is to compensate RT/PCR variations during sequencing library preparation.  This produces the normalized barcode matrix above. 
+7. Lastly, we normalized the number of molecules of each barcode in each brain area to the total number of spike-in molecules in the corresponding brain area. This is to compensate for RT/PCR variations during sequencing library preparation.  This produces the normalized barcode matrix above. 
 
 
 ## Table and Matrix information
 
-{{ conf['project']['project_id'] }}.vbctable.tsv:		All viral barcode (VBC) sequences, broken down by type (real, spike-in) and target region.  
+{{ conf['project']['project_id'] }}.vbctable.tsv: All viral barcode (VBC) sequences, broken down by type (real, spike-in, L1) and target region.  
 			Barcode sequences may appear more than once, if found in multiple target areas. \`\`  
 umi\_count is the number of unique UMIs seen, with read\_count representing the total number of reads behind those UMIs (the allocation of reads to UMIs is not included). 
 
 For each brain:  
 \<brain\>.rbcm.tsv	raw (real) barcode matrix	  
-Raw real barcode UMI counts from filtered VBC table.   
-Only includes barcodes where:   
-At least one target area had \> {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
-Rows represent barcodes and columns represent areas.  
+&nbsp; &nbsp; Raw real barcode UMI counts from filtered VBC table.   
+&nbsp; &nbsp; Only includes barcodes where:   
+&nbsp; &nbsp; &nbsp; &nbsp; At least one target area had \> {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
+&nbsp; &nbsp; &nbsp; &nbsp; Rows represent barcodes and columns represent areas.  
 
 \<brain\>.sbcm.tsv	spike-in barcode matrix.   
-			Spike in barcode UMI counts.   
-			Rows represent barcodes and columns represent areas. 
+&nbsp; &nbsp;Spike in barcode UMI counts.   
+&nbsp; &nbsp; Rows represent barcodes and columns represent areas. 
 
 \<brain\>.nbcm.tsv	normalized barcode matrix  
-			Filtered barcode values normalized by spike-in counts per SSI area.
+&nbsp; &nbsp; Filtered barcode values normalized by spike-in counts per SSI area.
 
 The columns for all the matrices represent the 'ourtube' ID contained in the 'sampleinfo.tsv' file. That file includes the mappings between user-supplied tube labels, our tube labels, and the rtprimer label for each sample. 
 
