@@ -2750,3 +2750,113 @@ def add_rowlist_column(rowlist, colval):
 
 
 
+def filter_non_injection_old(rtdf, ridf, min_injection=1):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and columns from first argument (rtdf)
+    
+    '''
+    logging.info(f'filtering non-injection. min_injection={min_injection}')
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.umi_count >= min_injection]
+    ridf.reset_index(inplace=True, drop=True)
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    
+    
+    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
+    incol = mdf.columns
+    outcol = []
+    selcol =[]
+    for c in incol:
+        if not c.endswith('_y'):
+            selcol.append(c)
+            outcol.append(c.replace('_x',''))
+    mdf = mdf[selcol]
+    mdf.columns = outcol
+    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
+    return mdf
+
+
+
+def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate 
+    matters.
+    remove rows from rtdf that do not have at least <min_injection> value in the row 
+    of ridf with the same index (VBC sequence)
+    Does an inner join() on the dataframes, keyed on sequence. 
+    Keeps values and columns from first argument (rtdf)
+    
+    '''
+    logging.info(f'filtering non-injection. inj_min_umi={inj_min_umi}')
+    logging.debug(f'before threshold inj df len={len(ridf)}')
+    ridf = ridf[ridf.umi_count >= inj_min_umi]
+    ridf.reset_index(inplace=True, drop=True)
+    
+    logging.debug(f'before threshold inj df len={len(ridf)}')   
+    if write_out:
+        ridf.to_csv('./ridf.tsv', sep='\t')
+        rtdf.to_csv('./rtdf.tsv', sep='\t')
+
+    # get target VBCs that are in injection
+    mtdf = merge_and_filter(rtdf, ridf)
+
+    # get injection VBCs that are in at least one target, similarly 
+    midf = merge_and_filter(ridf, rtdf)
+    return ( mtdf, midf)
+
+def normalize_weight(df, weightdf, columns=None):
+    '''   
+    Weight values in realdf by spikedf, by column groups
+    Assumes matrix index is sequence.
+    Assumes matrices have same columns!!  
+    If column numbers are mis-matched, will create empty column
+    If columns is none, use/weight all columns
+    
+    !! only use target columns. 
+    
+    '''
+    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
+    
+    # sanity checks, fixes. 
+    if len(df.columns) != len(weightdf.columns):
+        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
+        
+    #which SSI has highest spikein?
+    sumlist = []
+    for col in weightdf.columns:
+        sum = weightdf[col].sum()
+        sumlist.append(sum)
+    sum_array = np.array(sumlist)
+    maxidx = np.argmax(sum_array)
+    maxval = sum_array[maxidx]  
+    maxcol = weightdf.columns[maxidx]
+    logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
+    factor_array =  maxval / sum_array
+    logging.debug(f'factor array= {list(factor_array)}')
+
+    max_list = []
+    sum_list = []
+    for col in df.columns:
+        max_list.append(df[col].max())
+        sum_list.append(df[col].sum())
+    logging.debug(f'real max_list={max_list}')
+    logging.debug(f'real sum_list={sum_list}')
+    
+    normdf = df.copy()
+    for i, col in enumerate(normdf.columns):
+        logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
+        normdf[col] = (normdf[col] * factor_array[i] ) 
+
+    max_list = []
+    sum_list = []
+    for col in normdf.columns:
+        max_list.append(normdf[col].max())
+        sum_list.append(normdf[col].sum())
+    logging.debug(f'norm max_list={max_list}')
+    logging.debug(f'norm sum_list={sum_list}')
+
+    return normdf

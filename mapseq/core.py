@@ -1488,19 +1488,22 @@ def process_make_vbctable_pd(df,
 #        VBCFILTER
 #
 
-def process_filter_vbctable(df, 
+def process_filter_vbctable_global(df, 
                                inj_min_umi = None,
                                target_min_umi = None,
                                target_min_umi_absolute = None,
                                outdir = None,
                                cp=None):
     '''
+    
+    XXXX May be wrong because not handled per brain...
+    
     Take unfiltered vbctable. 
     apply all thresholds/filters for input to matrices. 
     
     -- remove l-ones
-    -- <type>_min_umi against reals (but not spikes). 
-
+    -- <type>_min_umi against reals (but not spikes).
+    
     threshold logic. 
     inj_min_umi                VBC UMI must exceed to be kept.
     target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
@@ -1541,13 +1544,14 @@ def process_filter_vbctable(df,
         df = df[ df['site'].isin( CONTROL_SITES ) == False]
 
     # remove spikes and save them 
-    # Spikes to NOT get thesholded by UMI 
+    # Spikes to NOT get thresholded by UMI, or restricted by injection/target presence 
     spikes = df[ df['type'] == 'spike']
     df = df[ df ['type'] != 'spike']
 
     # Separate targets and injections for specific UMI thresholding. 
     targets = df[ df['site'].str.startswith('target') ]
     injections = df[ df['site'].str.startswith('injection') ]
+    
 
     # threshold injection(s)
     if inj_min_umi > 1:
@@ -1640,63 +1644,233 @@ def process_filter_vbctable(df,
     return df
 
 
-def filter_non_inj_umi(rtdf, ridf, inj_min_umi=1, write_out=False):
+def process_filter_vbctable(df, 
+                               inj_min_umi = None,
+                               target_min_umi = None,
+                               target_min_umi_absolute = None,
+                               outdir = None,
+                               cp=None):
     '''
-    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate 
-    matters.
-    remove rows from rtdf that do not have at least <min_injection> value in the row 
-    of ridf with the same index (VBC sequence)
+    Take unfiltered vbctable. 
+    apply all thresholds/filters for input to matrices. 
+    
+    Per brain...
+    -- <type>_min_umi against reals (but not spikes).
+    
+    threshold logic. 
+    inj_min_umi                VBC UMI must exceed to be kept.
+    target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
+    target_min_umi_absolute    hard threshold cutoff
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if outdir is None:
+        outdir = os.path.abspath('./')
+        
+    if inj_min_umi is None:
+        inj_min_umi = int(cp.get('vbcfilter','inj_min_umi'))
+    if target_min_umi is None:
+        target_min_umi = int(cp.get('vbcfilter','target_min_umi'))   
+    if target_min_umi_absolute is None:
+        target_min_umi_absolute = int(cp.get('vbcfilter','target_min_umi_absolute'))
+
+    require_injection = cp.getboolean('vbcfilter','require_injection')
+    include_injection = cp.getboolean('vbcfilter','include_injection')
+    include_controls = cp.getboolean('vbcfilter','include_controls')
+    use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
+    use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control')
+
+    df['brain'] = df['brain'].astype('string')
+    bidlist = list(df['brain'].dropna().unique())
+    bidlist = [ x for x in bidlist if len(x) > 0 ]
+    bidlist.sort()
+    logging.debug(f'handling brain list: {bidlist}')
+    
+    sh = get_default_stats()
+
+    norm_dict = {}
+
+    bdflist = []
+
+    for brain_id in bidlist:
+        valid = True
+        ndf = None 
+        logging.debug(f'handling brain_id={brain_id}')
+        bdf = df[df['brain'] == brain_id]
+        bdf.reset_index(inplace=True, drop=True)
+        initial_len = len(bdf)  
+        logging.info(f'[{brain_id}] initial len={len(bdf)}')
+        max_negative = 1
+        max_water_control = 1
+        
+        logging.debug(f'[{brain_id}]: inj_min_umi={inj_min_umi} target_min_umi={target_min_umi}')
+        logging.debug(f'[{brain_id}]:use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
+        sh = get_default_stats() 
+    
+        # select all controls by SSI/site, save to TSV
+        controls = bdf[ bdf['site'].isin( CONTROL_SITES ) ]
+        controls.reset_index(inplace=True, drop=True)
+        controls.to_csv(f'{outdir}/{brain_id}.removed_controls.tsv', sep='\t')
+        
+        # optionally keep/remove for inclusion in each brain matrix. 
+        if not include_controls:
+            bdf = bdf[ bdf['site'].isin( CONTROL_SITES ) == False]
+    
+        # remove spikes and save them 
+        # Spikes to NOT get thresholded by UMI, or restricted by injection/target presence 
+        spikes = bdf[ bdf['type'] == 'spike']
+        reals = bdf[ bdf ['type'] != 'spike']
+    
+        # Separate targets and injections for specific UMI thresholding. 
+        targets = reals[ reals['site'].str.startswith('target') ]
+        injection = reals[ reals['site'].str.startswith('injection') ]
+    
+        logging.info(f'[{brain_id}]: inputs raw={initial_len} real_inj={len(injection)} real_targets={len(targets)} spikes={len(spikes)} controls={len(controls)} ')
+    
+        # threshold injection(s)
+        if inj_min_umi > 1:
+            before = len(injection)            
+            injection = injection[ injection['umi_count'] >= inj_min_umi ]
+            injection.reset_index(inplace=True, drop=True)
+            logging.debug(f'[{brain_id}]: filtering by inj_min_umi={inj_min_umi} before={before} after={len(injection)}')
+        else:
+            logging.debug(f'[{brain_id}]:  inj_min_umi={inj_min_umi} no filtering needed.')
+
+        logging.info(f'[{brain_id}]: after inj_min_umi real_inj={len(injection)} real_targets={len(targets)} spikes={len(spikes)} controls={len(controls)} ')
+    
+    
+        # threshold target(s)
+        # target_min_umi             if any target exceeds, include for all targets
+        # target_min_umi_absolute    unconditionally threshold target*
+        # inj_min_umi                unconditionally threshold injection
+    
+        # apply absolute if relevant    
+        if target_min_umi_absolute > 1:
+            before = len(targets)
+            targets = targets[targets['umi_count'] >= target_min_umi_absolute ]
+            targets.reset_index(drop=True, inplace=True)
+            after = len(targets)
+            logging.debug(f'[{brain_id}]: filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
+    
+        # handle target thresholding for non-absolute case. 
+        
+        # threshold by target_min_umi or threshold by target-negative
+        # if use_target_negative is true, but no target negative site 
+        # defined, use target_min_umi and throw warning. 
+        if use_target_negative:
+            logging.info(f'[{brain_id}]: use_target_negative is {use_target_negative}')
+            max_negative = calc_min_umi_threshold(targets, 'target-negative', cp)
+            logging.debug(f'[{brain_id}]: target-negative UMI count = {max_negative}')
+    
+        if use_target_water_control:
+            logging.info(f'[{brain_id}]: use_target_water_control is {use_target_water_control}')
+            max_water_control = calc_min_umi_threshold(targets, 'target-water-control',cp)
+            logging.debug(f'[{brain_id}]: target_water_control UMI count = {max_water_control}')
+    
+        target_min_umi = max([target_min_umi, max_negative, max_water_control ])
+        logging.debug(f'[{brain_id}]: min_target UMI count after all constraints = {target_min_umi}')   
+    
+        # threshold by target_min_umi but if any target exceeds, keep all        
+        if target_min_umi > 1:
+            before = len(targets)
+            targets = filter_targets_min_umi_any(targets, min_umi = target_min_umi)
+            after = len(targets)
+            logging.info(f'[{brain_id}]: before={before} -> {after} filtering for VBC any target >= {target_min_umi}')
+            
+        # get injection-filtered real target table, and target-filtered real injection table
+        # in case either is needed. 
+        (ftargets, finjection ) = filter_non_injection(targets, injection)            
+        logging.debug(f'[{brain_id}]: {len(ftargets)} real target VBCs after injection filtering.')
+        logging.debug(f'[{brain_id}]: {len(finjection)} real injection VBCs after target filtering.')
+    
+        if require_injection:
+            logging.debug(f'[{brain_id}]: require_injection={require_injection} inj_min_umi={inj_min_umi}')
+            targets = ftargets
+            if len(targets) < 1:
+                logging.warning(f'[{brain_id}]: brain {brain_id} did not have any targets passing injection filtering.')
+        else:
+            logging.debug(f'[{brain_id}]: require_injection={require_injection} proceeding...')
+        
+        if len(targets) > 1 : 
+            if include_injection:
+                    logging.debug(f'[{brain_id}]: include_injection={include_injection} Merging {len(targets)} targets + {len(injection)} injection VBCs')
+                    ndf = pd.concat( [ targets, finjection], ignore_index=True )
+                    ndf.reset_index(inplace=True, drop=True) 
+            else:
+                logging.debug(f'[{brain_id}]: include_injection={include_injection} excluding injection VBCs from table.')
+                ndf = targets
+        else:
+            logging.debug(f'[{brain_id}]: include_injection={include_injection} but no targets passed. Output empty targets.')
+            ndf = targets
+        
+        # re-create df with un-thresholded spike-ins
+        # ndf may be empty
+        if len(ndf) > 1:               
+            ndf = pd.concat([spikes, ndf ], ignore_index=True)   
+            ndf.reset_index(inplace=True, drop=True)
+            logging.debug(f'[{brain_id}]: brain {brain_id} len={len(bdf)} output DF:\n{ndf}')
+            logging.info(f'[{brain_id}] final len={len(ndf)} appending to bdflist.')
+            bdflist.append(ndf)
+        else:
+            logging.info(f'[{brain_id}]: No targets passed filtering. Not including.')
+    
+    # merge all brains into one dataframe...
+    logging.debug(f'sizes={[ len(x) for x in bdflist ]} ')    
+    df = pd.concat(bdflist, ignore_index = True)
+    df.reset_index(inplace=True, drop=True)
+    logging.info(f'All brains. Final merged filtered DF len={len(df)}')
+    df = fix_mapseq_df_types(df, fformat='vbctable')
+    return df
+
+
+def filter_targets_min_umi_any(targets, min_umi ):
+    '''
+    retain all VBC rows for which any target label umi_count exceeds target_min_umi
+    remove all others. 
+    '''
+    logging.debug(f'inbound targets len={len(targets)} min_umi={min_umi}')
+    vmax = targets.groupby('vbc_read_col').agg({'umi_count': 'max' }).copy()
+    vmax.reset_index(inplace=True, drop=False)
+    init_len = len(vmax)
+    vmax = vmax[vmax['umi_count'] >= min_umi ]
+    vmax.drop('umi_count', inplace=True, axis=1)
+    vmax.reset_index(inplace=True, drop=True)
+    logging.debug(f'unique VBC by max: before={init_len} after={len(vmax)}')
+
+    result = vmax.merge(targets, on='vbc_read_col', how='left')
+    #result.drop('umi_count_x', inplace=True, axis=1)
+    #result.rename( {'umi_count_y':'umi_count'}, inplace=True, axis=1)
+    result.reset_index(inplace=True, drop=True)
+    
+    # check again..
+    vmax = result.groupby('vbc_read_col').agg({'umi_count': 'max' })
+    minmax = vmax.min()
+    logging.debug(f'result len={len(result)} new smallest max per VBC = {minmax}')
+    return result
+   
+
+
+def filter_non_injection(rtdf, ridf, write_out=False):
+    '''
+    rtdf and ridf should already be filtered by brain, type, and minimum umi_count
+    remove rows from rtdf that do not also have VBC in ridf with the same sequience
     Does an inner join() on the dataframes, keyed on sequence. 
     Keeps values and columns from first argument (rtdf)
+    Also filters injection df by presence in target, for possible inclusion.
     
     '''
-    logging.info(f'filtering non-injection. inj_min_umi={inj_min_umi}')
+    logging.info(f'filtering non-injection. ')
     logging.debug(f'before threshold inj df len={len(ridf)}')
-    ridf = ridf[ridf.umi_count >= inj_min_umi]
-    ridf.reset_index(inplace=True, drop=True)
     
-    logging.debug(f'before threshold inj df len={len(ridf)}')   
-    if write_out:
-        ridf.to_csv('./ridf.tsv', sep='\t')
-        rtdf.to_csv('./rtdf.tsv', sep='\t')
-
     # get target VBCs that are in injection
     mtdf = merge_and_filter(rtdf, ridf)
+    mtdf = fix_mapseq_df_types(mtdf, fformat='vbctable')
 
     # get injection VBCs that are in at least one target, similarly 
     midf = merge_and_filter(ridf, rtdf)
+    midf = fix_mapseq_df_types(midf, fformat='vbctable')
     return ( mtdf, midf)
-
-
-
-def filter_non_injection(rtdf, ridf, min_injection=1):
-    '''
-    rtdf and ridf should already be filtered by brain, type, and anything else that might complicate matters.
-    remove rows from rtdf that do not have at least <min_injection> value in the row 
-    of ridf with the same index (VBC sequence)
-    Does an inner join() on the dataframes, keyed on sequence. 
-    Keeps values and columns from first argument (rtdf)
-    
-    '''
-    logging.info(f'filtering non-injection. min_injection={min_injection}')
-    logging.debug(f'before threshold inj df len={len(ridf)}')
-    ridf = ridf[ridf.umi_count >= min_injection]
-    ridf.reset_index(inplace=True, drop=True)
-    logging.debug(f'before threshold inj df len={len(ridf)}')   
-    
-    
-    mdf = pd.merge(rtdf, ridf, how='inner', left_on='sequence', right_on='sequence')
-    incol = mdf.columns
-    outcol = []
-    selcol =[]
-    for c in incol:
-        if not c.endswith('_y'):
-            selcol.append(c)
-            outcol.append(c.replace('_x',''))
-    mdf = mdf[selcol]
-    mdf.columns = outcol
-    logging.debug(f'created merged/joined DF w/ common sequence items.  df=\n{mdf}')
-    return mdf
 
 
 def merge_and_filter(adf, bdf, on='vbc_read_col', indicator=True, how='outer'):
@@ -1704,12 +1878,12 @@ def merge_and_filter(adf, bdf, on='vbc_read_col', indicator=True, how='outer'):
     Return filtered ADF consisting of only entries in ADF that also exist in BDF as joined on 
     the 'on' column.  
     
-    
     '''
     #suffixes=('_a','_b')
     # get targets in injection merge using vbc_read_col as common field. 
     #mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
     mdf = adf.merge(bdf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_a','_b'))
+    
     # only keep target VBCs that are in injection
     mdf = mdf[mdf['_merge'] == 'both']    
     incol = mdf.columns
@@ -1801,7 +1975,6 @@ def process_make_matrices(df,
         cp = get_default_config()
     if outdir is None:
         outdir = os.path.abspath('./')
-
     if exp_id is None:
         exp_id = cp.get('project','project_id')
    
@@ -1821,8 +1994,8 @@ def process_make_matrices(df,
         valid = True 
         logging.debug(f'handling brain_id={brain_id}')
         bdf = df[df['brain'] == brain_id]                               
-        bdf.to_csv(f'{outdir}/{brain_id}.vbctable.tsv', sep='\t')
-        bdf.to_parquet(f'{outdir}/{brain_id}.vbctable.parquet')
+        bdf.to_csv(f'{outdir}/{brain_id}.vbcdata.tsv', sep='\t')
+        bdf.to_parquet(f'{outdir}/{brain_id}.vbcdata.parquet')
 
         # separate reals and spikes
         reals = bdf[bdf['type'] == 'real']       
@@ -1831,7 +2004,7 @@ def process_make_matrices(df,
 
         spikes = bdf[bdf['type'] == 'spike']
         stdf = spikes[spikes['site'].str.startswith('target')]
-        sidf = spikes[spikes['site'].str.startswith('target')]
+        sidf = spikes[spikes['site'].str.startswith('injection')]
         
         target_columns = list( rtdf[label_column].unique())
         injection_columns = list( ridf[label_column].unique())
@@ -1861,9 +2034,7 @@ def process_make_matrices(df,
             nbcmdf = normalize_weight_grouped(rbcmdf, sbcmdf, columns = [target_columns, injection_columns])
             nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]            
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
-            
             norm_dict[brain_id] = nbcmdf
-                              
             sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real', len(rbcmdf) )
             sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_spike', len(sbcmdf) )
             
@@ -1911,67 +2082,14 @@ def sync_columns(df1, df2, fillval=0.0):
     return (df1, df2)
 
 
-def normalize_weight(df, weightdf, columns=None):
-    '''   
-    Weight values in realdf by spikedf, by column groups
-    Assumes matrix index is sequence.
-    Assumes matrices have same columns!!  
-    If column numbers are mis-matched, will create empty column
-    If columns is none, use/weight all columns
-    
-    !! only use target columns. 
-    
-    '''
-    logging.debug(f'normalizing df=\n{df}\nby weightdf=\n{weightdf}')
-    
-    # sanity checks, fixes. 
-    if len(df.columns) != len(weightdf.columns):
-        logging.error(f'mismatched matrix columns df:{len(df.columns)} weightdf: {len(weightdf.columns)} !!')
-        
-    #which SSI has highest spikein?
-    sumlist = []
-    for col in weightdf.columns:
-        sum = weightdf[col].sum()
-        sumlist.append(sum)
-    sum_array = np.array(sumlist)
-    maxidx = np.argmax(sum_array)
-    maxval = sum_array[maxidx]  
-    maxcol = weightdf.columns[maxidx]
-    logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
-    factor_array =  maxval / sum_array
-    logging.debug(f'factor array= {list(factor_array)}')
-
-    max_list = []
-    sum_list = []
-    for col in df.columns:
-        max_list.append(df[col].max())
-        sum_list.append(df[col].sum())
-    logging.debug(f'real max_list={max_list}')
-    logging.debug(f'real sum_list={sum_list}')
-    
-    normdf = df.copy()
-    for i, col in enumerate(normdf.columns):
-        logging.debug(f'handling column {col} idx {i} * factor={factor_array[i]}')
-        normdf[col] = (normdf[col] * factor_array[i] ) 
-
-    max_list = []
-    sum_list = []
-    for col in normdf.columns:
-        max_list.append(normdf[col].max())
-        sum_list.append(normdf[col].sum())
-    logging.debug(f'norm max_list={max_list}')
-    logging.debug(f'norm sum_list={sum_list}')
-
-    return normdf
-       
-
 def normalize_weight_grouped(df, weightdf, columns=None):
     '''
     Weight values in df by weightdf, by column groups
     
-    df   dataframe to be scaled, weightdf is spikeins
+    df dataframe to be scaled, weightdf is spikeins
     columns is list of column groupings. weighting will done within the groups.     
-   
+    e.g.   [  ['BC3', 'BC9', 'BC1', 'BC2'], ['BC89'] ] where BC89 is the injection column.
+      
     Assumes matrix index is sequence.
     Assumes matrices have same columns  
     If column numbers are mis-matched, will create empty column
@@ -2007,6 +2125,7 @@ def normalize_weight_grouped(df, weightdf, columns=None):
                 maxcol = gwdf.columns[maxidx]
                 logging.debug(f'largest spike sum for {maxcol} sum()={maxval}')
                 factor_array =  maxval / sum_array
+                factor_array = np.nan_to_num(factor_array, posinf=0.0)
                 logging.debug(f'factor array= {list(factor_array)}')
             
                 max_list = []
@@ -2103,7 +2222,7 @@ def make_vbctable_qctables(df,
                            outdir=None, 
                            cp=None, 
                            cols=['site','type'], 
-                           vals = ['label','umi_count','read_count'], 
+                           vals = ['vbc_read_col','label','umi_count','read_count'], 
                            sort_by='umi_count' ):
     '''
     write subsetted data from vbctable dataframe for QC checks. 

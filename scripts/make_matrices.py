@@ -64,7 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('-e','--expid', 
                     metavar='expid',
                     required=False,
-                    default='M001',
+                    default=None,
                     type=str, 
                     help='Explicitly provided tag.')
 
