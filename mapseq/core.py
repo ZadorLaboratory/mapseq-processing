@@ -1000,9 +1000,6 @@ def align_collapse_pd(df,
     if outdir is None:
         outdir = './'
     
-
-    
-    
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
     logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
@@ -1016,17 +1013,17 @@ def align_collapse_pd(df,
     udf = df[column].value_counts().reset_index() 
     sh.add_value('/collapse','n_unique_sequences', len(udf) )    
 
-    of = os.path.join( outdir , f'{column}.unique.tsv')
-    logging.info(f'Writing unique DF to {of}')
-    udf.to_csv(of, sep='\t') 
+    #of = os.path.join( outdir , f'{column}.unique.tsv')
+    #logging.info(f'Writing unique DF to {of}')
+    #udf.to_csv(of, sep='\t') 
     
     of = os.path.join( outdir , f'{column}.unique.fasta')
     logging.info(f'Writing uniques as FASTA to {of}')
     seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
 
-    of = os.path.join(outdir, f'{column}.fulldf.tsv')
-    logging.info(f'Writing slimmed full DF to {of}')    
-    df.to_csv(of, sep='\t', columns=[column, pcolumn])
+    #of = os.path.join(outdir, f'{column}.fulldf.tsv')
+    #logging.info(f'Writing slimmed full DF to {of}')    
+    #df.to_csv(of, sep='\t', columns=[column, pcolumn])
 
     # run allXall bowtiex
     of = os.path.join( outdir , f'unique_sequences.bt2.sam')
