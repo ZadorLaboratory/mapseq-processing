@@ -71,6 +71,13 @@ if __name__ == '__main__':
                     type=str, 
                     help='how to choose sequence [read_count]')    
 
+    parser.add_argument('-G','--group_column', 
+                    metavar='group_column',
+                    required=False,
+                    default='brain', 
+                    type=str, 
+                    help='separate groups to collapse in [brain]')
+
     parser.add_argument('-m','--max_mismatch', 
                         metavar='max_mismatch',
                         required=False,
@@ -182,7 +189,7 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='filtered', use_dask=False)
+    df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
     
     if args.datestr is None:
@@ -191,22 +198,15 @@ if __name__ == '__main__':
         datestr = args.datestr
     
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
-    df = align_collapse_pd(df, 
-                           column=args.column,
-                           pcolumn=args.parent_column,
-                           max_mismatch=args.max_mismatch,
-                           max_recursion=args.max_recursion,
-                           outdir=outdir,
-                           force = args.force, 
-                           cp=cp)
-    logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    df.to_csv(outfile, sep='\t')
-    
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join(dir, f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)
-    
+    df = align_collapse(df, 
+                        column=args.column,
+                        pcolumn=args.parent_column,
+                        gcolumn = args.group_column,
+                        max_mismatch=args.max_mismatch,
+                        max_recursion=args.max_recursion,
+                        outdir=outdir,
+                        force = args.force, 
+                        cp=cp)
+    write_mapseq_df(df, args.outfile)
     logging.info('Done align_collapse.')
     

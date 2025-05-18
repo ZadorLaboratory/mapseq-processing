@@ -42,15 +42,16 @@ from mapseq.plotting import *
 # STANDARD FORMATS AND DATATYPES
 #
 
-FFORMATS = ['reads','aggregated','filtered','collapsed','readtable','vbctable']
+FFORMATS = ['reads','aggregated','filtered','readtable','collapsed','vbctable']
 
 STR_COLS = {
     'reads'      : ['sequence'],
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
-    'collapsed'  : ['vbc_read_col','spikeseq', 'libtag', 'umi',  'ssi'],
-    'readtable'  : ['vbc_read_col', 'umi' ],
-    'vbctable'   : ['vbc_read_col'],      
+    'readtable'  : ['vbc_read', 'umi' ],
+    #'collapsed'  : ['vbc_read','spikeseq', 'libtag', 'umi',  'ssi'],
+    'collapsed'  : ['vbc_read', 'umi'],
+    'vbctable'   : ['vbc_read'],      
     }
 
 INT_COLS = {
@@ -149,7 +150,8 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
             df = dd.read_csv(infile, sep='\t', dtype=FMT_DTYPES )  
         else:
             logging.debug(f'loading via Pandas ftype=tsv use_dask=False with dtype dict...')
-            df = pd.read_csv(infile, sep='\t', index_col=0, dtype=FMT_DTYPES )     
+            df = pd.read_csv(infile, sep='\t', index_col=0, dtype=FMT_DTYPES )
+     
         logging.debug(f'after: dtypes=\n{df.dtypes}')        
     
     elif ftype == 'parquet':
@@ -166,11 +168,47 @@ def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
             df = fix_mapseq_df_types(df, fformat=fformat, use_arrow=use_arrow) 
     
     end = dt.datetime.now()
-    delta_seconds = (dt.datetime.now() - start).seconds
-    
+    delta_seconds = (dt.datetime.now() - start).seconds    
     log_transferinfo(infile, delta_seconds)
     log_objectinfo(df, 'loaded_df')
     return df       
+
+
+
+def write_mapseq_df(df, outfile, outformats=['tsv','parquet'] ):
+    '''
+    Wrapper to time writeout performance. 
+    Assumes outfile is TSV string, but will adjust as needed. 
+    
+    '''
+    log_objectinfo(df, 'write_df')
+    outfile = os.path.abspath(outfile)
+    dirname, base, ext = split_path(outfile)
+    logging.debug(f'dirname={dirname} base={base} ext={ext}')
+    
+    if 'tsv' in outformats:
+        of = os.path.join(dirname, f'{base}.tsv')
+        logging.info(f'Saving len={len(df)} as TSV to {of}...')
+        start = dt.datetime.now()
+        df.to_csv(of, sep='\t')
+        
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo(of, delta_seconds)
+        logging.info(f'Done writing {of}')
+    
+    if 'parquet' in outformats:
+        of = os.path.join(dirname, f'{base}.parquet')
+        logging.info(f'Saving len={len(df)} as Parquet to {of}...')
+        start = dt.datetime.now()
+        df.to_parquet(of)        
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo(of, delta_seconds)
+        logging.info(f'Done writing {of}') 
+    
+    logging.info(f'Done writing DF to desired format(s).')
+
 
 
 def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
@@ -952,6 +990,58 @@ def filter_reads_pd(df,
 #    ALIGN, COLLAPSE BY VBC             
 #
 
+def align_collapse(df,
+                      column='vbc_read',
+                      pcolumn='read_count',
+                      gcolumn=None,  
+                      max_mismatch=None,
+                      max_recursion=None, 
+                      outdir=None, 
+                      datestr=None,
+                      force=False, 
+                      cp=None):
+    '''
+    Entry point for CLI align_collapse. 
+    Determine grouped vs. non-grouped. 
+    
+    @arg column         Column to align and collapse
+    @arg pcolumn        Column to decide which sequence to assign to all. 
+    @arg gcolumn        Column to group processing within
+    @arg max_mismatch   Max Hamming distance between collapsed sequences 
+    @arg max_recursion  Max recursion to set for Python interpreter. 
+    @arg outdir         Base outdir for intermediate output. 
+    @arg datestr        Optional date string for logging
+    @arg force          Recalculate intermediate steps, otherwise pick up. 
+    @arg cp             ConfigParser object with [collapse] section.
+    
+    '''
+    if gcolumn is not None:
+        logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
+        df = align_collapse_pd_grouped( df, 
+                                        column = column,
+                                        pcolumn = pcolumn,
+                                        gcolumn = gcolumn,
+                                        max_mismatch=max_recursion,
+                                        max_recursion=max_recursion, 
+                                        outdir=outdir, 
+                                        datestr=datestr,
+                                        force=force, 
+                                        cp=cp )
+    else:
+        logging.info(f'Global align_collapse.')
+        df = align_collapse_pd( df = df,
+                                column = column,
+                                pcolumn = pcolumn,
+                                max_mismatch=max_recursion,
+                                max_recursion=max_recursion, 
+                                outdir=outdir, 
+                                datestr=datestr,
+                                force=force, 
+                                cp=cp ) 
+    logging.info(f'Done. returning DF len={len(df)}')
+    return df
+                            
+
 def align_collapse_pd(df,
                       column='vbc_read',
                       pcolumn='read_count', 
@@ -969,7 +1059,6 @@ def align_collapse_pd(df,
     By default, picking up wherever the algorithm left off, depending on
         file availability. Force overrides and recalculates from beginning. 
       
-
     TODO:
     Speed up use of pandas, map() function rather than apply()
     relationship between read_count on full_read sequences (52nt), and 
@@ -1081,11 +1170,186 @@ def align_collapse_pd(df,
     rdf.to_csv(of, sep='\t')
     
     newdf.drop(column, inplace=True, axis=1)
+    newdf.rename( { newcol : column }, inplace=True, axis=1) 
     #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
     #of = os.path.join( outdir , f'collapsed.fasta')
     #logging.info(f'Writing collapsed fasta to {of}')
     #write_fasta_from_df(joindf, of)        
     return newdf        
+
+
+def align_collapse_pd_grouped(df,
+                              column='vbc_read',
+                              pcolumn='read_count',
+                              gcolumn='brain', 
+                              max_mismatch=None,
+                              max_recursion=None, 
+                              outdir=None, 
+                              datestr=None,
+                              force=False, 
+                              cp=None):
+    '''
+    Groups alignment and collapse by gcolumn value. [brain]
+    Uses sub-directories for standard intermediate output/scratch. 
+    Assumes dataframe with sequence (vbc_read) and read_count columns
+    Use read_count to choose parent sequence.
+        
+    max_recursion appears to be important, rather than memory reqs. 40000 or 50000 
+        novaseq (1.5B reads) may be needed. 
+    By default, picking up wherever the algorithm left off, depending on
+        file availability. Force overrides and recalculates from beginning. 
+      
+    TODO:
+    Speed up use of pandas, map() function rather than apply()
+    relationship between read_count on full_read sequences (52nt), and 
+        value_counts() on unique VBCs (30nts)
+    
+    '''
+    # housekeeping...
+    if cp is None:
+        cp = get_default_config()
+        
+    if max_mismatch is None:
+        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    else:
+        max_mismatch = int(max_mismatch)
+
+    if max_recursion is not None:
+        rlimit = int(max_recursion)
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)
+    else:
+        rlimit = int(cp.get('collapse','max_recursion'))
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)        
+
+    aligner = cp.get('collapse','tool')
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    
+    if outdir is None:
+        outdir = './'
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
+
+    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
+    sh = get_default_stats()      
+    sh.add_value('/collapse','n_full_sequences', len(df) )
+
+    # Get list of ids to group collapse by...
+    df[gcolumn] = df[gcolumn].astype('string')
+    gidlist = list( df[gcolumn].dropna().unique() )
+    gidlist = [ x for x in gidlist if len(x) > 0 ]
+    gidlist.sort()
+    logging.debug(f'handling group list: {gidlist}')
+
+    logging.info(f'pulling out no group for merging at end...')
+    nogroup_df = df[ df[gcolumn] == '' ]
+    sh.add_value('/collapse','n_no_group', len(nogroup_df) )
+
+    gdflist = []
+
+    for gid in gidlist:
+        logging.info(f"collapsing '{column}' by {gcolumn} = '{gid}' ")
+        gdir = os.path.join( outdir, f'{gcolumn}.{gid}' )
+        os.makedirs(gdir, exist_ok=True)
+        
+        gdf = df[df[gcolumn] == gid]
+        gdf.reset_index(inplace=True, drop=True)
+        initial_len = len(gdf)  
+        logging.info(f'[{gcolumn}:{gid}] initial len={len(gdf)} subdir={gdir}')        
+        
+        # get reduced dataframe of unique head sequences
+        logging.info('Getting unique DF...')    
+        udf = gdf[column].value_counts().reset_index() 
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_unique_sequences', len(udf) )    
+    
+        of = os.path.join( gdir , f'{column}.unique.tsv')
+        logging.info(f'Writing unique DF to {of}')
+        udf.to_csv(of, sep='\t') 
+        
+        of = os.path.join( gdir , f'{column}.unique.fasta')
+        logging.info(f'Writing uniques as FASTA to {of}')
+        seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
+    
+        #of = os.path.join(outdir, f'{column}.fulldf.tsv')
+        #logging.info(f'Writing slimmed full DF to {of}')    
+        #df.to_csv(of, sep='\t', columns=[column, pcolumn])
+    
+        # run allXall bowtiex
+        of = os.path.join( gdir , f'unique_sequences.bt2.sam')
+        logging.info(f'Running {aligner} on {seqfasta} file to {of}')
+        btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
+        logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
+        btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
+        of = os.path.join( gdir , f'unique_sequences.btdf.tsv')
+        btdf.to_csv(of, sep='\t') 
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_bowtie_entries', len(btdf) )
+    
+        # perform collapse...      
+        logging.info('Calculating Hamming components...')
+        edgelist = edges_from_btdf(btdf)
+        btdf = None  # help memory usage
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
+        
+        of = os.path.join( gdir , f'edgelist.txt')
+        writelist(of, edgelist)
+        logging.debug(f'edgelist len={len(edgelist)}')
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
+        
+        components = get_components(edgelist)
+        logging.debug(f'all components len={len(components)}')
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_components', len(components) )
+        of = os.path.join( gdir , f'components.txt')
+        writelist(of, components)
+        edgelist = None  # help memory usage    
+    
+        # assess components...
+        # components is list of lists.
+        data = [ len(c) for c in components]
+        data.sort(reverse=True)
+        ccount = pd.Series(data)
+        of = os.path.join( gdir , f'component_count.tsv')
+        ccount.to_csv(of, sep='\t')            
+    
+        mcomponents = remove_singletons(components)
+        logging.debug(f'multi-element components len={len(mcomponents)}')
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_multi_components', len(mcomponents) )
+        of = os.path.join( gdir , f'multi_components.json')
+        logging.debug(f'writing components len={len(components)} t {of}')
+        with open(of, 'w') as fp:
+            json.dump(mcomponents, fp, indent=4)
+    
+        logging.info(f'Collapsing {len(components)} components...')
+        newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
+        # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+        newcol = f'{column}_col'        
+        newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+        logging.info(f'Got collapsed DF. len={len(newdf)}')
+    
+        rdf = newdf[[ column, newcol, 'read_count' ]]
+        of = os.path.join( gdir , f'read_collapsed.tsv')
+        logging.info(f'Writing reduced mapping TSV to {of}')
+        rdf.to_csv(of, sep='\t')
+        
+        newdf.drop(column, inplace=True, axis=1)
+        newdf.rename( { newcol : column }, inplace=True, axis=1) 
+        gdflist.append(newdf)
+        #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
+        #of = os.path.join( outdir , f'collapsed.fasta')
+        #logging.info(f'Writing collapsed fasta to {of}')
+        #write_fasta_from_df(joindf, of)        
+    
+    # merge all brains into one dataframe...
+    logging.debug(f'sizes={[ len(x) for x in gdflist ]} adding nogroup len={len(nogroup_df)}')    
+    gdflist.append(nogroup_df)
+    outdf = pd.concat(gdflist, ignore_index = True)
+    outdf.reset_index(inplace=True, drop=True)
+    logging.info(f'All groups. Final DF len={len(outdf)}')
+    outdf = fix_mapseq_df_types(outdf, fformat='readtable')
+    return outdf
+       
 
 def build_seqmapdict(udf, components, column='vbc_read'):
     '''
@@ -1440,7 +1704,7 @@ def process_make_vbctable_pd(df,
     thdf.reset_index(drop=True, inplace=True)
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
-    udf = thdf.groupby(['vbc_read_col','label','type'], observed=True ).agg( {'umi' : 'nunique',
+    udf = thdf.groupby(['vbc_read','label','type'], observed=True ).agg( {'umi' : 'nunique',
                                                                               'read_count':'sum', 
                                                                               'brain':'first',
                                                                               'region':'first',
@@ -1553,7 +1817,7 @@ def process_filter_vbctable_global(df,
     # threshold injection(s)
     if inj_min_umi > 1:
         before = len(injections)
-        injections = filter_all_lt(injections, 'vbc_read_col', 'umi_count', inj_min_umi)            
+        injections = filter_all_lt(injections, 'vbc_read', 'umi_count', inj_min_umi)            
         logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(injections)}')
     else:
         logging.debug(f'inj_min_umi={inj_min_umi} no filtering needed.')
@@ -1827,7 +2091,7 @@ def filter_targets_min_umi_any(targets, min_umi ):
     remove all others. 
     '''
     logging.debug(f'inbound targets len={len(targets)} min_umi={min_umi}')
-    vmax = targets.groupby('vbc_read_col').agg({'umi_count': 'max' }).copy()
+    vmax = targets.groupby('vbc_read').agg({'umi_count': 'max' }).copy()
     vmax.reset_index(inplace=True, drop=False)
     init_len = len(vmax)
     vmax = vmax[vmax['umi_count'] >= min_umi ]
@@ -1835,13 +2099,13 @@ def filter_targets_min_umi_any(targets, min_umi ):
     vmax.reset_index(inplace=True, drop=True)
     logging.debug(f'unique VBC by max: before={init_len} after={len(vmax)}')
 
-    result = vmax.merge(targets, on='vbc_read_col', how='left')
+    result = vmax.merge(targets, on='vbc_read', how='left')
     #result.drop('umi_count_x', inplace=True, axis=1)
     #result.rename( {'umi_count_y':'umi_count'}, inplace=True, axis=1)
     result.reset_index(inplace=True, drop=True)
     
     # check again..
-    vmax = result.groupby('vbc_read_col').agg({'umi_count': 'max' })
+    vmax = result.groupby('vbc_read').agg({'umi_count': 'max' })
     minmax = vmax.min()
     logging.debug(f'result len={len(result)} new smallest max per VBC = {minmax}')
     return result
@@ -1870,16 +2134,16 @@ def filter_non_injection(rtdf, ridf, write_out=False):
     return ( mtdf, midf)
 
 
-def merge_and_filter(adf, bdf, on='vbc_read_col', indicator=True, how='outer'):
+def merge_and_filter(adf, bdf, on='vbc_read', indicator=True, how='outer'):
     '''
     Return filtered ADF consisting of only entries in ADF that also exist in BDF as joined on 
     the 'on' column.  
     
     '''
     #suffixes=('_a','_b')
-    # get targets in injection merge using vbc_read_col as common field. 
-    #mdf = rtdf.merge(ridf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_t','_i'))
-    mdf = adf.merge(bdf, on='vbc_read_col', indicator=True, how='outer', suffixes=('_a','_b'))
+    # get targets in injection merge using vbc_read as common field. 
+    #mdf = rtdf.merge(ridf, on='vbc_read', indicator=True, how='outer', suffixes=('_t','_i'))
+    mdf = adf.merge(bdf, on='vbc_read', indicator=True, how='outer', suffixes=('_a','_b'))
     
     # only keep target VBCs that are in injection
     mdf = mdf[mdf['_merge'] == 'both']    
@@ -2007,7 +2271,7 @@ def process_make_matrices(df,
         injection_columns = list( ridf[label_column].unique())
 
         # reals        
-        rbcmdf = reals.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+        rbcmdf = reals.pivot(index='vbc_read', columns=label_column, values='umi_count')
         scol = natsorted(list(rbcmdf.columns))
         rbcmdf = rbcmdf[scol]
         rbcmdf.fillna(value=0, inplace=True)
@@ -2017,7 +2281,7 @@ def process_make_matrices(df,
             logging.warning(f'brain={brain_id} not valid.')
         
         # spikes    
-        sbcmdf = spikes.pivot(index='vbc_read_col', columns=label_column, values='umi_count')
+        sbcmdf = spikes.pivot(index='vbc_read', columns=label_column, values='umi_count')
         spcol = natsorted(list(sbcmdf.columns))
         sbcmdf = sbcmdf[spcol]
         sbcmdf.fillna(value=0, inplace=True)    
@@ -2183,19 +2447,19 @@ def make_read_report_xlsx(df,
     
     logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
     
-    vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read_col':'nunique'} )
+    vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read':'nunique'} )
     vdf.reset_index(inplace=True, drop=False)
     vdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( vdf['label'])))
     vdf.reset_index(inplace=True, drop=True)
 
     sdf = df[df['type'] == 'spike']
-    sdf = sdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read_col':'nunique'} )
+    sdf = sdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique'} )
     sdf.reset_index(inplace=True, drop=False)
     sdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( sdf['label'])))
     sdf.reset_index(inplace=True, drop=True)    
 
     rdf = df[df['type'] == 'real']
-    rdf = rdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read_col':'nunique'} )
+    rdf = rdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique'} )
     rdf.reset_index(inplace=True, drop=False)
     rdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rdf['label'])))
     rdf.reset_index(inplace=True, drop=True)
@@ -2219,12 +2483,12 @@ def make_vbctable_qctables(df,
                            outdir=None, 
                            cp=None, 
                            cols=['site','type'], 
-                           vals = ['vbc_read_col','label','umi_count','read_count'], 
+                           vals = ['vbc_read','label','umi_count','read_count'], 
                            sort_by='umi_count' ):
     '''
     write subsetted data from vbctable dataframe for QC checks. 
 
-    vbc_read_col                  label  type  umi_count  read_count brain region  site
+    vbc_read                  label  type  umi_count  read_count brain region  site
 0 AAAAAAACAGCTAAAGAATCCTTGTTCACC  BC207  lone          3          25               target-water-control
 1 AAAAAAACATTCACGCGTATGGCCTGAGGG  BC207  lone          1          20               target-water-control
 2 AAAAAAACCGGCCTTGTACTTGGTTCTCTT  BC203  real         13         509     6                       target

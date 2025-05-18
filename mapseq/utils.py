@@ -704,6 +704,7 @@ def write_tsv(df, outfile=None):
     logging.debug(f'writing {len(df)} lines output to {outfile}')      
     df.to_csv(outfile, sep='\t')
 
+
 def readlist(filepath):
     '''
     Assumes file is a list of strings, one per line. 

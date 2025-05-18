@@ -120,6 +120,22 @@ This step is isolated from others because it uses Dask, a Python framework to al
 ```
 filter_split.py performs sequence-level QC, removing reads that are likely to be erroneous. And it splits the reads into columns that are relevant for the MAPseq protocol.  
   
+### make_readtable.py
+
+```
+~/git/mapseq-processing/scripts/make_readtable.py 
+	-v						# give verbose output
+	-s M253_sampleinfo.xlsx 			# sample metadata
+	-o readtable.out/M253.readtable.tsv 		# output TSV 
+	filtered.out/M253.filtered.tsv		# filtered/split reads TSV (or Parquet)
+```
+
+Now we break the data into useful sequence regions, and fill in addtional relevant information. Note that this is the only command that requires the sample information from the Excel spreadsheet (or derived TSV). 
+ 
+We also create site-specific read count shoulder plots, in order to confirm that our read count thresholds are reasonable. 
+
+Takes about 45 minutes for 400M reads on MacBook Pro M3 
+
 
 ### align_collapse.py
 
@@ -128,31 +144,15 @@ filter_split.py performs sequence-level QC, removing reads that are likely to be
 	-v 					# give verbose output
 	-m 3 					# maximum Hamming distance of 3 
 	-o collapse.out/M253.collapsed.tsv 	# output TSV 
-	filtered.out/M253.filtered.tsv	# Filtered and split data. TSV or Parquet 
+	readtable.out/M253.readtable.tsv	# Filtered and split data. TSV or Parquet 
 ```
+NOTE: The step has been moved after readtable creation so that we can optionally align and collapse within individual brains.
 
 This program takes the viral barcode part of the reads (vbc_read column), and partitions them into groups where all the members are within a Hamming distance of 3 of each other. It does this by running an all-by-all alignment of all unique viral barcode sequences. Self-matches are discarded. The remainder are used to create an edge graph (nodes are sequences, edges are between sequences less than 3 edits apart). This is then given to Tarjan's algorithm to determine "components", sets of sequences connected by edges. It then sets all members of the components to have the same sequence. (This sequence is the one in the original set with the most reads, but it shouldn't matter what the exact sequence is, as long as they all share it, and it is unique within the data). 
 
 This processing step is necessary because there is a fair amount of mutation that occurs during viral replication. We don't worry about mismatches in the other components of the sequence (SSI barcode, UMI sequence) because these are added during sample processing and thus have lower error rates.
 
 For a standard ~400M read experiment, this takes about 70 minutes on a high-memory (192GB RAM) node. (Or 50 minutes on a new Mac M3, 96GB RAM).  
-
-
-### make_readtable.py
-
-```
-~/git/mapseq-processing/scripts/make_readtable.py 
-	-v						# give verbose output
-	-s M253_sampleinfo.xlsx 			# sample metadata
-	-o readtable.out/M253.readtable.tsv 		# output TSV 
-	collapse.out/M253.collapsed.tsv		# collapsed reads/counts (or parquet)
-```
-
-Now we break the data into useful sequence regions, and fill in addtional relevant information. Note that this is the only command that requires the sample information from the Excel spreadsheet (or derived TSV). 
- 
-We also create site-specific read count shoulder plots, in order to confirm that our read count thresholds are reasonable. 
-
-Takes about 45 minutes for 400M reads on MacBook Pro M3 
   
 
 ### make_vbctable.py
@@ -161,10 +161,12 @@ Takes about 45 minutes for 400M reads on MacBook Pro M3
 ~/git/mapseq-processing/scripts/make_vbctable.py 
 	-v					# give verbose output
 	-o vbctable.out/M253.vbctable.tsv 	# output file for all VBCs 
-	readtable.out/M253.filter.tsv 		# fully populated read table. 
+	collapsed.out/M253.collapsed.parquet 	# collapsed read table. 
 ```
-Consumes the readtable, drops all reads with missing/unmatched tags/sequences, drops reads that do not meet the read count threshold for the site type. It then collapses by viral barcode, calculating UMI count for each VBC.
+Consumes the ( collapsed ) readtable, drops all reads with missing/unmatched tags/sequences, drops reads that do not meet the read count threshold for the site type. It then collapses by viral barcode, calculating UMI count for each VBC.
 Outputs a VBC-oriented table. 
+
+Be sure that the target_min_reads and inj_min_reads parameters are those desired in the [vbctable] section in the configuration. 
 
 This typically takes about 12 minutes. (3 minutes on Mac M3)
 
@@ -178,17 +180,16 @@ This typically takes about 12 minutes. (3 minutes on Mac M3)
 ```
 The VBC table contains ALL information from the experiment including controls, L1s, and any data that results from errors. To simplify matrix creation, we apply all thresholds and filtering at this step. This step:
 
-- Removes L1s and any non-L1 sample reads with L1 tags
-- Optionally calculates minimum UMI counts based on biological negative or water control.
+- Optionally calculates minimum UMI counts based on biological negative or water control (use_target_negative, use_target_water_control).
 - Optionally filters out VBCs not present in the injection site (require_injection)
-- Applies minimum UMI count in target and/or injection areas (min_target_umi, min_inj_umi) 
+- Applies minimum UMI count in target and/or injection areas (target_min_umi, inj_min_umi) 
+- Removes L1s and any non-L1 sample reads with L1 tags
 
 This step also produces: 
 - controls.tsv	  All control site data (target-water-control) 
 - anomalies.tsv   Mismatched data. E.g. L1 libtag with non-L1 SSI, L1 SSI without L1 libtag.
 
 All data in the main output file created by this step is then unconditionally included in the matrices produced by the next command.   
-
 
 ### make_matrices.py
 ```

@@ -22,22 +22,22 @@ from mapseq.stats import *
 STEPLIST=[ 'process_fastq_pairs',
            'aggregate_reads',
            'filter_split' ,
-           'align_collapse',
            'make_readtable',
+           'align_collapse',
            'make_vbctable',
            'filter_vbctable',
-           #'make_matrices'
+           'make_matrices'
            ]
 
 
 DIRMAP = { 'process_fastq_pairs': 'reads',
            'aggregate_reads'    : 'aggregated',
            'filter_split'       : 'filtered',
-           'align_collapse'     : 'collapsed',
            'make_readtable'     : 'readtable',
+           'align_collapse'     : 'collapsed',
            'make_vbctable'      : 'vbctable',
            'filter_vbctable'    : 'vbcfiltered',
-           #'make_matrices'      : 'matrices'
+           'make_matrices'      : 'matrices'
     }
 
 
@@ -55,15 +55,24 @@ def process_mapseq_all(config_file,
     cp = ConfigParser()
     cp.read(config_file)
     expid = cp.get('project','project_id')
+
+    if outdir is None:
+        outdir = os.path.abspath('./')
   
     logging.debug(f'exe={sys.executable} sys.argv={sys.argv}')
     (dirpath, base, ext) = split_path(sys.argv[0])
     logging.debug(f'script_dir = {dirpath}')
 
     for step in STEPLIST:
+        runstep = True
+        soutdir = None
+        soutfile = None
         sname = DIRMAP[step]
         logging.debug(f'handling step={step} sname={sname}')
-        outfile = os.path.join(outdir, f'{sname}.out/{expid}.{sname}.tsv')
+        if sname == 'matrices':
+            soutdir = os.path.join(outdir, f'{sname}.out/')
+        else:
+            soutfile = os.path.join(outdir, f'{sname}.out/{expid}.{sname}.tsv')
     
         # define infile
         if sname != 'reads':
@@ -76,8 +85,16 @@ def process_mapseq_all(config_file,
            '-d',
            '-c', config_file, 
            '-L', log_file,
-           '-o', outfile
            ]
+
+        if soutfile is not None:
+            cmd.append('-o')
+            cmd.append(soutfile)
+        
+        if soutdir is not None:
+            cmd.append('-O')
+            cmd.append(soutdir)            
+        
         if sname == 'readtable':
             cmd.append('-s')
             cmd.append(sampleinfo_file)
@@ -92,15 +109,23 @@ def process_mapseq_all(config_file,
                 sys.exit(1)
         logging.debug(f"made command={' '.join(cmd)}")
 
-        if os.path.exists(outfile):
-            logging.info(f'outfile={outfile} exists. Continue...')
-        else:
+        
+        if sname == 'matrices':
+            logging.debug(f'make_matrices. outfile not known, proceed...')
+            runstep = True
+        elif os.path.exists(soutfile):
+            logging.info(f'soutfile={soutfile} exists. runstep=False')
+            runstep = False
+            
+        if runstep:
             logging.debug(f'will run {cmd} Logging to ')
             start = dt.datetime.now()
             cp = run_command_shell(cmd)
             end = dt.datetime.now()
             elapsed =  end - start
             logging.debug(f"ran cmd='{cmd}' return={cp.returncode} {elapsed.seconds} seconds.")        
+        else:
+            logging.debug(f'Output exists, skipping.')
         
 
 if __name__ == '__main__':
