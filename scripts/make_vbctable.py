@@ -170,24 +170,24 @@ if __name__ == '__main__':
                                target_min_reads = target_min_reads, 
                                cp=cp)
 
-    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    
-    logging.debug(f'making qctables')
+    logging.debug(f'Got vbctable DF len={len(df)}')
+    write_mapseq_df(df, outfile)  
+
+    logging.info(f'Making qctables')
     make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
 
-    logging.debug(f'making frequency plots.')
+    logging.info('Making UMI parameter report.')
+    make_vbctable_parameter_report_xlsx(df, 
+                                   outdir=outdir, 
+                                   cp=cp, 
+                                   params=[ (5,3),(10,3),(10,5),(20,5),(30,5),(30,10)] )
+
+    logging.info(f'Making frequency plots.')
     make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
     make_counts_plots(df, outdir=outdir, type='real', column='umi_count', cp=cp )
     make_counts_plots(df, outdir=outdir, type='spike', column='umi_count', cp=cp )
     
-    df.to_csv(outfile, sep='\t')
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join( dir , f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)
-    
+ 
     logging.info('Done make_vbctable.')
     
     

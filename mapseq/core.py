@@ -120,14 +120,16 @@ def get_default_config():
     return cp
 
     
-def load_mapseq_df( infile, fformat='reads', use_dask=False, use_arrow=True):
+def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     Uses dtypes above FMT_DTYPES
     
     '''    
     logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
-    if fformat not in FFORMATS :
+    if fformat is None:
+        logging.info(f'fformat is None. Will not apply datatype checks/correction.')
+    elif fformat not in FFORMATS :
         logging.warning(f'fformat {fformat} not in {FFORMATS} . Datatypes may be incorrect.')
     
     ftype = None
@@ -917,6 +919,70 @@ def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
     return df
 
 
+def split_fields(df, column='sequence', drop=False, cp=None):
+    '''
+    E.g.
+        vbc_read_st = 0
+        vbc_read_end = 30
+        spikeseq_st=24
+        spikeseq_end = 32
+        libtag_st=30
+        libtag_end=32
+        rtag_st=32
+        rtag_end=37
+        umi_st = 37
+        umi_end = 49
+        ssi_st = 49
+        ssi_end = 57
+    
+
+    '''    
+    logging.info(f'pulling out all fields defined in config.')
+    if cp is None:
+        cp = get_default_config()
+
+    if not cp.has_section('split'):
+        logging.error('This fuction must have a [split] section...')
+        sys.exit(1)
+
+    plist = cp.items('split')
+    fdict = defaultdict(dict)
+    for (k,v) in plist:
+        if k.endswith('_st'):
+           fname =  k[:-3]
+           fd = fdict[fname]
+           fd['start'] = v
+           
+        elif k.endswith('_end'):
+           fname =  k[:-4]
+           fd = fdict[fname]
+           fd['end'] = v
+    
+    for field in list(fdict.keys()):
+        logging.debug(f'handling field={field}')
+        try:
+            fd = fdict[field]
+            logging.debug(f'info for field={field} = {fdict[field]}')
+            fstart = int( fdict[field]['start'])
+            fend = int( fdict[field]['end'] )
+            logging.debug(f'splitting field={field} start = {fstart} end = {fend}')
+            df[field] = df[column].str.slice(fstart, fend).astype('string[pyarrow]')
+            logging.debug(f'successfully split field={field}')
+        
+        except Exception as ex:
+            logging.warning(f'problem with field={field} bad start/end? Check config?')
+            
+    sh = get_default_stats()
+    
+    if drop:
+        logging.info(f'dropping {column} column to slim.')
+        df.drop( column, axis=1, inplace=True)
+    else:
+        logging.info(f'drop is false. keeping {column} column.')
+    logging.info(f'df done. len={len(df)} returning...')
+    return df
+
+
 def filter_reads_pd(df,
                     max_repeats=None,
                     max_n_bases=None,
@@ -1522,11 +1588,12 @@ def process_make_readtable_pd(df,
     spikeseq = cp.get('readtable','spikeseq')
     realregex = cp.get('readtable', 'realregex' )
     loneregex = cp.get('readtable', 'loneregex' )
+    use_lones = cp.getboolean('readtable','use_lones')
     
     if bcfile is None:
         bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
     
-    logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile}')
+    logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile} use_lones={use_lones}')
 
     # Map label, rtprimer to SSIs    
     logging.debug(f'getting rt labels...')
@@ -1543,6 +1610,7 @@ def process_make_readtable_pd(df,
     df['rtprimer'] = df['ssi'].map(rtdict)
 
     # identify and remove unmatched SSI sequences? 
+    logging.debug('removing unmatched SSI')
     badssidf = df[ df.isna().any(axis=1) ]
     n_badssi = len(badssidf)
     df.drop(badssidf.index, inplace=True)
@@ -1550,11 +1618,17 @@ def process_make_readtable_pd(df,
 
     # We don't need the ssi sequence once label/rtprimer are set and we've
     # removed and written the bad ones.  
+    logging.debug('dropping SSI sequence')
     df.drop('ssi', inplace=True, axis=1)
 
+    logging.debug('writing out bad_ssi.')
     of = os.path.join( outdir, 'bad_ssi.tsv')
     badssidf.reset_index(inplace=True, drop=True)
+    start = dt.datetime.now()    
     badssidf.to_csv(of, sep='\t')
+    end = dt.datetime.now()
+    delta_seconds = (dt.datetime.now() - start).seconds
+    log_transferinfo(of, delta_seconds)    
     logging.info(f'Wrote bad_ssi DF len={len(badssidf)} to {of}')
     badssidf = None   
 
@@ -1571,10 +1645,14 @@ def process_make_readtable_pd(df,
 
     of = os.path.join( outdir, 'bad_site.tsv')
     badsitedf.reset_index(inplace=True, drop=True)
+    start = dt.datetime.now()
     badsitedf.to_csv(of, sep='\t')
+    end = dt.datetime.now()
+    delta_seconds = (dt.datetime.now() - start).seconds
+    log_transferinfo(of, delta_seconds)
+    
     logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
     badsitedf = None   
-
 
     # spikes and L1/L2 libtag
     # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
@@ -1593,7 +1671,8 @@ def process_make_readtable_pd(df,
     # identify and remove bad type rows.
     # must not be spikein, and libtag must not match L1 or L2 
     # i.e. neither all purines or all pyrimidenes
-    #  
+    #
+    logging.debug('Identifying bad type rows.')  
     badtypedf = df[ df.isna().any(axis=1) ]
     n_badtype = len(badtypedf)
     df.drop(badtypedf.index, inplace=True)
@@ -1680,12 +1759,14 @@ def process_make_vbctable_pd(df,
     
     This should  be prepared for input it make VBC matrices    
     '''
+    if cp is None:
+        cp = get_default_config()
+    project_id = cp.get('project','project_id')
+    
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     log_objectinfo(df, 'input-df')
     ndf = df
     
-  
-  
     ndf.replace('nomatch',np.nan, inplace=True)
     #ndf = df.replace('nomatch' ,np.nan)
     logging.info(f'DF before removing nomatch: {len(ndf)}')
@@ -1725,17 +1806,17 @@ def process_make_vbctable_pd(df,
     anomalies = udf[ udf['type'] == 'lone' ]
     udf = udf[ udf['type'] != 'lone' ]
     anomalies.reset_index(inplace=True, drop=True)  
-    anomalies.to_csv(f'{outdir}/anomalies.tsv', sep='\t')
+    anomalies.to_csv(f'{outdir}/{project_id}.anomalies.tsv', sep='\t')
 
     # output L1s and anomalies. 
     lones.reset_index(inplace=True, drop=True)
-    lones.to_csv(f'{outdir}/lones.tsv', sep='\t')
+    lones.to_csv(f'{outdir}/{project_id}.lones.tsv', sep='\t')
 
     # output controls by SSI/site, save to TSV
     controls = udf[ udf['site'].isin( CONTROL_SITES ) ]
     controls = controls[ controls['type'] == 'real' ]
     controls.reset_index(inplace=True, drop=True)
-    controls.to_csv(f'{outdir}/vbc_controls.tsv', sep='\t')
+    controls.to_csv(f'{outdir}/{project_id}.controls.tsv', sep='\t')
 
     udf.reset_index(inplace=True, drop=True)  
     sh = get_default_stats()
@@ -2443,7 +2524,7 @@ def make_read_report_xlsx(df,
         outdir = os.path.abspath('./')
     project_id = cp.get('project','project_id')
         
-    outfile = os.path.join(outdir, f'{project_id}.samplereport.xlsx')    
+    outfile = os.path.join(outdir, f'{project_id}.readreport.xlsx')    
     
     logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
     
@@ -2558,3 +2639,84 @@ def make_vbctable_qctables(df,
             else:
                 logging.info(f'no entries for {fname}')
         logging.debug(f'done with all tuples in {combinations}')
+        
+        
+def make_vbctable_parameter_report_xlsx(df, 
+                                   outdir=None, 
+                                   cp=None, 
+                                   params=None
+                                   ):
+    '''
+        Create single XLSX with table of number of VBCs per SSI at the various thrsholds
+        for injection, target UMI counts. 
+            For reference:
+            VBCs per brain at different inj UMI thresholds:
+            
+                   10      5
+            B13   1124    1244
+            B14   2232    2445
+            B16   2029    2129
+            B18   608     708
+            B19   1295    1450
+            B21   3175    3629
+            B22   3986    4673
+            B23   1322    1547
+            B24   3570    3954         
+    '''
+    
+    DEFAULT_PARAMS = [ (5,  3), 
+                       (10, 3),
+                       (10, 5),
+                       (20, 5),
+                       (30, 5),
+                       (30, 10)]
+      
+    if cp is None:
+        cp = get_default_config()
+    if params is None:
+        params = eval(  cp.get( 'vbctable','test_params') ) 
+    if outdir is None:
+        outdir = os.path.abspath('./')
+    else:
+        outdir = os.path.abspath(outdir)
+    os.makedirs(outdir, exist_ok=True)
+    
+    project_id = cp.get('project','project_id')        
+    outfile = os.path.join(outdir, f'{project_id}.vbc_parameters.xlsx')    
+    logging.info(f'testing range of UMI parameters (inj,target) to {outfile} ')
+    logging.debug(f'params={params} ')
+
+    outdf = None
+    
+    for i, (inj_min_umi, target_min_umi) in enumerate(params):
+        logging.debug(f'inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
+        colname = f'inj:{inj_min_umi}, tar:{target_min_umi}'
+        fdf = process_filter_vbctable(df, 
+                                      inj_min_umi=inj_min_umi, 
+                                      target_min_umi = target_min_umi, 
+                                      target_min_umi_absolute=1, 
+                                      outdir = None, cp=cp)
+        fdf = fdf[fdf['type'] == 'real']
+        xdf = fdf.groupby('label').agg({'vbc_read':'nunique'})
+        xdf.reset_index(inplace=True, drop=False)
+        xdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( xdf['label'])))
+        xdf.reset_index(inplace=True, drop=True)
+        xdf.rename( {'vbc_read': colname}, inplace=True, axis=1)
+        xdf.index = xdf['label']
+        xdf.drop('label', inplace=True, axis=1)
+        
+        if outdf is None:
+            outdf = xdf
+        else:
+            outdf = pd.concat([ outdf, xdf], axis=1)   
+
+    with pd.ExcelWriter(outfile) as writer:
+        outdf.to_excel(writer, sheet_name='Unique VBCs by Parameters')
+    logging.info(f'Wrote XLSX report: {outfile} ')
+
+    return outdf
+        
+        
+        
+        
+

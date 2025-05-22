@@ -71,7 +71,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single readtable TSV or Parquet.')
+                        help='Single readtable/collapsed TSV or Parquet.')
         
     args= parser.parse_args()
     

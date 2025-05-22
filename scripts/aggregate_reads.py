@@ -179,14 +179,6 @@ if __name__ == '__main__':
                            dask_temp = args.dask_temp,
                            cp=cp 
                            )
-    logging.info(f'Saving len={len(df)} as TSV to {outfile}...')
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    df.to_csv(outfile, sep='\t')
-    
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join(dir, f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)
-    
+    write_mapseq_df(df, outfile)
     logging.info('Done aggregate_reads')
     

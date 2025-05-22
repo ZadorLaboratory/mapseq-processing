@@ -7,6 +7,8 @@ import sys
 from configparser import ConfigParser
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
@@ -15,6 +17,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
+from mapseq.plotting import *
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
@@ -40,19 +43,26 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='Combined read, read_count TSV')   
+                    help='Logfile for subprocess.')
 
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. output file base dir if not given.')
+                    help='outdir. input file base dir if not given.')   
+
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Full dataset table TSV') 
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -60,26 +70,12 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='Include datestr in relevant files.')
-
-    parser.add_argument('-f','--force', 
-                    action="store_true", 
-                    default=False, 
-                    help='Recalculate even if output exists.') 
-
-    parser.add_argument('-L','--logfile', 
-                    metavar='logfile',
-                    required=False,
-                    default=None, 
-                    type=str, 
-                    help='Logfile for subprocess.')
    
-    parser.add_argument('infiles' ,
-                        metavar='infiles', 
+    parser.add_argument('infile',
+                        metavar='infile',
                         type=str,
-                        nargs='+',
-                        default=None, 
-                        help='Read1 and Read2 [Read1B  Read2B ... ] fastq files')
-       
+                        help='Single TSV or Parquet file with sequence column to split.')
+        
     args= parser.parse_args()
     
     if args.debug:
@@ -92,19 +88,14 @@ if __name__ == '__main__':
     if len(o) < 1:
         logging.error(f'No valid configuration. {args.config}')
         sys.exit(1)
+       
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'force={args.force} infiles={args.infiles}')
-
-    # check nargs. 
-    if (len(args.infiles) < 2)  or (len(args.infiles) % 2 != 0 ):
-        parser.print_help()
-        print('error: the following arguments are required: 2 or multiple of 2 infiles')
-        sys.exit(1)
-       
+    logging.debug(f'infiles={args.infile}')
+          
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/reads.tsv'
+    outfile = f'{outdir}/read.table.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -126,16 +117,13 @@ if __name__ == '__main__':
             outfile = os.path.abspath(args.outfile)
         else:
             logging.debug(f'outdir specified. outfile not specified.')
-            outfile = f'{outdir}/reads.tsv'
+            outfile = f'{outdir}/read.table.tsv'
 
-    logging.debug(f'making missing outdir: {outdir} ')
+    outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
-    logging.info(f'outdir={outdir} outfile={outfile}')
 
-    logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
-    infilelist = package_pairs(args.infiles)   
-    
-    logging.debug(f'infilelist = {infilelist}')
+    logging.info(f'handling {args.infile} to outdir {outdir}')    
+    logging.debug(f'infile = {args.infile}')
     
     if args.logfile is not None:
         log = logging.getLogger()
@@ -144,18 +132,29 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
-        
+    
+   
+    logging.info(f'loading {args.infile}') 
+
+    df = load_mapseq_df( args.infile, fformat='reads', use_dask=False)
+ 
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
         datestr = args.datestr
-    sh = StatsHandler(outdir=outdir, datestr=datestr) 
+    sh = StatsHandler(outdir=outdir, datestr=datestr)
+    
+    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+    
+    df = split_fields(df, 
+                        column = 'sequence',
+                        drop = True,
+                        cp=cp)
 
-    df = process_fastq_pairs(infilelist, 
-                             outdir,                         
-                             force=args.force,
-                             cp = cp)
-    
-    write_mapseq_df(df, outfile)    
-    logging.info('Done process_fastq_pairs')  
-    
+    write_mapseq_df(df, outfile) 
+    logging.info('Done split_fields')
+
+
+
+   
+ 

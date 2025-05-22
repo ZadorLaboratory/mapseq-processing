@@ -177,17 +177,7 @@ if __name__ == '__main__':
                                    args.barcodes, 
                                    outdir=outdir, 
                                    cp=cp)
-
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    df.to_csv(outfile, sep='\t')
-    logging.info('Done with TSV.')
-    
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join(dir, f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile)
-    logging.info('Done with Parquet.')
+    write_mapseq_df(df, outfile)
     
     logging.info(f'making read_count frequency plots...')
     make_counts_plots(df, 
@@ -198,6 +188,5 @@ if __name__ == '__main__':
                       outdir=outdir,
                       cp=cp)
     
-
     logging.info('Done make_readtable.')
         

@@ -180,16 +180,7 @@ if __name__ == '__main__':
                              drop = True,
                              cp=cp)
 
-    logging.debug(f'dataframe dtypes:\n{df.dtypes}\n')
-    logging.info(f'Got dataframe len={len(df)} Writing to {outfile}')
-    df.to_csv(args.outfile, sep='\t')
-    logging.info(f'Done writing to {outfile}')
-    
-    dir, base, ext = split_path(outfile)
-    outfile = os.path.join(dir, f'{base}.parquet')
-    logging.info(f'df len={len(df)} as parquet to {outfile}...')
-    df.to_parquet(outfile) 
-
+    write_mapseq_df(df, outfile) 
     logging.info('Done filter_split.')
 
 
