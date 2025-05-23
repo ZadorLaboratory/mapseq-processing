@@ -50,6 +50,27 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
+    parser.add_argument('-r','--max_repeats', 
+                        metavar='max_repeats',
+                        required=False,
+                        default=7,
+                        type=int, 
+                        help='Max homopolymer runs. [7]')
+
+    parser.add_argument('-n','--max_n_bases', 
+                        metavar='max_n_bases',
+                        required=False,
+                        default=0,
+                        type=int, 
+                        help='Max number of ambiguous bases.')
+
+    parser.add_argument('-m','--min_reads', 
+                        metavar='min_reads',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Min reads to retain initial full read.')
+
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -74,7 +95,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single TSV or Parquet file with sequence column to split.')
+                        help='Single TSV or Parquet file with sequence column to filter.')
         
     args= parser.parse_args()
     
@@ -95,7 +116,7 @@ if __name__ == '__main__':
           
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/read.table.tsv'
+    outfile = f'{outdir}/filtered.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -136,7 +157,7 @@ if __name__ == '__main__':
    
     logging.info(f'loading {args.infile}') 
 
-    # Less likely to know fformat for ad-hoc filtering.
+    # Less likely to know fformat for ad-hoc filtering. 
     df = load_mapseq_df( args.infile, fformat=None, use_dask=False)
  
     if args.datestr is None:
@@ -146,14 +167,17 @@ if __name__ == '__main__':
     sh = StatsHandler(outdir=outdir, datestr=datestr)
     
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
-    
-    df = split_fields(df, 
-                        column = 'sequence',
-                        drop = True,
-                        cp=cp)
 
+    logging.debug(f'filtering by read quality. repeats. Ns.')
+    df = filter_reads_pd(df, 
+                           max_repeats=args.max_repeats,
+                           max_n_bases=args.max_n_bases,
+                           min_reads=args.min_reads,  
+                           column='sequence',
+                           cp=cp)
+    
     write_mapseq_df(df, outfile) 
-    logging.info('Done split_fields')
+    logging.info('Done filter_reads.')
 
 
 
