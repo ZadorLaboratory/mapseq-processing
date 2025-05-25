@@ -515,5 +515,26 @@ def get_barcode_dict(bcfile, labels=None):
     logging.debug(f'got dict len={len(bcdict)}')
     return bcdict
 
-
-
+def get_rtbc_dict(bcfile, labels=None):
+    '''
+    get dict from rtprimers to bclabels. 
+    
+    '''
+    '''
+    read barcode file, parse into dict. 
+    optionally include only labels in provided list. 
+    '''
+    rbdict = {}  # map from seq to primer number
+    with open(bcfile) as fh:
+        logging.debug(f"opened barcode file {bcfile}")
+        while True:
+            ln = fh.readline()
+            if len(ln) < 2:
+                break
+            (label, bcseq) = ln.split()
+            rtn = label.replace('BC','')
+            if labels is None or label in labels: 
+                rbdict[rtn] = label
+                logging.debug(f'label={label} rtn={rtn} barcode={bcseq}')    
+    logging.debug(f'got dict len={len(rbdict)}')
+    return rbdict

@@ -9,6 +9,7 @@ from configparser import ConfigParser
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+#from lib2to3.pgen2.pgen import DFAState
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
@@ -175,12 +176,28 @@ if __name__ == '__main__':
                            column='sequence',
                            cp=cp)
     
-    df = split_mapseq_fields(df, 
-                             column = 'sequence',
-                             drop = True,
-                             cp=cp)
+    #df = split_mapseq_fields(df, 
+    #                         column = 'sequence',
+    #                         drop = True,
+    #                         cp=cp)
 
-    write_mapseq_df(df, outfile) 
+
+    (dirpath, base, ext) = split_path(outfile)
+    of = os.path.join(dirpath, f'{base}.split.tsv')
+
+    # Use new generic field splitting. 
+    df = split_fields(df, 
+                        column = 'sequence',
+                        drop = True,
+                        cp=cp)
+    write_mapseq_df(df, of)
+
+
+    df = filter_fields(df,
+                       drop=True,
+                       cp=cp)
+    
+    write_mapseq_df(df, outfile)     
     logging.info('Done filter_split.')
 
 

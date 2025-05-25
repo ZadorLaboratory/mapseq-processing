@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 
-from configparser import ConfigParser
+from configparser import ConfigParserl
 
 import pandas as pd
 import pyarrow as pa

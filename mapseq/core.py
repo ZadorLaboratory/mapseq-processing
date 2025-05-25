@@ -942,7 +942,7 @@ def split_fields(df, column='sequence', drop=False, cp=None):
         cp = get_default_config()
 
     if not cp.has_section('split'):
-        logging.error('This fuction must have a [split] section...')
+        logging.error('This function requires config with [split] section...')
         sys.exit(1)
 
     plist = cp.items('split')
@@ -1051,6 +1051,86 @@ def filter_reads_pd(df,
     sh.add_value('/fastq_filter','num_kept', str(len(df)) )
     # changes made to inbound df, but return anyway
     return df
+
+
+def filter_fields(df,
+                    drop=True,
+                    cp=None):
+    '''
+    Used by filter_split.
+    Remove reads that have bad fields. 
+    
+    Config values, e.g. 
+        [readfilter]
+        rtag_seq = GTACT
+        rrtag_seq = CACGA
+
+    will force 'rtag' column to contain literal string value GTACT or be dropped. 
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+
+    if not cp.has_section('readfilter'):
+        logging.error('This function requires config with [readfilter] section...')
+        sys.exit(1)
+
+    sh = get_default_stats()
+
+    plist = cp.items('readfilter')
+    fdict = defaultdict(dict)
+    
+    for (k,v) in plist:
+        logging.debug(f'handling {k}')
+        if k.endswith('_seq'):
+           fname =  k[:-4]
+           fd = fdict[fname]
+           fd['seq'] = v
+           
+        elif k.endswith('_regex'):
+           fname =  k[:-6]
+           fd = fdict[fname]
+           fd['regex'] = v
+
+    logging.debug(f'dict = {fdict}')
+    num_initial = len(df)
+
+    df['valid'] = True        
+    df_cols = list( df.columns )
+    for column in list( fdict.keys()):
+        if column in df_cols:
+            logging.info(f'handling field {column}')
+            rdict = fdict[column]
+            logging.debug(f'req dict for {column} is {rdict}')
+            for reqtype in list( rdict.keys() ):
+                logging.debug(f'handling requirement {reqtype}')
+                if reqtype == 'seq':
+                    rstr = rdict['seq']
+                    logging.debug(f"checking {column} must match {rstr}  ")
+                    rmap = ~(df[column] == rstr)
+                    n_bad = len(df) - rmap.sum()
+                    logging.info(f'found {n_bad} for {column}') 
+                    sh.add_value('/field_filter',f'n_bad_{column}', str(n_bad) )
+                    df['valid'] = df['valid'] & rmap
+                if reqtype == 'regex':
+                    logging.warning(f'regex filtering not implemented.')
+        else:
+            logging.warning(f'column {column} not in dataframe. Ignoring...')
+
+    validmap = df['valid']
+    df.drop(['valid'], inplace=True, axis=1)
+    df = df[validmap]
+    df.reset_index(drop=True, inplace=True)
+    logging.info(f'Removed bad, new len={len(df)}')
+    sh.add_value('/field_filter','num_initial', num_initial )
+    sh.add_value('/field_filter','num_kept', str(len(df)) )
+    pct = ( len(df) / num_initial ) * 100
+    spct = f'{pct:.2f}'
+    sh.add_value('/field_filter','percent_kept', spct  )    
+
+    return df
+
+
 
 #
 #    ALIGN, COLLAPSE BY VBC             
@@ -1601,13 +1681,18 @@ def process_make_readtable_pd(df,
     logging.debug(f'rtlabels={labels}')
     bcdict = get_barcode_dict(bcfile, labels)
     rtdict = get_rtprimer_dict(bcfile, labels)
+    rtbcdict = get_rtbc_dict(bcfile, labels)
     logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
    
-    logging.info('filling in label by SSI sequence...')
-    df['label'] = df['ssi'].map(bcdict)
-
     logging.info('filling in rtprimer number by SSI sequence...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
+    df['rtprimer'] = df['rtprimer'].astype('category')
+    
+    logging.info('filling in label by rtprimer...')
+    df['label'] = df['rtprimer'].map(rtbcdict)
+    df['label'] = df['label'].astype('category')
+    #logging.info('filling in label by SSI sequence...')
+    #df['label'] = df['ssi'].map(bcdict)
 
     # identify and remove unmatched SSI sequences? 
     logging.debug('removing unmatched SSI')
