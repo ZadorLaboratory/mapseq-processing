@@ -1110,11 +1110,12 @@ def filter_fields(df,
                 if reqtype == 'seq':
                     rstr = rdict['seq']
                     logging.debug(f"checking {column} must match {rstr}  ")
-                    rmap = ~(df[column] == rstr)
-                    n_bad = len(df) - rmap.sum()
+                    vmap = df[column] == rstr
+                    badmap = ~(vmap)
+                    n_bad = len(df) - vmap.sum()
                     logging.info(f'found {n_bad} for {column}') 
                     sh.add_value('/field_filter',f'n_bad_{column}', str(n_bad) )
-                    df['valid'] = df['valid'] & rmap
+                    df['valid'] = df['valid'] & vmap
                 if reqtype == 'regex':
                     logging.warning(f'regex filtering not implemented.')
         else:
@@ -1137,7 +1138,11 @@ def filter_fields(df,
     sh.add_value('/field_filter','num_kept', str(len(df)) )
     pct = ( n_bad / num_initial ) * 100
     spct = f'{pct:.2f}'
-    sh.add_value('/field_filter','percent_good', spct  )    
+    sh.add_value('/field_filter','percent_bad', spct  ) 
+       
+    pct = ( n_good / num_initial ) * 100
+    spct = f'{pct:.2f}'
+    sh.add_value('/field_filter','percent_good', spct  )
 
     return df
 
