@@ -194,7 +194,7 @@ if __name__ == '__main__':
 
 
     df = filter_fields(df,
-                       drop=True,
+                       drop=None,
                        cp=cp)
     
     write_mapseq_df(df, outfile)     

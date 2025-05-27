@@ -1054,7 +1054,7 @@ def filter_reads_pd(df,
 
 
 def filter_fields(df,
-                    drop=True,
+                    drop=None,
                     cp=None):
     '''
     Used by filter_split.
@@ -1074,6 +1074,9 @@ def filter_fields(df,
     if not cp.has_section('readfilter'):
         logging.error('This function requires config with [readfilter] section...')
         sys.exit(1)
+
+    if drop is None:
+        drop_mismatch = cp.getboolean('readfilter','drop_mismatch')
 
     sh = get_default_stats()
 
@@ -1118,15 +1121,23 @@ def filter_fields(df,
             logging.warning(f'column {column} not in dataframe. Ignoring...')
 
     validmap = df['valid']
+    n_bad = len(df) - validmap.sum()
+    n_good = len(df) - n_bad
     df.drop(['valid'], inplace=True, axis=1)
-    df = df[validmap]
-    df.reset_index(drop=True, inplace=True)
-    logging.info(f'Removed bad, new len={len(df)}')
+    if drop_mismatch:
+        df = df[validmap]
+        df.reset_index(drop=True, inplace=True)
+        logging.info(f'Removed bad, new len={len(df)}')
+    else:
+        logging.info('Not removing mismatches.')
+    
     sh.add_value('/field_filter','num_initial', num_initial )
+    sh.add_value('/field_filter','num_good', str(n_good)  )
+    sh.add_value('/field_filter','num_bad',  str(n_bad )  )
     sh.add_value('/field_filter','num_kept', str(len(df)) )
-    pct = ( len(df) / num_initial ) * 100
+    pct = ( n_bad / num_initial ) * 100
     spct = f'{pct:.2f}'
-    sh.add_value('/field_filter','percent_kept', spct  )    
+    sh.add_value('/field_filter','percent_good', spct  )    
 
     return df
 
