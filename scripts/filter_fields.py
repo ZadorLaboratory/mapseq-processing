@@ -129,7 +129,7 @@ if __name__ == '__main__':
 
     drop = False
     if args.remove is None:
-        drop = cp.getboolean('readfilter','drop')
+        drop = cp.getboolean('readfilter','drop_mismatch')
 
     logging.info(f'handling {args.infile} to outdir {outdir} drop={drop}')    
     logging.debug(f'infile = {args.infile}')
