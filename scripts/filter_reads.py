@@ -157,8 +157,9 @@ if __name__ == '__main__':
    
     logging.info(f'loading {args.infile}') 
 
-    # Less likely to know fformat for ad-hoc filtering. 
-    df = load_mapseq_df( args.infile, fformat=None, use_dask=False)
+    # Less likely to know fformat for ad-hoc filtering.
+    # But we know it has been split by fields. 
+    df = load_mapseq_df( args.infile, fformat='filtered', use_dask=False)
  
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
