@@ -128,7 +128,7 @@ if __name__ == '__main__':
     os.makedirs(outdir, exist_ok=True)
 
     drop = False
-    if args.drop is None:
+    if args.remove is None:
         drop = cp.getboolean('readfilter','drop')
 
     logging.info(f'handling {args.infile} to outdir {outdir} drop={drop}')    
