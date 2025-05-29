@@ -1755,15 +1755,19 @@ def process_make_readtable_pd(df,
     logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
     badsitedf = None   
 
-    # spikes and L1/L2 libtag
-    # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
-    logging.info('identifying reals by libtag...')
-    rmap = df['libtag'].str.match(realregex)
-    df.loc[rmap, 'type'] = 'real'
-    
-    logging.info('identifying L1s by libtag...')
-    lmap = df['libtag'].str.match(loneregex)
-    df.loc[lmap, 'type'] = 'lone'
+    if use_lones:
+        # spikes and L1/L2 libtag
+        # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
+        logging.info('identifying reals by libtag...')
+        rmap = df['libtag'].str.match(realregex)
+        df.loc[rmap, 'type'] = 'real'
+        
+        logging.info('identifying L1s by libtag...')
+        lmap = df['libtag'].str.match(loneregex)
+        df.loc[lmap, 'type'] = 'lone'
+    else:
+        logging.info('ignoring L1 libtag. All non-spikes are real.')
+        df['type'] = 'real'
 
     logging.info('identifying spikeins by spikeseq matching...')
     smap = df['spikeseq'] == spikeseq
@@ -1773,7 +1777,7 @@ def process_make_readtable_pd(df,
     # must not be spikein, and libtag must not match L1 or L2 
     # i.e. neither all purines or all pyrimidenes
     #
-    logging.debug('Identifying bad type rows.')  
+    logging.debug('Identifying bad type rows. Should only matter if use_lones=True.')  
     badtypedf = df[ df.isna().any(axis=1) ]
     n_badtype = len(badtypedf)
     df.drop(badtypedf.index, inplace=True)
