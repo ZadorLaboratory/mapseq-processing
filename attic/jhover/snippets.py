@@ -2860,3 +2860,160 @@ def normalize_weight(df, weightdf, columns=None):
     logging.debug(f'norm sum_list={sum_list}')
 
     return normdf
+
+
+def process_filter_vbctable_global(df, 
+                               inj_min_umi = None,
+                               target_min_umi = None,
+                               target_min_umi_absolute = None,
+                               outdir = None,
+                               cp=None):
+    '''
+    
+    XXXX May be wrong because not handled per brain...
+    
+    Take unfiltered vbctable. 
+    apply all thresholds/filters for input to matrices. 
+    
+    -- remove l-ones
+    -- <type>_min_umi against reals (but not spikes).
+    
+    threshold logic. 
+    inj_min_umi                VBC UMI must exceed to be kept.
+    target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
+    target_min_umi_absolute    hard threshold cutoff
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+    if outdir is None:
+        outdir = os.path.abspath('./')
+        
+    if inj_min_umi is None:
+        inj_min_umi = int(cp.get('vbcfilter','inj_min_umi'))
+    if target_min_umi is None:
+        target_min_umi = int(cp.get('vbcfilter','target_min_umi'))   
+    if target_min_umi_absolute is None:
+        target_min_umi_absolute = int(cp.get('vbcfilter','target_min_umi_absolute'))
+
+    require_injection = cp.getboolean('vbcfilter','require_injection')
+    include_injection = cp.getboolean('vbcfilter','include_injection')
+    include_controls = cp.getboolean('vbcfilter','include_controls')
+    use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
+    use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control')
+     
+    max_negative = 1
+    max_water_control = 1
+    
+    logging.debug(f'inj_min_umi={inj_min_umi} target_min_umi={target_min_umi} use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
+    sh = get_default_stats() 
+
+    # select all controls by SSI/site, save to TSV
+    controls = df[ df['site'].isin( CONTROL_SITES ) ]
+    controls.reset_index(inplace=True, drop=True)
+    controls.to_csv(f'{outdir}/removed_controls.tsv', sep='\t')
+    
+    # optinally keep/remove for inclusion in each brain matrix. 
+    if not include_controls:
+        df = df[ df['site'].isin( CONTROL_SITES ) == False]
+
+    # remove spikes and save them 
+    # Spikes to NOT get thresholded by UMI, or restricted by injection/target presence 
+    spikes = df[ df['type'] == 'spike']
+    df = df[ df ['type'] != 'spike']
+
+    # Separate targets and injections for specific UMI thresholding. 
+    targets = df[ df['site'].str.startswith('target') ]
+    injections = df[ df['site'].str.startswith('injection') ]
+    
+
+    # threshold injection(s)
+    if inj_min_umi > 1:
+        before = len(injections)
+        injections = filter_all_lt(injections, 'vbc_read', 'umi_count', inj_min_umi)            
+        logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(injections)}')
+    else:
+        logging.debug(f'inj_min_umi={inj_min_umi} no filtering needed.')
+
+
+    # threshold target(s)
+    # target_min_umi             if any target exceeds, include for all targets
+    # target_min_umi_absolute    unconditionally threshold target*
+    # inj_min_umi                unconditionally threshold injection
+    
+    # before = len(df)
+    # targets = targets[ targets['umi_count'] >= target_min_umi]
+    # logging.debug(f'filtering by inj_min_umi={inj_min_umi} before={before} after={len(ridf)}')    
+
+    # apply absolute if relevant    
+    if target_min_umi_absolute > 1:
+        before = len(targets)
+        targets = targets[targets['umi_count'] >= target_min_umi_absolute ]
+        targets.reset_index(drop=True, inplace=True)
+        after = len(targets)
+        logging.debug(f'filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
+
+    # handle target thresholding for non-absolute case. 
+    
+    # threshold by target_min_umi or threshold by target-negative
+    # if use_target_negative is true, but no target negative site 
+    # defined, use target_min_umi and throw warning. 
+    if use_target_negative:
+        logging.info(f'use_target_negative is {use_target_negative}')
+        max_negative = calc_min_umi_threshold(targets, 'target-negative', cp)
+        logging.debug(f'target-negative UMI count = {max_negative}')
+
+    if use_target_water_control:
+        logging.info(f'use_target_water_control is {use_target_water_control}')
+        max_water_control = calc_min_umi_threshold(targets, 'target-water-control',cp)
+        logging.debug(f'target_water_control UMI count = {max_water_control}')
+
+    target_min_umi = max([target_min_umi, max_negative, max_water_control ])
+    logging.debug(f'min_target UMI count after all constraints = {target_min_umi}')   
+
+    #
+    # target_min_umi if any (SSI) label exceeds, include for all labels
+    #
+    alllabels = list( targets['label'].unique())
+    alllabels.sort()
+    logging.debug(f'all target labels = {alllabels}')
+    passing = targets.groupby(['label'])['umi_count'].max() > target_min_umi
+    keeplabels = list( passing[passing == True].index ) 
+    keeplabels.sort()
+    logging.debug(f'target keeplabels = {keeplabels}')
+    remlabels = []
+    for x in alllabels:
+        if x not in keeplabels:
+            remlabels.append(x)
+    
+    logging.info(f'labels not passing conditional target_min_umi: {remlabels}')
+    targets = targets[ targets['label'].isin( keeplabels )]
+    
+    # get injection-filtered real target table, and target-filtered real injection table
+    # in case either is needed. 
+    (ftargets, finjection ) = filter_non_inj_umi(targets, injections, inj_min_umi=inj_min_umi)            
+    logging.debug(f'{len(ftargets)} real target VBCs after injection filtering.')
+    logging.debug(f'{len(finjection)} real injection VBCs after target filtering.')
+
+    if require_injection:
+        logging.debug(f'require_injection={require_injection} inj_min_umi={inj_min_umi}')
+        targets = ftargets
+    else:
+        logging.debug(f'require_injection={require_injection} proceeding...')
+    
+    if include_injection:
+        logging.debug(f'include_injection={include_injection} including mutually present injection VBCs') 
+        df = pd.concat( [targets, finjection], ignore_index=True ) 
+    else:
+        logging.debug(f'include_injection={include_injection} excluding injection VBCs from table.')
+        df = targets
+    
+    # re-create df with un-thresholded spike-ins  
+    df = pd.concat([spikes, df ])   
+    df.reset_index(inplace=True, drop=True)
+    logging.debug(f'output DF:\n{df}')
+    
+    df = fix_mapseq_df_types(df, fformat='vbctable')
+    
+    return df
+
