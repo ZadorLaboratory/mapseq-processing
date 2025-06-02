@@ -196,8 +196,8 @@ if __name__ == '__main__':
     df = filter_fields(df,
                        drop=None,
                        cp=cp)
-    
-    write_mapseq_df(df, outfile)     
+    write_mapseq_df(df, outfile)
+         
     logging.info('Done filter_split.')
 
 

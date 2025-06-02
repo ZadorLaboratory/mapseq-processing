@@ -303,13 +303,15 @@ def load_sample_info(file_name,
             'Our Tube #'                      : 'ourtube', 
             'Sample names provided by user'   : 'samplename', 
             'Site information'                : 'siteinfo',
+            'Spike-in Ratio'                  : 'si_ratio',
+            'Read Count Minimum'              : 'min_reads',
             'RT primers for MAPseq'           : 'rtprimer',
             'Brain'                           : 'brain',
             'Region'                          : 'region',
             'Matrix Column'                   : 'matrixcolumn',
         }
     
-    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
+    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'si_ratio', 'min_reads', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
 
     if file_name.endswith('.xlsx'):
         edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1, dtype=str)        
