@@ -174,8 +174,8 @@ This typically takes about 12 minutes. (3 minutes on Mac M3)
 
 ```
 ~/git/mapseq-processing/scripts/filter_vbctable.py 
-	-v					# give verbose output
-	-o vbcfilter.out/M253.vbcfilter.tsv 	# output file for filtered VBCs 
+	-v						# give verbose output
+	-o vbcfiltered.out/M253.vbcfiltered.tsv 	# output file for filtered VBCs 
 	vbctable.out/M253.vbctable.tsv 		# fully populated VBC table. 
 ```
 The VBC table contains ALL information from the experiment including controls, L1s, and any data that results from errors. To simplify matrix creation, we apply all thresholds and filtering at this step. This step:
@@ -195,9 +195,8 @@ All data in the main output file created by this step is then unconditionally in
 ```
 ~/git/mapseq-processing/scripts/make_matrices.py 
 	-v 
-	-e M253 
 	-O matrices.out 
-	vbctable.out/M253.vbctable.tsv
+	vbcfiltered.out/M253.vbcfiltered.tsv
 ```
 
 This program produces, for each brain, several matrices of viral barcodes by dissected region. Since filtering and thresholding is handled in the previous step, all data in input is included in matrices. 
