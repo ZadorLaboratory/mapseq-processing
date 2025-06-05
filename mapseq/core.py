@@ -1757,10 +1757,6 @@ def process_make_readtable_pd(df,
     logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
     badsitedf = None   
 
-    logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
-    smap = df['spikeseq'] == spikeseq
-    df.loc[smap, 'type'] = 'spike'
-
     if use_libtag:
         # L1/L2 libtag
         logging.info('identifying L2 (reals) by libtag...')
@@ -1770,8 +1766,17 @@ def process_make_readtable_pd(df,
         logging.info('identifying L1s by libtag...')
         lmap = df['libtag'].str.match(loneregex)
         df.loc[lmap, 'type'] = 'lone'
+        
+        logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
+        smap = df['spikeseq'] == spikeseq
+        df.loc[smap, 'type'] = 'spike'
+        
     else:
-        logging.info('ignoring L1/L2 libtag. All non-spikes are real.')
+        logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
+        smap = df['spikeseq'] == spikeseq
+        df.loc[smap, 'type'] = 'spike'
+        
+        logging.info('ignoring L1/L2 libtag. All non-spikes are real.')        
         nsmap = df['type'] != 'spike'
         df.loc[nsmap, 'type'] = 'real'
 
@@ -2646,7 +2651,8 @@ def make_vbctable_parameter_report_xlsx(df,
                                       inj_min_umi=inj_min_umi, 
                                       target_min_umi = target_min_umi, 
                                       target_min_umi_absolute=1, 
-                                      outdir = None, cp=cp)
+                                      outdir = outdir, 
+                                      cp=cp)
         fdf = fdf[fdf['type'] == 'real']
         xdf = fdf.groupby('label').agg({'vbc_read':'nunique'})
         xdf.reset_index(inplace=True, drop=False)
