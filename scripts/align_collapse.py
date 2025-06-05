@@ -145,7 +145,7 @@ if __name__ == '__main__':
     logging.debug(f'recursionlimit = {sys.getrecursionlimit()}')
     if args.max_recursion is not None:
         rlimit = int(args.max_recursion)
-        logging.info(f'set new recursionlimit={rlimit}')
+        logging.info(f'(from CLI) set new recursionlimit={rlimit}')
         sys.setrecursionlimit(rlimit)
        
     # set outdir / outfile

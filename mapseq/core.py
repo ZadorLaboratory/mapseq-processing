@@ -1384,7 +1384,7 @@ def align_collapse_pd_grouped(df,
         sys.setrecursionlimit(rlimit)
     else:
         rlimit = int(cp.get('collapse','max_recursion'))
-        logging.info(f'set new recursionlimit={rlimit}')
+        logging.info(f'(from config) set new recursionlimit={rlimit}')
         sys.setrecursionlimit(rlimit)        
 
     aligner = cp.get('collapse','tool')
