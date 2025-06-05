@@ -8,9 +8,16 @@ import datetime as dt
 from pprint import pprint
 from collections import defaultdict
 
+gitpath=os.path.expanduser("~/git/mapseq-processing")
+sys.path.append(gitpath)
+
+from mapseq.utils import *
+from mapseq.core import *
+
 from jinja2 import Template
 import codecs
 from mergedeep import merge
+
 
 MYSTATS = None
 
@@ -32,7 +39,7 @@ class StatsHandler(object):
         if outfile is None:
             self.filename = os.path.abspath(f'{outdir}/stats.{self.datestr}.json')
         else:
-            self.filename = outfile
+            self.filename = os.path.abspath(outfile)
         MYSTATS = self
         self.write_stats()
         
@@ -225,8 +232,94 @@ def calc_false_positive(df, cp=None):
     if cp is None:
         cp = get_default_config()
         
-     
+#
+#        QC/ Assessment routines. 
+#
+        
+def assess_readinfo(df,
+                    outdir=None, 
+                    cp=None):
+    ''' 
+    Gather info/classify quality of sequencing read info/ fields. 
+    Input is split sequence from aggregated reads. 
+    
+    -- L1/L2 vs spike-in
+    -- distribution of rtag/rrtag variation.  
+    
+    
+    '''
     
     
     
+    # parameters/inputs
+    spikeseq = cp.get('readtable','spikeseq')
+    realregex = cp.get('readtable', 'realregex' )
+    loneregex = cp.get('readtable', 'loneregex' )
+    use_libtag = cp.getboolean('readtable','use_libtag')
+    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )
+    inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
+    target_min_reads = int(cp.get('vbctable','target_min_reads'))
+
+    use_libtag = True    
+
+    sh = get_default_stats()
+
+    #sampdf = load_sample_info(sinfo, cp=cp)
+    #sinfo = 'M297.sampleinfo.xlsx'
+    #sampdf = load_sample_info(sinfo, cp=cp)
+    #sampdf
+    #labels = get_rtlist(sampdf)
+    #    bcdict = get_barcode_dict(bcfile, labels)
+    #    rtdict = get_rtprimer_dict(bcfile, labels)
+    #    rtbcdict = get_rtbc_dict(bcfile, labels)
+    #labels = get_rtlist(sampdf)
+    #bcdict = get_barcode_dict(bcfile, labels)
+    #rtdict = get_rtprimer_dict(bcfile, labels)
+    #rtbcdict = get_rtbc_dict(bcfile, labels)
+    
+    # Calculate matches/non-matches for 
+    smap = df['spikeseq'] == spikeseq
+    df.loc[smap, 'type'] = 'spike'
+    #df['type'].value_counts()
+    sh.add_value('/readinfo/all', 'n_spikes', str(smap.sum() ) )
+    rmap = df['libtag'].str.match(realregex)
+    sh.add_value('/readinfo/all', 'n_real', str( rmap.sum() ) )
+    lmap = df['libtag'].str.match(loneregex)
+    sh.add_value('/readinfo/all', 'n_lones', str( lmap.sum() ) )
+    df.loc[rmap, 'type'] = 'real'
+    df.loc[lmap, 'type'] = 'lone'
+    namap = df['type'].isna()
+    sh.add_value('/readinfo/all', 'n_lones', str(  namap.sum() ) )    
+    sh.add_value('/readinfo', 'inj_min_reads', str(inj_min_reads ) )
+    sh.add_value('/readinfo', 'target_min_reads', str(target_min_reads ) )
+
+    tdf = df[df['site'].str.startswith('target')]
+    tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
+    idf = df[df['site'].str.startswith('injection')]
+    idf = idf[idf['read_count'] >= int(inj_min_reads)]    
+    df = pd.concat([tdf, idf])
+    df.reset_index(drop=True, inplace=True)
+    
+    
+    
+    # Calculate all again after read thresholding.     
+    sh.add_value('/readinfo/readthresholded', 'n_total', str(len(df) ) )
+    smap = df['spikeseq'] == spikeseq
+    df.loc[smap, 'type'] = 'spike'
+    #df['type'].value_counts()
+    sh.add_value('/readinfo/readthresholded', 'n_spikes', str(smap.sum() ) )
+    rmap = df['libtag'].str.match(realregex)
+    sh.add_value('/readinfo/readthresholded', 'n_real', str( rmap.sum() ) )
+    lmap = df['libtag'].str.match(loneregex)
+    sh.add_value('/readinfo/readthresholded', 'n_lones', str( lmap.sum() ) )
+    df.loc[rmap, 'type'] = 'real'
+    df.loc[lmap, 'type'] = 'lone'
+    namap = df['type'].isna()
+    sh.add_value('/readinfo/all', 'n_lones', str(  namap.sum() ) )    
+    
+    
+    
+    
+    
+    print(sh)
     

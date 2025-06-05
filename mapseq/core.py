@@ -1686,12 +1686,12 @@ def process_make_readtable_pd(df,
     spikeseq = cp.get('readtable','spikeseq')
     realregex = cp.get('readtable', 'realregex' )
     loneregex = cp.get('readtable', 'loneregex' )
-    use_lones = cp.getboolean('readtable','use_lones')
+    use_libtag = cp.getboolean('readtable','use_libtag')
     
     if bcfile is None:
         bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
     
-    logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile} use_lones={use_lones}')
+    logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile} use_lones={use_libtag}')
 
     # Map label, rtprimer to SSIs    
     logging.debug(f'getting rt labels...')
@@ -1757,10 +1757,13 @@ def process_make_readtable_pd(df,
     logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
     badsitedf = None   
 
-    if use_lones:
-        # spikes and L1/L2 libtag
-        # we have to spikes LAST, because all spikes are real L2s, but not all reals are spikes.
-        logging.info('identifying reals by libtag...')
+    logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
+    smap = df['spikeseq'] == spikeseq
+    df.loc[smap, 'type'] = 'spike'
+
+    if use_libtag:
+        # L1/L2 libtag
+        logging.info('identifying L2 (reals) by libtag...')
         rmap = df['libtag'].str.match(realregex)
         df.loc[rmap, 'type'] = 'real'
         
@@ -1768,18 +1771,14 @@ def process_make_readtable_pd(df,
         lmap = df['libtag'].str.match(loneregex)
         df.loc[lmap, 'type'] = 'lone'
     else:
-        logging.info('ignoring L1 libtag. All non-spikes are real.')
-        df['type'] = 'real'
+        logging.info('ignoring L1/L2 libtag. All non-spikes are real.')
+        nsmap = df['type'] != 'spike'
+        df.loc[nsmap, 'type'] = 'real'
 
-    logging.info('identifying spikeins by spikeseq matching...')
-    smap = df['spikeseq'] == spikeseq
-    df.loc[smap, 'type'] = 'spike'
-
-    # identify and remove bad type rows.
+    # identify bad type rows.
     # must not be spikein, and libtag must not match L1 or L2 
     # i.e. neither all purines or all pyrimidenes
-    #
-    logging.debug('Identifying bad type rows. Should only matter if use_lones=True.')  
+    logging.debug('Identifying bad type rows.')  
     badtypedf = df[ df.isna().any(axis=1) ]
     n_badtype = len(badtypedf)
     df.drop(badtypedf.index, inplace=True)
@@ -1791,6 +1790,7 @@ def process_make_readtable_pd(df,
     logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
     badtypedf = None   
     
+    logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
     df.drop(['spikeseq','libtag'], inplace=True, axis=1)
 
     # NOT REQUIRED VALUES, so replace NaNs 

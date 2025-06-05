@@ -31,6 +31,21 @@ from Bio.SeqRecord import SeqRecord
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
+
+
+
+FASTQ_SCORES = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+
+def get_scoremap(qstring=FASTQ_SCORES):
+    '''
+    make dictionary to lookup char as score value, 0 to N
+    '''
+    smap = {}
+    for i, c in enumerate(qstring):
+        smap[c] = i
+    return smap
+
+
 #
 #            SIMPLE MULTIPROCESSING 
 # 
@@ -266,6 +281,32 @@ def flatten_list(listoflists):
         flat_list += row
     return flat_list
 
+
+def get_hamming_list( s, alphabet=['C','G','A','T'], max_mismatch=1):
+    '''
+    generate list of variants of <s> within Hamming distance of <max_mismatch>
+    under alphabet <alphabet>
+    
+    WARNING only does max_mismatch = 1
+    
+    '''
+    vlist = []
+    outlist = []
+    slist = list(s)
+    vlist.append(s)
+    for i in range(0,len(slist)):
+        c = slist[i]
+        ac = alphabet[:]
+        ac.remove(c)
+        for other_c in ac:
+            scopy = slist[:]
+            scopy[i] = other_c
+            vlist.append(scopy)
+    for vs in vlist:
+        newv = ''.join(vs)
+        outlist.append(newv)
+    return outlist
+       
 
 def fix_columns_float(df, columns):
     for col in columns:
