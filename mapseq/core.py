@@ -2467,20 +2467,28 @@ def normalize_weight_grouped(df, weightdf, columns=None):
 #         REPORTS / QC
 #
 def make_read_report_xlsx(df,
-                     outdir=None,                      
+                     outdir=None,
+                     step='collapsed',                      
                      cp=None):
     '''
+    creates excel sheet of unique VBC counts for 
+    SSIs and types. 
     
+    produced for readtable and collapsed. 
+    collapsed numbers will be less than readtable since there 
+    are fewer unique VBCs after collapse. Difference reflects components. 
+     
     '''
     TYPE=['real','spike']
     
     if cp is None:
         cp = get_default_config()
+    
     if outdir is None:
         outdir = os.path.abspath('./')
     project_id = cp.get('project','project_id')
         
-    outfile = os.path.join(outdir, f'{project_id}.readreport.xlsx')    
+    outfile = os.path.join(outdir, f'{project_id}.{step}.readreport.xlsx')    
     
     logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
     

@@ -185,8 +185,9 @@ if __name__ == '__main__':
                       groupby='label', column='read_count', cp=cp )
     
     make_read_report_xlsx(df,
-                      outdir=outdir,
-                      cp=cp)
+                          outdir=outdir,
+                          step='readtable',
+                          cp=cp)
     
     logging.info('Done make_readtable.')
         

@@ -217,6 +217,7 @@ if __name__ == '__main__':
     logging.info(f'Making read report...')    
     make_read_report_xlsx(df,
                       outdir=outdir,
+                      step='collapsed',
                       cp=cp)
     logging.info('Done.')
     
