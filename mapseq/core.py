@@ -1804,6 +1804,12 @@ def process_make_readtable_pd(df,
     bdf = bdf[bdf['brain'] != '']
     bmap = dict(zip(bdf['rtprimer'],bdf['brain']))
     df['brain'] = df['rtprimer'].map(bmap)
+    
+    try:
+        df['brain'] = df['brain'].cat.add_categories([''])
+    except:
+        logging.debug('brain not categorical?')
+           
     df.fillna({'brain': ''}, inplace=True)
     bdf = None
     
@@ -1812,6 +1818,11 @@ def process_make_readtable_pd(df,
     rdf = rdf[rdf['region'] != '']
     rmap = dict(zip(rdf['rtprimer'],rdf['region']))
     df['region'] = df['rtprimer'].map(rmap)
+    
+    try:
+        df['region'] = df['region'].cat.add_categories([''])
+    except:
+        logging.debug('region not categorical?')
     df.fillna({'region': ''}, inplace=True)
     rdf = None
 
@@ -1820,6 +1831,10 @@ def process_make_readtable_pd(df,
     tdf = tdf[tdf['ourtube'] != '']
     tmap = dict(zip(tdf['rtprimer'],tdf['ourtube']))
     df['ourtube'] = df['rtprimer'].map(tmap)
+    try:
+        df['ourtube'] = df['ourtube'].cat.add_categories([''])
+    except:
+        logging.debug('ourtube not categorical?')
     df.fillna({'ourtube': ''}, inplace=True)
     tdf = None
     
