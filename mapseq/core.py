@@ -1744,18 +1744,18 @@ def process_make_readtable_pd(df,
 
     badsitedf = df[ df.isna().any(axis=1) ]
     n_badsite = len(badsitedf)
-    df.drop(badsitedf.index, inplace=True)
-    df.reset_index(inplace=True, drop=True)    
-
-    of = os.path.join( outdir, 'bad_site.tsv')
-    badsitedf.reset_index(inplace=True, drop=True)
-    start = dt.datetime.now()
-    badsitedf.to_csv(of, sep='\t')
-    end = dt.datetime.now()
-    delta_seconds = (dt.datetime.now() - start).seconds
-    log_transferinfo(of, delta_seconds)
+    if n_badsite > 1:
+        df.drop(badsitedf.index, inplace=True)
+        df.reset_index(inplace=True, drop=True)    
     
-    logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
+        of = os.path.join( outdir, 'bad_site.tsv')
+        badsitedf.reset_index(inplace=True, drop=True)
+        start = dt.datetime.now()
+        badsitedf.to_csv(of, sep='\t')
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo(of, delta_seconds)
+        logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
     badsitedf = None   
 
     if use_libtag:
