@@ -1,3 +1,4 @@
+import copy
 import glob
 import gzip
 import itertools
@@ -2667,6 +2668,11 @@ def make_vbctable_parameter_report_xlsx(df,
 
     outdf = None
     
+    # Explicitly set include_injection for prosective matrix measurement. 
+    # 
+    testcp = copy.deepcopy(cp)
+    testcp.set('vbcfilter','include_injection', True)
+    
     for i, (inj_min_umi, target_min_umi) in enumerate(params):
         logging.debug(f'inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
         colname = f'inj:{inj_min_umi}, tar:{target_min_umi}'
@@ -2675,7 +2681,7 @@ def make_vbctable_parameter_report_xlsx(df,
                                       target_min_umi = target_min_umi, 
                                       target_min_umi_absolute=1, 
                                       outdir = outdir, 
-                                      cp=cp)
+                                      cp=testcp)
         fdf = fdf[fdf['type'] == 'real']
         xdf = fdf.groupby('label').agg({'vbc_read':'nunique'})
         xdf.reset_index(inplace=True, drop=False)
