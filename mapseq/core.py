@@ -2671,7 +2671,7 @@ def make_vbctable_parameter_report_xlsx(df,
     # Explicitly set include_injection for prosective matrix measurement. 
     # 
     testcp = copy.deepcopy(cp)
-    testcp.set('vbcfilter','include_injection', True)
+    testcp.set('vbcfilter','include_injection', 'True')
     
     for i, (inj_min_umi, target_min_umi) in enumerate(params):
         logging.debug(f'inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
