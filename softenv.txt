@@ -35,7 +35,7 @@ Install dependencies, useful tools:
 	Note for version 2, we drop bowtie version one. 
  
 	For Linux, WSL, and Intel MacOS
-	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster openpyxl bowtie2 natsort git paramiko h5py dask mergdeep
+	conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy fastcluster openpyxl bowtie2 natsort git paramiko h5py dask mergedeep
     
     For MacOS with MX chips
     bowtie v1 not made
