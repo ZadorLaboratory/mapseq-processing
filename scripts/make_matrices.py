@@ -72,7 +72,7 @@ if __name__ == '__main__':
                     required=False,
                     default='label',
                     type=str, 
-                    help='Field to use as column label, e.g. [ label | ourtube | region ]')
+                    help='Field to pivot on. [vbc_read]')
 
 
     parser.add_argument('-L','--logfile', 
