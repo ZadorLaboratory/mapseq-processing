@@ -316,10 +316,43 @@ def assess_readinfo(df,
     df.loc[lmap, 'type'] = 'lone'
     namap = df['type'].isna()
     sh.add_value('/readinfo/all', 'n_lones', str(  namap.sum() ) )    
-    
-    
-    
-    
-    
     print(sh)
+
+
+def merge(a: dict, b: dict, path=[]):
+    for key in b:
+        if key in a:
+            if isinstance(a[key], dict) and isinstance(b[key], dict):
+                merge(a[key], b[key], path + [str(key)])
+            elif a[key] != b[key]:
+                raise Exception('Conflict at ' + '.'.join(path + [str(key)]))
+        else:
+            a[key] = b[key]
+    return a
+
+def merge_stats(infiles, outfile):
+    '''
+    combine multiple stats files into one unified (additive) JSON tree.
+    needed because some processes put entries into the same top-level dict, 
+    e.g. 'fastq' from both process_fastq_pairs, and filter_reads
+     
+    '''
+    merged = None
+    for infile in infiles:
+        logging.debug(f'reading {infile}')
+        with open(infile) as jfh:
+            jo = json.load(jfh)
+        if merged is None:
+            logging.debug(f'merged is None. setting.')
+            merged = jo
+        else:
+            logging.debug(f'merged exists. merging...')
+            merged = merge(merged, jo)
+    logging.debug(f'finished merging. writing to {outfile}')
+    with open(outfile ,'w', encoding='utf-8') as jofh:
+        json.dump(merged, jofh, ensure_ascii=False, indent=4)
+    logging.debug('done.')
+
+    
+    
     
