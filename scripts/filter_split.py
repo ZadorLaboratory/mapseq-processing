@@ -192,6 +192,10 @@ if __name__ == '__main__':
                         cp=cp)
     write_mapseq_df(df, of)
 
+    make_rtag_counts(df,
+                     outdir=outdir,
+                     cp=cp)
+
 
     df = filter_fields(df,
                        drop=None,

@@ -162,7 +162,7 @@ if __name__ == '__main__':
     sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
     
     logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='collapsed', use_dask=False)
+    df = load_mapseq_df( args.infile, fformat='filtered', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
  
     if args.datestr is None:

@@ -74,6 +74,12 @@ if __name__ == '__main__':
                     type=str, 
                     help='Field to pivot on. [vbc_read]')
 
+    parser.add_argument('-C','--columnlabel', 
+                        metavar='columnlabel',
+                        required=False,
+                        default='label',
+                        type=str, 
+                        help='Column to use as headers for matrix.')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',

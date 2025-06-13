@@ -138,6 +138,12 @@ if __name__ == '__main__':
     else:
         datestr = args.datestr
 
+    logging.info('Making UMI parameter report.')
+    make_vbctable_parameter_report_xlsx(df, 
+                                   outdir=outdir, 
+                                   cp=cp, 
+                                   params=[ (5,3),(10,3),(10,5),(20,5),(30,5),(30,10)] )
+
 
     logging.debug(f'making qctables')
     make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )

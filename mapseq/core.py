@@ -2015,6 +2015,8 @@ def process_filter_vbctable(df,
         bdf.reset_index(inplace=True, drop=True)
         initial_len = len(bdf)  
         logging.info(f'[{brain_id}] initial len={len(bdf)}')
+        
+        # defaults for using controls/target-negatives
         max_negative = 1
         max_water_control = 1
         
@@ -2023,9 +2025,11 @@ def process_filter_vbctable(df,
         sh = get_default_stats() 
     
         # select all controls by SSI/site, save to TSV
+        # should not have brain, so shouldn't be any...
         controls = bdf[ bdf['site'].isin( CONTROL_SITES ) ]
-        controls.reset_index(inplace=True, drop=True)
-        controls.to_csv(f'{outdir}/{brain_id}.removed_controls.tsv', sep='\t')
+        if len(controls) > 0:
+            controls.reset_index(inplace=True, drop=True)
+            controls.to_csv(f'{outdir}/{brain_id}.removed_controls.tsv', sep='\t')
         
         # optionally keep/remove for inclusion in each brain matrix. 
         if not include_controls:
@@ -2038,8 +2042,7 @@ def process_filter_vbctable(df,
     
         # Separate targets and injections for specific UMI thresholding. 
         targets = reals[ reals['site'].str.startswith('target') ]
-        injection = reals[ reals['site'].str.startswith('injection') ]
-    
+        injection = reals[ reals['site'].str.startswith('injection') ]    
         logging.info(f'[{brain_id}]: inputs raw={initial_len} real_inj={len(injection)} real_targets={len(targets)} spikes={len(spikes)} controls={len(controls)} ')
     
         # threshold injection(s)
@@ -2050,9 +2053,7 @@ def process_filter_vbctable(df,
             logging.debug(f'[{brain_id}]: filtering by inj_min_umi={inj_min_umi} before={before} after={len(injection)}')
         else:
             logging.debug(f'[{brain_id}]:  inj_min_umi={inj_min_umi} no filtering needed.')
-
         logging.info(f'[{brain_id}]: after inj_min_umi real_inj={len(injection)} real_targets={len(targets)} spikes={len(spikes)} controls={len(controls)} ')
-    
     
         # threshold target(s)
         # target_min_umi             if any target exceeds, include for all targets
@@ -2066,9 +2067,8 @@ def process_filter_vbctable(df,
             targets.reset_index(drop=True, inplace=True)
             after = len(targets)
             logging.debug(f'[{brain_id}]: filtering by target_min_umi_absolute={target_min_umi_absolute} before={before} after={after}')
-    
-        # handle target thresholding for non-absolute case. 
-        
+        #
+        # handle target thresholding for non-absolute case.     
         # threshold by target_min_umi or threshold by target-negative
         # if use_target_negative is true, but no target negative site 
         # defined, use target_min_umi and throw warning. 
@@ -2537,7 +2537,41 @@ def make_read_report_xlsx(df,
         rcdf.to_excel(writer, sheet_name='Read Count Sum')
 
     logging.info(f'Wrote XLSX report: {outfile} ')
+
+
+def make_rtag_counts(df,
+                     outdir,
+                     cp=None):
+    '''
+    Save summary of rtag/rrtag value counts. 
+    '''
     
+    if cp is None:
+        cp = get_default_config()
+    
+    
+    rtag = df['rtag']
+    rvc = rtag.value_counts()
+    rdf = pd.DataFrame()
+    rdf['rseq_count'] = rvc
+    rdf.reset_index(inplace=True)
+    tot_count = rdf['rseq_count'].sum()
+    rdf['rcum_prop'] = rdf['rseq_count'].cumsum() / tot_count
+
+    of = os.path.join(outdir, 'rtag_counts.tsv')
+    write_mapseq_df(rdf, of, outformats=['tsv'])
+    logging.debug(f'wrote rtag info to {of}')
+    
+    rrtag = df['rrtag']
+    rrvc = rrtag.value_counts()
+    rrdf = pd.DataFrame()
+    rrdf['rrseq_count'] = rrvc
+    rrdf.reset_index(inplace=True)    
+    tot_count = rrdf['rrseq_count'].sum()
+    rrdf['rrcum_prop'] = rrdf['rrseq_count'].cumsum() / tot_count
+    of = os.path.join(outdir, 'rrtag_counts.tsv')
+    write_mapseq_df(rrdf, of, outformats=['tsv'])
+    logging.debug(f'wrote rrtag info to {of}')
 
 
 def make_vbctable_qctables(df, 

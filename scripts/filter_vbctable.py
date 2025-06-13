@@ -60,7 +60,7 @@ if __name__ == '__main__':
                         default=None,
                         type=int, 
                         help='Minimum target UMIs absolute.')    
-    
+   
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
