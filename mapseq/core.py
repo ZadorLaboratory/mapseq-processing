@@ -349,6 +349,11 @@ def load_sample_info(file_name,
                     sdf[scol] = sdf['ourtube']
                 elif scol == 'region':
                     sdf[scol] = sdf['rtprimer']
+                elif scol == 'si_ratio':
+                    sdf[scol] = 1.0
+                elif scol == 'min_reads':
+                    sdf[scol] = 1
+
         logging.info(f'loaded DF from Excel {file_name}')
         
     elif file_name.endswith('.tsv'):
@@ -2269,10 +2274,10 @@ def calc_min_umi_threshold(df, site='target-negative', cp=None):
 #    MATRICES
 #
 
-
 def process_make_matrices(df,
+                          sampdf=None, 
                           outdir=None,
-                          exp_id = None,  
+                          exp_id=None,  
                           label_column='label',
                           cp = None):
     '''
@@ -2291,7 +2296,20 @@ def process_make_matrices(df,
         outdir = os.path.abspath('./')
     if exp_id is None:
         exp_id = cp.get('project','project_id')
-   
+
+    spikein_ratio_map = None
+    if sampdf is not None:
+        # get si_ratio map for BCXXX columns
+        sirmap = get_si_ratio_map(sampdf, column=label_column)
+        logging.info(f'spikein ratio map exists. Checking for any != 1.0...')
+        for k in sirmap.keys():
+            v = sirmap[k]
+            if v > 1.0:
+                spikein_ratio_map = sirmap
+                logging.debug(f'found non-1.0 spike-in ratio. setting for use.')
+                break
+    logging.debug(f'spikein_ratio_map = {spikein_ratio_map}')
+
     logging.debug(f'running exp_id={exp_id} ')
 
     df['brain'] = df['brain'].astype('string')
@@ -2346,7 +2364,21 @@ def process_make_matrices(df,
         if valid:
             (rbcmdf, sbcmdf) = sync_columns(rbcmdf, sbcmdf)
             nbcmdf = normalize_weight_grouped(rbcmdf, sbcmdf, columns = [target_columns, injection_columns])
-            nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]            
+            
+            if spikein_ratio_map is not None:
+                logging.info(f'spikein ratio map exists. Using.')
+                n_sicols = 0
+                for col in nbcmdf.columns:
+                    sir = spikein_ratio_map[col]
+                    if sir != 1.0:
+                        logging.debug(f'applying spikein ratio {sir} to column {col}')
+                        nbcmdf[col] = nbcmdf[col] * sir
+                        n_sicols += 1
+                logging.info(f'brain={brain_id} spikein ratio(s) applied to {n_sicols} columns.')
+
+            # fix column order AFTER potential spikein adjustments...
+            nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]
+         
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
             norm_dict[brain_id] = nbcmdf
             sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real', len(rbcmdf) )
@@ -2396,7 +2428,23 @@ def sync_columns(df1, df2, fillval=0.0):
     return (df1, df2)
 
 
-def normalize_weight_grouped(df, weightdf, columns=None):
+def get_si_ratio_map(sampdf, column = 'label'):
+    '''
+    create BCXXX -> si_ratio dict, with correct data types.
+    handle possible other column as header
+    
+    '''
+    # make label column as it isn't native. 
+    sampdf['label'] = 'BC' + sampdf['rtprimer']
+    sirdict = {}
+    for i, ser in sampdf.iterrows():
+        colval = ser[column]
+        si_ratio = float(ser['si_ratio'])
+        sirdict[colval] = si_ratio
+    return sirdict 
+
+
+def normalize_weight_grouped(df, weightdf, columns=None, sampdf=None):
     '''
     Weight values in df by weightdf, by column groups
     
@@ -2431,7 +2479,7 @@ def normalize_weight_grouped(df, weightdf, columns=None):
                 gdf = df[group]
                 sumlist = []
                 for col in group:
-                    sum = gwdf[col].sum()
+                    sum = gwdf[col].sum()                       
                     sumlist.append(sum)
                 sum_array = np.array(sumlist)
                 maxidx = np.argmax(sum_array)
@@ -2473,8 +2521,7 @@ def normalize_weight_grouped(df, weightdf, columns=None):
                 logging.warning(f'got exception processing a group.')    
         else:
             logging.warning('column group is empty, ignoring...')
-         
-         
+       
     logging.info(f'normalizing done.len={len(outdf)}. cols={len(outdf.columns)} ')
     return outdf
 
@@ -2621,39 +2668,43 @@ def make_vbctable_qctables(df,
     logging.debug(f'arglist = {alist}')
     combinations = list(itertools.product(*alist))
     
-    xlout = os.path.join(outdir, f'{project_id}.controls.xlsx')
-    logging.debug(f'writing to {xlout}')
-    with pd.ExcelWriter( xlout) as writer:
-        for tup in combinations:
-            logging.debug(f'handling columnset {tup}')
-            tsvname = []
-            ndf = df.copy()
-            for i, col_name in enumerate(cols):
-                col_val = tup[i]
-                tsvname.append(col_val)
-                logging.debug(f'filtering {col_name} by value={col_val}')
-                ndf = ndf[ ndf[col_name] == col_val ]
-            fname = '.'.join(tsvname)
-            outfile = os.path.join(outdir, f'{fname}.tsv')
-            if len(ndf) > 1:
-                logging.debug(f'writing to {outfile}')
-                ndf = ndf[vals]
-                ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
-                ndf.reset_index(inplace=True, drop=True)
-                ndf.to_csv(outfile, sep='\t')
-                sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) )
-                # If it is a real control, add to control report. 
-                for s in CONTROL_SITES:
-                    if ( ( s in fname) and ('real' in fname)):
-                        logging.debug(f"writing control '{fname}' len={len(ndf)} to {xlout}")
-                        ndf.to_excel(writer, sheet_name=fname)
-                    else:
-                        pass
-                        #logging.debug(f"'{fname}' tuple not {s} and 'real'.")                    
-            else:
-                logging.info(f'no entries for {fname}')
-        logging.debug(f'done with all tuples in {combinations}')
-        
+    try: 
+        xlout = os.path.join(outdir, f'{project_id}.controls.xlsx')
+        logging.debug(f'writing to {xlout}')
+        with pd.ExcelWriter( xlout) as writer:
+            for tup in combinations:
+                logging.debug(f'handling columnset {tup}')
+                tsvname = []
+                ndf = df.copy()
+                for i, col_name in enumerate(cols):
+                    col_val = tup[i]
+                    tsvname.append(col_val)
+                    logging.debug(f'filtering {col_name} by value={col_val}')
+                    ndf = ndf[ ndf[col_name] == col_val ]
+                fname = '.'.join(tsvname)
+                outfile = os.path.join(outdir, f'{fname}.tsv')
+                if len(ndf) > 1:
+                    logging.debug(f'writing to {outfile}')
+                    ndf = ndf[vals]
+                    ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
+                    ndf.reset_index(inplace=True, drop=True)
+                    ndf.to_csv(outfile, sep='\t')
+                    sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) )
+                    # If it is a real control, add to control report. 
+                    for s in CONTROL_SITES:
+                        if ( ( s in fname) and ('real' in fname)):
+                            logging.debug(f"writing control '{fname}' len={len(ndf)} to {xlout}")
+                            ndf.to_excel(writer, sheet_name=fname)
+                        else:
+                            pass
+                            #logging.debug(f"'{fname}' tuple not {s} and 'real'.")                    
+                else:
+                    logging.info(f'no entries for {fname}')
+            logging.debug(f'done with all tuples in {combinations}')
+    except Exception as ex:
+        logging.warning(f'exception = {ex}')    
+
+
         
 def make_vbctable_parameter_report_xlsx(df, 
                                    outdir=None, 

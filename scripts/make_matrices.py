@@ -67,6 +67,20 @@ if __name__ == '__main__':
                     type=str, 
                     help='Explicitly provided tag.')
 
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=False,
+                        default=None,
+                        type=str, 
+                        help='Optional XLS sampleinfo file for per-sample changes.')
+
+    parser.add_argument('-S','--samplesheet', 
+                        metavar='samplesheet',
+                        required=False,
+                        default='Sample information',
+                        type=str, 
+                        help='XLS sheet tab name.')
+
     parser.add_argument('-l','--label', 
                     metavar='label',
                     required=False,
@@ -143,7 +157,16 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)    
-    
+
+    if args.sampleinfo is not None:
+        logging.debug(f'loading sample DF...')
+        sampdf = load_sample_info(args.sampleinfo, args.samplesheet, cp)
+        logging.debug(f'\n{sampdf}')
+        sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    else:
+        logging.info(f'No sampleinfo given. BCXXX column labels. No per-sample spikeins.')
+        sampdf = None
+        
     logging.info(f'loading {args.infile}') 
     df = load_mapseq_df( args.infile, fformat='vbctable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
@@ -157,10 +180,11 @@ if __name__ == '__main__':
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
 
     process_make_matrices(df,
-                               exp_id = args.expid,  
-                               outdir=outdir, 
-                               label_column=args.label,
-                               cp=cp)
+                          sampdf=sampdf,  
+                          outdir=outdir, 
+                          exp_id = args.expid,
+                          label_column=args.label, 
+                          cp=cp)
     logging.info(f'Made matrices in {outdir}...')
 
     

@@ -5,7 +5,8 @@
 DIRLIST="reads.out aggregated.out filtered.out readtable.out collapsed.out vbctable.out"
 USERHOST="hover@bamdev2.cshl.edu"
 PROJECTROOT="/grid/zador/home/hover/project/mapseq"
-PROJECT="M301_208047"
+PROJECT="M297_207119"
+PROJECT_SHORT="M297"
 
 mkdir $DIRLIST
 
@@ -15,4 +16,6 @@ for DIR in $DIRLIST ; do
  scp $USERHOST:$PROJECTROOT/$PROJECT/$DIR/*.pdf ./$DIR/
 done
 
+scp $USERHOST:$PROJECTROOT/$PROJECT/readtable.out/sampleinfo.tsv ./readtable.out/
 scp $USERHOST:$PROJECTROOT/$PROJECT/vbctable.out/*.vbctable.* ./vbctable.out/
+scp $USERHOST:$PROJECTROOT/$PROJECT/$PROJECT_SHORT.mapseq.conf ./
