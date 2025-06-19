@@ -235,7 +235,10 @@ def fix_category_nans(df):
     '''
     for c in df.columns:
         if isinstance( df[c].dtype, pd.CategoricalDtype ):
-            df[c] = df[c].cat.add_categories([''])
+            try:
+                df[c] = df[c].cat.add_categories([''])
+            except ValueError as ve:
+                logging.debug(f'{ve}')
     return df
     
     
