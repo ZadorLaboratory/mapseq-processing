@@ -77,11 +77,13 @@ FMT_DTYPES = {      'read_count'    : 'int64',
                     'umi_count'     : 'int64',
                     'sequence'      : 'string[pyarrow]',
                     'vbc_read'      : 'string[pyarrow]',
-                    'vbc_read_col'  : 'string[pyarrow]',        
+                    'vbc_read_col'  : 'string[pyarrow]',
+                    'vbc_read_short': 'string[pyarrow]',        
                     'spikeseq'      : 'string[pyarrow]',    
                     'libtag'        : 'string[pyarrow]',    
                     'umi'           : 'string[pyarrow]',    
                     'ssi'           : 'string[pyarrow]',
+                    'cell_id'       : 'string[pyarrow]',
                     'source'        : 'category',
                     'label'         : 'category',
                     'rtprimer'      : 'category',
@@ -108,7 +110,8 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 CONTROL_SITES=['target-negative-control', 
                'target-wt-control',
                'target-water-control',
-               'injection-water-control']
+               'injection-water-control',
+               'injection-wt-control']
 
 #
 #             MAPSEQ UTILITY 
@@ -211,6 +214,23 @@ def write_mapseq_df(df, outfile, outformats=['tsv','parquet'] ):
         logging.info(f'Done writing {of}') 
     
     logging.info(f'Done writing DF to desired format(s).')
+
+def fix_mapseq_dtypes(df):
+    '''
+    Simplified dtype setting. 
+    Use FMT_DTYPES dict and astype()
+    Filter keys to avoid exceptions. 
+    '''
+    cnames = df.columns
+    USE_DTYPES = {}
+    for k in FMT_DTYPES.keys():
+        if k in cnames:
+            USE_DTYPES[k] = FMT_DTYPES[k]
+    logging.debug(f'USE_DTYPES={USE_DTYPES}')        
+    return df.astype(USE_DTYPES)
+    
+    
+
 
 
 

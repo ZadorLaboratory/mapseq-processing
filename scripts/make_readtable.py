@@ -43,7 +43,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-
     parser.add_argument('-b','--barcodes', 
                         metavar='barcodes',
                         required=False,
@@ -64,6 +63,13 @@ if __name__ == '__main__':
                         default='Sample information',
                         type=str, 
                         help='XLS sheet tab name.')
+
+    parser.add_argument('-t','--truncate', 
+                        metavar='truncate',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Truncate vbc_read field. ')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -97,7 +103,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single collapsed TSV or parquet file.')
+                        help='Single split/filtered TSV or parquet file.')
         
     args= parser.parse_args()
     
@@ -177,8 +183,9 @@ if __name__ == '__main__':
                                    args.barcodes, 
                                    outdir=outdir, 
                                    cp=cp)
+
     write_mapseq_df(df, outfile)
-    
+      
     logging.info(f'making read_count frequency plots...')
     make_counts_plots(df, 
                       outdir=outdir, 
@@ -188,6 +195,16 @@ if __name__ == '__main__':
                           outdir=outdir,
                           step='readtable',
                           cp=cp)
+
+    if args.truncate is not None:
+        N_TRUNC = int(args.truncate)
+        logging.info(f'truncating vbc_read to {N_TRUNC}')
+        df['vbc_read_full'] = df['vbc_read']
+        df['vbc_read'] = df['vbc_read'].str.slice(0, N_TRUNC)
+        dirname, base, ext = split_path(outfile)
+        outfile = os.path.join(dirname, f'{base}.{N_TRUNC}.tsv')
+        write_mapseq_df(df, outfile)
+
     
     logging.info('Done make_readtable.')
         
