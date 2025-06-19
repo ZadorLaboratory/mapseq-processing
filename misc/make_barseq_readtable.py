@@ -195,8 +195,9 @@ if __name__ == '__main__':
         logging.info(f'loading {args.readtable} for merging...')
         rdf = load_mapseq_df(args.readtable, fformat='readtable')
         df = pd.concat([rdf, df], ignore_index=True )
-        df['vbc_read_short'] = df['vbc_read'].str.slice(0,15)
+        df = fix_category_nans(df)
         df.fillna('',inplace=True)
+        df['vbc_read_short'] = df['vbc_read'].str.slice(0,15)
         df = fix_mapseq_dtypes(df) 
     
     write_mapseq_df(df, outfile)    
