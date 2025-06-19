@@ -238,7 +238,7 @@ def fix_category_nans(df):
             try:
                 df[c] = df[c].cat.add_categories([''])
             except ValueError as ve:
-                logging.debug(f'{ve}')
+                logging.debug(f'Already has category: {ve}')
     return df
     
     
