@@ -228,12 +228,17 @@ def fix_mapseq_dtypes(df):
             USE_DTYPES[k] = FMT_DTYPES[k]
     logging.debug(f'USE_DTYPES={USE_DTYPES}')        
     return df.astype(USE_DTYPES)
+
+def fix_category_nans(df):
+    '''
+    Add empty string '' as valid category for any category column. 
+    '''
+    for c in df.columns:
+        if isinstance( df[c].dtype, pd.CategoricalDtype ):
+            df[c] = df[c].cat.add_categories([''])
+    return df
     
     
-
-
-
-
 def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
     '''
     confirm that columns are proper types. 

@@ -196,6 +196,7 @@ if __name__ == '__main__':
         rdf = load_mapseq_df(args.readtable, fformat='readtable')
         df = pd.concat([rdf, df], ignore_index=True )
         df['vbc_read_short'] = df['vbc_read'].str.slice(0,15)
+        df.fillna('',inplace=True)
         df = fix_mapseq_dtypes(df) 
     
     write_mapseq_df(df, outfile)    
