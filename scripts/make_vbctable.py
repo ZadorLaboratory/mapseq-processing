@@ -52,6 +52,13 @@ if __name__ == '__main__':
                         type=int, 
                         help='Minimum target reads for inclusion.')
 
+    parser.add_argument('-G','--group_column', 
+                    metavar='group_column',
+                    required=False,
+                    default='vbc_read', 
+                    type=str, 
+                    help='column to collapse on. ')
+
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,

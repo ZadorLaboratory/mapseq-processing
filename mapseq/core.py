@@ -1396,7 +1396,8 @@ def align_collapse(df,
 def process_make_vbctable_pd(df,
                           outdir=None,
                           inj_min_reads = 2,
-                          target_min_reads = 2, 
+                          target_min_reads = 2,
+                          gcolumn = 'vbc_read', 
                           cp = None):
     '''   
     
@@ -1419,7 +1420,6 @@ def process_make_vbctable_pd(df,
     ndf = df
     
     ndf.replace('nomatch',np.nan, inplace=True)
-    #ndf = df.replace('nomatch' ,np.nan)
     logging.info(f'DF before removing nomatch: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
@@ -1436,7 +1436,7 @@ def process_make_vbctable_pd(df,
     thdf.reset_index(drop=True, inplace=True)
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
-    udf = thdf.groupby(['vbc_read','label','type'], observed=True ).agg( {'umi' : 'nunique',
+    udf = thdf.groupby([gcolumn,'label','type'], observed=True ).agg( {'umi' : 'nunique',
                                                                               'read_count':'sum', 
                                                                               'brain':'first',
                                                                               'region':'first',
