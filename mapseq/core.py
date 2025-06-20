@@ -38,6 +38,8 @@ from mapseq.bowtie import *
 from mapseq.barcode import *
 from mapseq.stats import *
 from mapseq.plotting import *
+from mapseq.collapse import *
+
 
 #
 # STANDARD FORMATS AND DATATYPES
@@ -240,7 +242,6 @@ def fix_category_nans(df):
             except ValueError as ve:
                 logging.debug(f'Already has category: {ve}')
     return df
-    
     
 def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
     '''
@@ -472,94 +473,7 @@ def guess_site(infile, sampdf):
 
 
   
-#
-#  BOWTIE/TARJAN FUNCTIONS
-#
-def edges_from_btdf(btdf):
-    readlist = btdf.name_read.values.tolist()
-    alignlist = btdf.name_align.values.tolist()  
-    edgelist = [ list(t) for t in zip(readlist, alignlist)]
-    return edgelist
 
-
-def get_components(edgelist, integers=True):
-    '''
-    returns strongly connected components from list of edges via Tarjan's algorithm. 
-    assumes labels are integers (for later use as indices in dataframes. 
-    '''
-    complist = []
-    logging.debug(f'getting connected components from edgelist len={len(edgelist)}')
-    if len(edgelist) < 100:
-        logging.debug(f'{edgelist}')
-    for g in tarjan(from_edges(edgelist)):
-        #logging.debug(f'g={g}')
-        complist.append(g)
-    logging.debug(f'{len(complist)} components.')
-    if len(edgelist) < 100:
-        logging.debug(f'{complist}')
-    if integers:
-        outlist = []
-        for g in complist:
-            outlist.append( [int(x) for x in g])
-        complist = outlist    
-    return complist
-
-#
-#  Tarjan's algorithm, same as Matlab graphconncomp()   
-#  https://rosettacode.org/wiki/Tarjan#Python:_As_function
-#
-def from_edges(edges):        
-    class Node:
-        def __init__(self):
-            # root is one of:
-            #   None: not yet visited
-            #   -1: already processed
-            #   non-negative integer: what Wikipedia pseudo code calls 'lowlink'
-            self.root = None
-            self.succ = []
-
-    nodes = defaultdict(Node)
-    for v,w in edges:
-        nodes[v].succ.append(nodes[w])
-
-    for i,v in nodes.items(): # name the nodes for final output
-        v.id = i
-
-    return nodes.values()
-    
-    
-def tarjan(V):
-    '''
-    May get recursion limit errors if input is large. 
-    https://stackoverflow.com/questions/5061582/setting-stacksize-in-a-python-script/16248113#16248113
-    
-    import resource, sys
-    resource.setrlimit(resource.RLIMIT_STACK, (2**29,-1))
-    sys.setrecursionlimit(10**6)
-    
-    Same algorithm as used in MATLAB pipeline. 
-    https://www.mathworks.com/help/matlab/ref/graph.conncomp.html 
-    
-    
-    '''
-    def strongconnect(v, S): 
-        v.root = pos = len(S)
-        S.append(v)
-        for w in v.succ:
-            if w.root is None:  # not yet visited
-                yield from strongconnect(w, S)
-
-            if w.root >= 0:  # still on stack
-                v.root = min(v.root, w.root)
-        if v.root == pos:  # v is the root, return everything above
-            res, S[pos:] = S[pos:], []
-            for w in res:
-                w.root = -1
-            yield [r.id for r in res]
-    
-    for v in V:
-        if v.root is None:
-            yield from strongconnect(v, [])
 
 
 ####################################################################
@@ -1188,500 +1102,6 @@ def filter_fields(df,
 #    ALIGN, COLLAPSE BY VBC             
 #
 
-def align_collapse(df,
-                      column='vbc_read',
-                      pcolumn='read_count',
-                      gcolumn=None,  
-                      max_mismatch=None,
-                      max_recursion=None, 
-                      outdir=None, 
-                      datestr=None,
-                      force=False, 
-                      cp=None):
-    '''
-    Entry point for CLI align_collapse. 
-    Determine grouped vs. non-grouped. 
-    
-    @arg column         Column to align and collapse
-    @arg pcolumn        Column to decide which sequence to assign to all. 
-    @arg gcolumn        Column to group processing within
-    @arg max_mismatch   Max Hamming distance between collapsed sequences 
-    @arg max_recursion  Max recursion to set for Python interpreter. 
-    @arg outdir         Base outdir for intermediate output. 
-    @arg datestr        Optional date string for logging
-    @arg force          Recalculate intermediate steps, otherwise pick up. 
-    @arg cp             ConfigParser object with [collapse] section.
-    
-    '''
-    if gcolumn is not None:
-        logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
-        df = align_collapse_pd_grouped( df, 
-                                        column = column,
-                                        pcolumn = pcolumn,
-                                        gcolumn = gcolumn,
-                                        max_mismatch=max_recursion,
-                                        max_recursion=max_recursion, 
-                                        outdir=outdir, 
-                                        datestr=datestr,
-                                        force=force, 
-                                        cp=cp )
-    else:
-        logging.info(f'Global align_collapse.')
-        df = align_collapse_pd( df = df,
-                                column = column,
-                                pcolumn = pcolumn,
-                                max_mismatch=max_recursion,
-                                max_recursion=max_recursion, 
-                                outdir=outdir, 
-                                datestr=datestr,
-                                force=force, 
-                                cp=cp ) 
-    logging.info(f'Done. returning DF len={len(df)}')
-    return df
-                            
-
-def align_collapse_pd(df,
-                      column='vbc_read',
-                      pcolumn='read_count', 
-                      max_mismatch=None,
-                      max_recursion=None, 
-                      outdir=None, 
-                      datestr=None,
-                      force=False, 
-                      cp=None):
-    '''
-    Assumes dataframe with sequence and read_count columns
-    Use read_count to choose parent sequence.
-    max_recursion appears to be important, rather than memory reqs. 40000 or 50000 
-        novaseq (1.5B reads) may be needed. 
-    By default, picking up wherever the algorithm left off, depending on
-        file availability. Force overrides and recalculates from beginning. 
-      
-    TODO:
-    Speed up use of pandas, map() function rather than apply()
-    relationship between read_count on full_read sequences (52nt), and 
-        value_counts() on unique VBCs (30nts)
-    
-    '''
-    # housekeeping...
-    if cp is None:
-        cp = get_default_config()
-    
-    aligner = cp.get('collapse','tool')    
-    if max_mismatch is None:
-        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
-    else:
-        max_mismatch = int(max_mismatch)
-
-    if max_recursion is not None:
-        rlimit = int(max_recursion)
-        logging.info(f'set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)
-    else:
-        rlimit = int(cp.get('collapse','max_recursion'))
-        logging.info(f'set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)        
-
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    if outdir is None:
-        outdir = './'
-    
-    outdir = os.path.abspath(outdir)    
-    os.makedirs(outdir, exist_ok=True)
-    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
-    
-    sh = get_default_stats()      
-    sh.add_value('/collapse','n_full_sequences', len(df) )
-
-    # get reduced dataframe of unique head sequences
-    logging.info('Getting unique DF...')    
-    #udf = pd.DataFrame(df['sequence'].unique(), columns=['sequence'])
-    udf = df[column].value_counts().reset_index() 
-    sh.add_value('/collapse','n_unique_sequences', len(udf) )    
-
-    #of = os.path.join( outdir , f'{column}.unique.tsv')
-    #logging.info(f'Writing unique DF to {of}')
-    #udf.to_csv(of, sep='\t') 
-    
-    of = os.path.join( outdir , f'{column}.unique.fasta')
-    logging.info(f'Writing uniques as FASTA to {of}')
-    seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
-
-    #of = os.path.join(outdir, f'{column}.fulldf.tsv')
-    #logging.info(f'Writing slimmed full DF to {of}')    
-    #df.to_csv(of, sep='\t', columns=[column, pcolumn])
-
-    # run allXall bowtiex
-    of = os.path.join( outdir , f'unique_sequences.bt2.sam')
-    logging.info(f'Running {aligner} on {seqfasta} file to {of}')
-    btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
-    logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
-    btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
-    of = os.path.join( outdir , f'unique_sequences.btdf.tsv')
-    btdf.to_csv(of, sep='\t') 
-    sh.add_value('/collapse','n_bowtie_entries', len(btdf) )
-
-    # perform collapse...      
-    logging.info('Calculating Hamming components...')
-    edgelist = edges_from_btdf(btdf)
-    btdf = None  # help memory usage
-    sh.add_value('/collapse','n_edges', len(edgelist) )
-    
-    of = os.path.join( outdir , f'edgelist.txt')
-    writelist(of, edgelist)
-    logging.debug(f'edgelist len={len(edgelist)}')
-    
-    components = get_components(edgelist)
-    logging.debug(f'all components len={len(components)}')
-    sh.add_value('/collapse','n_components', len(components) )
-    of = os.path.join( outdir , f'components.txt')
-    writelist(of, components)
-    edgelist = None  # help memory usage    
-
-    # assess components...
-    # components is list of lists.
-    data = [ len(c) for c in components]
-    data.sort(reverse=True)
-    ccount = pd.Series(data)
-    of = os.path.join( outdir , f'component_count.tsv')
-    ccount.to_csv(of, sep='\t')            
-
-    mcomponents = remove_singletons(components)
-    logging.debug(f'multi-element components len={len(mcomponents)}')
-    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
-    of = os.path.join( outdir , f'multi_components.json')
-    logging.debug(f'writing components len={len(components)} t {of}')
-    with open(of, 'w') as fp:
-        json.dump(mcomponents, fp, indent=4)
-
-    logging.info(f'Collapsing {len(components)} components...')
-    newdf = collapse_by_components_pd(df, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
-    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-    newcol = f'{column}_col'        
-    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
-    logging.info(f'Got collapsed DF. len={len(newdf)}')
-
-    rdf = newdf[[ column, newcol, 'read_count' ]]
-    of = os.path.join( outdir , f'read_collapsed.tsv')
-    logging.info(f'Writing reduced mapping TSV to {of}')
-    rdf.to_csv(of, sep='\t')
-    
-    newdf.drop(column, inplace=True, axis=1)
-    newdf.rename( { newcol : column }, inplace=True, axis=1) 
-    #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
-    #of = os.path.join( outdir , f'collapsed.fasta')
-    #logging.info(f'Writing collapsed fasta to {of}')
-    #write_fasta_from_df(joindf, of)        
-    return newdf        
-
-
-def align_collapse_pd_grouped(df,
-                              column='vbc_read',
-                              pcolumn='read_count',
-                              gcolumn='brain', 
-                              max_mismatch=None,
-                              max_recursion=None, 
-                              outdir=None, 
-                              datestr=None,
-                              force=False, 
-                              cp=None):
-    '''
-    Groups alignment and collapse by gcolumn value. [brain]
-    Uses sub-directories for standard intermediate output/scratch. 
-    Assumes dataframe with sequence (vbc_read) and read_count columns
-    Use read_count to choose parent sequence.
-        
-    max_recursion appears to be important, rather than memory reqs. 40000 or 50000 
-        novaseq (1.5B reads) may be needed. 
-    By default, picking up wherever the algorithm left off, depending on
-        file availability. Force overrides and recalculates from beginning. 
-      
-    TODO:
-    Speed up use of pandas, map() function rather than apply()
-    relationship between read_count on full_read sequences (52nt), and 
-        value_counts() on unique VBCs (30nts)
-    
-    '''
-    # housekeeping...
-    if cp is None:
-        cp = get_default_config()
-        
-    if max_mismatch is None:
-        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
-    else:
-        max_mismatch = int(max_mismatch)
-
-    if max_recursion is not None:
-        rlimit = int(max_recursion)
-        logging.info(f'set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)
-    else:
-        rlimit = int(cp.get('collapse','max_recursion'))
-        logging.info(f'(from config) set new recursionlimit={rlimit}')
-        sys.setrecursionlimit(rlimit)        
-
-    aligner = cp.get('collapse','tool')
-
-    if datestr is None:
-        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    
-    if outdir is None:
-        outdir = './'
-    outdir = os.path.abspath(outdir)    
-    os.makedirs(outdir, exist_ok=True)
-
-    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
-    sh = get_default_stats()      
-    sh.add_value('/collapse','n_full_sequences', len(df) )
-
-    # Get list of ids to group collapse by...
-    df[gcolumn] = df[gcolumn].astype('string')
-    gidlist = list( df[gcolumn].dropna().unique() )
-    gidlist = [ x for x in gidlist if len(x) > 0 ]
-    gidlist.sort()
-    logging.debug(f'handling group list: {gidlist}')
-
-    logging.info(f'pulling out no group for merging at end...')
-    nogroup_df = df[ df[gcolumn] == '' ]
-    sh.add_value('/collapse','n_no_group', len(nogroup_df) )
-
-    gdflist = []
-
-    for gid in gidlist:
-        logging.info(f"collapsing '{column}' by {gcolumn} = '{gid}' ")
-        gdir = os.path.join( outdir, f'{gcolumn}.{gid}' )
-        os.makedirs(gdir, exist_ok=True)
-        
-        gdf = df[df[gcolumn] == gid]
-        gdf.reset_index(inplace=True, drop=True)
-        initial_len = len(gdf)  
-        logging.info(f'[{gcolumn}:{gid}] initial len={len(gdf)} subdir={gdir}')        
-        
-        # get reduced dataframe of unique head sequences
-        logging.info('Getting unique DF...')    
-        udf = gdf[column].value_counts().reset_index() 
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_unique_sequences', len(udf) )    
-    
-        of = os.path.join( gdir , f'{column}.unique.tsv')
-        logging.info(f'Writing unique DF to {of}')
-        udf.to_csv(of, sep='\t') 
-        
-        of = os.path.join( gdir , f'{column}.unique.fasta')
-        logging.info(f'Writing uniques as FASTA to {of}')
-        seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])    
-    
-        #of = os.path.join(outdir, f'{column}.fulldf.tsv')
-        #logging.info(f'Writing slimmed full DF to {of}')    
-        #df.to_csv(of, sep='\t', columns=[column, pcolumn])
-    
-        # run allXall bowtiex
-        of = os.path.join( gdir , f'unique_sequences.bt2.sam')
-        logging.info(f'Running {aligner} on {seqfasta} file to {of}')
-        btfile = run_bowtie(cp, seqfasta, of, tool=aligner)
-        logging.info(f'Bowtie done. Produced output {btfile}. Creating btdf dataframe...')
-        btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
-        of = os.path.join( gdir , f'unique_sequences.btdf.tsv')
-        btdf.to_csv(of, sep='\t') 
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_bowtie_entries', len(btdf) )
-    
-        # perform collapse...      
-        logging.info('Calculating Hamming components...')
-        edgelist = edges_from_btdf(btdf)
-        btdf = None  # help memory usage
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
-        
-        of = os.path.join( gdir , f'edgelist.txt')
-        writelist(of, edgelist)
-        logging.debug(f'edgelist len={len(edgelist)}')
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
-        
-        components = get_components(edgelist)
-        logging.debug(f'all components len={len(components)}')
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_components', len(components) )
-        of = os.path.join( gdir , f'components.txt')
-        writelist(of, components)
-        edgelist = None  # help memory usage    
-    
-        # assess components...
-        # components is list of lists.
-        data = [ len(c) for c in components]
-        data.sort(reverse=True)
-        ccount = pd.Series(data)
-        of = os.path.join( gdir , f'component_count.tsv')
-        ccount.to_csv(of, sep='\t')            
-    
-        mcomponents = remove_singletons(components)
-        logging.debug(f'multi-element components len={len(mcomponents)}')
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_multi_components', len(mcomponents) )
-        of = os.path.join( gdir , f'multi_components.json')
-        logging.debug(f'writing components len={len(components)} t {of}')
-        with open(of, 'w') as fp:
-            json.dump(mcomponents, fp, indent=4)
-    
-        logging.info(f'Collapsing {len(components)} components...')
-        newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
-        # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-        newcol = f'{column}_col'        
-        newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
-        logging.info(f'Got collapsed DF. len={len(newdf)}')
-    
-        rdf = newdf[[ column, newcol, 'read_count' ]]
-        of = os.path.join( gdir , f'read_collapsed.tsv')
-        logging.info(f'Writing reduced mapping TSV to {of}')
-        rdf.to_csv(of, sep='\t')
-        
-        newdf.drop(column, inplace=True, axis=1)
-        newdf.rename( { newcol : column }, inplace=True, axis=1) 
-        gdflist.append(newdf)
-        #joindf = pd.DataFrame( newdf['new_seq'] + newdf['tail'], columns=['sequence'])
-        #of = os.path.join( outdir , f'collapsed.fasta')
-        #logging.info(f'Writing collapsed fasta to {of}')
-        #write_fasta_from_df(joindf, of)        
-    
-    # merge all brains into one dataframe...
-    logging.debug(f'sizes={[ len(x) for x in gdflist ]} adding nogroup len={len(nogroup_df)}')    
-    gdflist.append(nogroup_df)
-    outdf = pd.concat(gdflist, ignore_index = True)
-    outdf.reset_index(inplace=True, drop=True)
-    logging.info(f'All groups. Final DF len={len(outdf)}')
-    outdf = fix_mapseq_df_types(outdf, fformat='readtable')
-    return outdf
-       
-
-def build_seqmapdict(udf, components, column='vbc_read'):
-    '''
-    Create mappings from all unique sequences to component sequence
-    '''
-    seqmapdict = {}
-    comphandled = 0
-    comphandled_interval = 100000
-    comp_len = len(components)
-    
-    for comp in components:
-        ser = list(udf[column].iloc[comp])
-        t = ser[0]
-        for s in ser: 
-            seqmapdict[s]= t    
-        if comphandled % comphandled_interval == 0:
-            logging.debug(f'[{comphandled}/{comp_len}] t = {t}')
-        comphandled += 1
-    return seqmapdict
-
-
-def build_seqmapdict_pd(udf, components, column='vbc_read', pcolumn='count'):
-    '''
-    Create mappings from all unique sequences to component sequence
-    Can we do this faster? Choose most abundant variant?
-    dict should be oldsequence -> newsequence
-    
-    '''
-    seqmapdict = {}
-    comphandled = 0
-    pcolumn='count'
-    logging.debug(f'udf len={len(udf)} components len={len(components)} column={column} pcolumn={pcolumn} ')
-    comphandled_interval = 1000
-    comp_len = len(components)    
-    for i, indexlist in enumerate( components):
-        cdf = udf[[column, pcolumn]].iloc[indexlist]
-        cdf.reset_index(inplace=True, drop=True)
-        #logging.debug(f'component [{i}/{comp_len}]: len={len(cdf)}')
-        maxid = int(cdf[pcolumn].idxmax())
-        t = cdf[column].iloc[maxid]
-        for compseq in list(cdf[column]): 
-            #logging.debug(f'compseq={compseq} -> {t}')
-            seqmapdict[compseq]= t    
-        if comphandled % comphandled_interval == 0:
-            logging.debug(f'[{i}/{comp_len}]: len={len(cdf)} seq = {t} ')
-        comphandled += 1
-    return seqmapdict
-
-
-def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdir=None):
-    #
-    # *** Assumes components are multi-element components only ***
-    #
-    # components consist of indices within the uniqdf. 
-    # assumes component elements are integers, as they are used as dataframe indices. 
-    # create map of indices in original full DF that correspond to all members of a (multi-)component
-    # from alignment
-    # hash key is index of first appearance of sequence in full DF (i.e. its index in uniqdf.) 
-    # 
-    # returns copy of input fulldf with sequence column collapsed to most-common sequence in component. 
-    #
-    #  SETUP
-    #  infile is all reads...
-    #      fdf = read_fasta_to_df(infile, seq_length=32)
-    #      udf = pd.DataFrame(fdf['sequence'].unique(), columns=['sequence'])
-    #      components = remove_singletons(components)
-    
-    logging.debug(f'multi-element components len={len(components)}')
-    logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
-    logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
-    smd = build_seqmapdict_pd(uniqdf, components,  column, pcolumn)
-      
-    # Make new full df:
-    logging.info('seqmapdict built. Applying.')
-    if outdir is not None:
-        outfile = f'{outdir}/seqmapdict.json'
-        logging.debug(f'writing seqmapdict len={len(smd)} tp {outfile}')
-        with open(outfile, 'w') as fp:
-            json.dump(smd, fp, indent=4)
-    else:
-        logging.debug(f'no outdir given.')
-    logging.info(f'applying seqmapdict...')
-    # make deep copy of original sequence column
-    fulldf.loc[:, f'{column}_col'] = fulldf.loc[:, column]    
-    # map old to new
-    fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
-    # fill in NaN with original values. 
-    
-    fulldf.fillna( { 'vbc_read_col' : fulldf['vbc_read'] }, inplace=True)    
-    logging.info(f'New collapsed df = \n{fulldf}')
-    log_objectinfo(fulldf, 'fulldf')
-    return fulldf
-
-       
-
-def collapse_only_pd(fdf, udf, mcomponents, column, pcolumn, outdir, cp ):
-    '''
-    Handle partially completed align-collapse. 
-    Inputs:
-       fulldf TSV
-       uniqudf TSV
-       multi-components list. 
-    
-    Output:
-        collapsed DF. 
-        df = collapse_pd(fulldf,
-                     uniquedf,
-                     mcomponents,   
-                     column=args.column,
-                     pcolumn=args.parent_column,
-                     outdir=outdir, 
-                     cp=cp)
-    '''
-  
-    # assess components...
-    sh = get_default_stats()
-    logging.debug(f'multi-element components len={len(mcomponents)}')
-    sh.add_value('/collapse','n_multi_components', len(mcomponents) )
-
-    logging.info(f'Collapsing {len(mcomponents)} mcomponents...')
-    newdf = collapse_by_components_pd(fdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
-
-    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-    newcol = f'{column}_col'        
-    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
-    logging.info(f'Got collapsed DF. len={len(newdf)}')
-
-    rdf = newdf[[ column, newcol, 'read_count' ]]
-    of = os.path.join( outdir , f'read_collapsed.tsv')
-    logging.info(f'Writing reduced mapping TSV to {of}')
-    rdf.to_csv(of, sep='\t')
-    logging.debug(f'dropping {column}')
-    newdf.drop(column, inplace=True, axis=1)   
-    return newdf        
 
 
 #
@@ -1898,6 +1318,76 @@ def process_make_readtable_pd(df,
     
     df = fix_mapseq_df_types(df, fformat='readtable')
     return df
+
+#
+#
+#
+
+
+def align_collapse(df,
+                      column='vbc_read',
+                      pcolumn='read_count',
+                      gcolumn=None,  
+                      max_mismatch=None,
+                      max_recursion=None, 
+                      outdir=None, 
+                      datestr=None,
+                      force=False, 
+                      cp=None):
+    '''
+    Entry point for CLI align_collapse. 
+    Determine grouped vs. non-grouped. 
+    
+    @arg column         Column to align and collapse
+    @arg pcolumn        Column to decide which sequence to assign to all. 
+    @arg gcolumn        Column to group processing within
+    @arg max_mismatch   Max Hamming distance between collapsed sequences 
+    @arg max_recursion  Max recursion to set for Python interpreter. 
+    @arg outdir         Base outdir for intermediate output. 
+    @arg datestr        Optional date string for logging
+    @arg force          Recalculate intermediate steps, otherwise pick up. 
+    @arg cp             ConfigParser object with [collapse] section.
+    
+    '''
+    sh = get_default_stats()
+    
+    if gcolumn is not None:
+        logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
+        sh.add_value(f'/collapse','collapse_mode', 'grouped' )
+        sh.add_value(f'/collapse','max_mismatch', str(max_mismatch) )
+        df = align_collapse_pd_grouped( df, 
+                                        column = column,
+                                        pcolumn = pcolumn,
+                                        gcolumn = gcolumn,
+                                        max_mismatch=max_mismatch,
+                                        max_recursion=max_recursion, 
+                                        outdir=outdir, 
+                                        datestr=datestr,
+                                        force=force, 
+                                        cp=cp )
+    else:
+        logging.info(f'Global align_collapse.')
+        sh.add_value(f'/collapse','collapse_mode', 'global' )
+        sh.add_value(f'/collapse','max_mismatch', str(max_mismatch) )
+        df = align_collapse_pd( df = df,
+                                column = column,
+                                pcolumn = pcolumn,
+                                max_mismatch=max_mismatch,
+                                max_recursion=max_recursion, 
+                                outdir=outdir, 
+                                datestr=datestr,
+                                force=force, 
+                                cp=cp ) 
+    logging.info(f'Got DF len={len(df)} Fixing dtypes...')
+    df = fix_mapseq_df_types(df, fformat='readtable')
+    logging.info(f'Returning DF len={len(df)} dtypes={df.dtypes}')
+    return df
+                            
+
+
+
+
+
 
 #
 #            VBCTABLE

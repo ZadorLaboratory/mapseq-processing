@@ -151,13 +151,13 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
 
 def make_bowtie_df(infile, max_mismatch=3, ignore_self=False):
     max_mismatch = int(max_mismatch)
-    logging.debug(f'max_mismatch={max_mismatch}')
+    logging.debug(f'bowtie max_mismatch={max_mismatch}')
     with open(infile) as f:
         line=f.readline()
     if line.startswith('@HD'):
         logging.debug('Detected bowtie2 input.')
         df = make_bowtie2_df(infile)
-        logging.debug(f'df before max_mismatch =< {max_mismatch} =\n{df}')
+        logging.debug(f'bt2: df before max_mismatch =< {max_mismatch} =\n{df}')
         logging.debug(f'dtypes={df.dtypes}')
         df = df[df['n_mismatch'] <= max_mismatch]
         # alignments to *other* sequences only
@@ -289,7 +289,12 @@ def make_adjacency_df(bowtiedf):
     mdf.fillna(0, inplace=True)
     return mdf
 
+def load_bowtie_df(infile):
+    '''
     
-
+    '''    
+    df = pd.read_csv( infile, sep='\t', index_col=0)
+    logging.debug(f'loaded bowtie DF. len={len(df)} dtypes={df.dtypes}')
+    return df
 
 

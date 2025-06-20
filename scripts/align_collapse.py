@@ -17,6 +17,7 @@ from mapseq.core import *
 from mapseq.barcode import *
 from mapseq.utils import *
 from mapseq.stats import *
+from mapseq.collapse import *
 
 
 if __name__ == '__main__':
@@ -207,6 +208,7 @@ if __name__ == '__main__':
                         outdir=outdir,
                         force = args.force, 
                         cp=cp)
+
     write_mapseq_df(df, outfile)
     logging.info('Done align_collapse.')
 
