@@ -197,6 +197,7 @@ if __name__ == '__main__':
         df = pd.concat([rdf, df], ignore_index=True )
         df = fix_category_nans(df)
         df.fillna('',inplace=True)
+        logging.info(f'readtable={len(rdf)} barseqreads={len(df)} combined DF len={len(df)}')
         df['vbc_read_short'] = df['vbc_read'].str.slice(0,15)
         df = fix_mapseq_dtypes(df) 
     
