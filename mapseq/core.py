@@ -1419,7 +1419,7 @@ def process_make_vbctable_pd(df,
     log_objectinfo(df, 'input-df')
     ndf = df
     
-    ndf.replace('nomatch',np.nan, inplace=True)
+    ndf.replace('nomatch', np.nan, inplace=True)
     logging.info(f'DF before removing nomatch: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
@@ -1448,7 +1448,7 @@ def process_make_vbctable_pd(df,
     #if gcolumn != 'vbc_read':
     #    agg_params['vbc_read' ] = 'first'
     
-    udf = thdf.groupby([ gcolumn, 'label','type'], observed=True ).agg( agg_params ).reset_index()
+    udf = thdf.groupby([ gcolumn, 'label', 'type'], observed=True ).agg( agg_params ).reset_index()
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
 
