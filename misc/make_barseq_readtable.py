@@ -182,7 +182,8 @@ if __name__ == '__main__':
     df = expand_dataframe(df, cycles=5)
     logging.debug(f'expanded DF len={len(df)}')
     
-    df['type'] = 'injection'
+    df['type'] = 'real'
+    df['site'] = 'injection'
     df['label'] = args.ssi
     df['brain'] = args.brain
     df['read_count'] = 999

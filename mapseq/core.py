@@ -1407,7 +1407,7 @@ def process_make_vbctable_pd(df,
     -- threshold read_count by site type
     -- collapse by VBC sequence, calculating UMI count
     
-    Drops source field since aggregation would make it ambiguous.
+    Drops source, and possibly other fields since aggregation would make them ambiguous.
     
     This should  be prepared for input it make VBC matrices    
     '''
@@ -1436,13 +1436,19 @@ def process_make_vbctable_pd(df,
     thdf.reset_index(drop=True, inplace=True)
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
-    udf = thdf.groupby([gcolumn,'label','type'], observed=True ).agg( {'umi' : 'nunique',
-                                                                              'read_count':'sum', 
-                                                                              'brain':'first',
-                                                                              'region':'first',
-                                                                              'site':'first',
-                                                                              'ourtube':'first',    
-                                                                              } ).reset_index()
+    
+    agg_params = {  'umi'       : 'nunique',
+                    'read_count': 'sum', 
+                    'brain'     : 'first',
+                    'region'    : 'first',
+                    'site'      : 'first',
+                    'ourtube'   : 'first',    
+                }
+
+    #if gcolumn != 'vbc_read':
+    #    agg_params['vbc_read' ] = 'first'
+    
+    udf = thdf.groupby([ gcolumn, 'label','type'], observed=True ).agg( agg_params ).reset_index()
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
 
@@ -1465,7 +1471,7 @@ def process_make_vbctable_pd(df,
 
     # output controls by SSI/site, save to TSV
     controls = udf[ udf['site'].isin( CONTROL_SITES ) ]
-    controls = controls[ controls['type'] == 'real' ]
+    #controls = controls[ controls['type'] == 'real' ]
     controls.reset_index(inplace=True, drop=True)
     controls.to_csv(f'{outdir}/{project_id}.controls.tsv', sep='\t')
 
@@ -1477,10 +1483,10 @@ def process_make_vbctable_pd(df,
     udf = fix_mapseq_df_types(udf, fformat='vbctable')
     return udf
 
+
 #
 #        VBCFILTER
 #
-
 def process_filter_vbctable(df, 
                                inj_min_umi = None,
                                target_min_umi = None,
@@ -2114,29 +2120,32 @@ def make_rtag_counts(df,
     if cp is None:
         cp = get_default_config()
     
+    try:
+        rtag = df['rtag']
+        rvc = rtag.value_counts()
+        rdf = pd.DataFrame()
+        rdf['rseq_count'] = rvc
+        rdf.reset_index(inplace=True)
+        tot_count = rdf['rseq_count'].sum()
+        rdf['rcum_prop'] = rdf['rseq_count'].cumsum() / tot_count
     
-    rtag = df['rtag']
-    rvc = rtag.value_counts()
-    rdf = pd.DataFrame()
-    rdf['rseq_count'] = rvc
-    rdf.reset_index(inplace=True)
-    tot_count = rdf['rseq_count'].sum()
-    rdf['rcum_prop'] = rdf['rseq_count'].cumsum() / tot_count
-
-    of = os.path.join(outdir, 'rtag_counts.tsv')
-    write_mapseq_df(rdf, of, outformats=['tsv'])
-    logging.debug(f'wrote rtag info to {of}')
-    
-    rrtag = df['rrtag']
-    rrvc = rrtag.value_counts()
-    rrdf = pd.DataFrame()
-    rrdf['rrseq_count'] = rrvc
-    rrdf.reset_index(inplace=True)    
-    tot_count = rrdf['rrseq_count'].sum()
-    rrdf['rrcum_prop'] = rrdf['rrseq_count'].cumsum() / tot_count
-    of = os.path.join(outdir, 'rrtag_counts.tsv')
-    write_mapseq_df(rrdf, of, outformats=['tsv'])
-    logging.debug(f'wrote rrtag info to {of}')
+        of = os.path.join(outdir, 'rtag_counts.tsv')
+        write_mapseq_df(rdf, of, outformats=['tsv'])
+        logging.debug(f'wrote rtag info to {of}')
+        
+        rrtag = df['rrtag']
+        rrvc = rrtag.value_counts()
+        rrdf = pd.DataFrame()
+        rrdf['rrseq_count'] = rrvc
+        rrdf.reset_index(inplace=True)    
+        tot_count = rrdf['rrseq_count'].sum()
+        rrdf['rrcum_prop'] = rrdf['rrseq_count'].cumsum() / tot_count
+        of = os.path.join(outdir, 'rrtag_counts.tsv')
+        write_mapseq_df(rrdf, of, outformats=['tsv'])
+        logging.debug(f'wrote rrtag info to {of}')
+    except Exception as ex:
+        logging.warning(f'DF does not have rtag column?')
+        logging.warning(traceback.format_exc(None))
 
 
 def make_vbctable_qctables(df, 
