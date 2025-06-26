@@ -1107,7 +1107,6 @@ def filter_fields(df,
 #
 #            READTABLE,  READ FREQUENCY PLOTS
 #
-
 def process_make_readtable_pd(df,
                           sampdf,
                           bcfile=None, 
@@ -1322,7 +1321,6 @@ def process_make_readtable_pd(df,
 #
 #
 #
-
 
 def align_collapse(df,
                       column='vbc_read',
