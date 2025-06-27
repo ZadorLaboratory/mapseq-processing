@@ -185,18 +185,23 @@ if __name__ == '__main__':
     (dirpath, base, ext) = split_path(outfile)
     of = os.path.join(dirpath, f'{base}.split.tsv')
 
-    # Use new generic field splitting. 
+    # Use new generic field splitting.
+    logging.info(f'Filtering fields. ') 
     df = split_fields(df, 
                         column = 'sequence',
                         drop = True,
                         cp=cp)
     write_mapseq_df(df, of)
 
-    make_rtag_counts(df,
+    if rtag in df.columns:
+        logging.info(f'rtag column found, doing counts.')
+        make_rtag_counts(df,
                      outdir=outdir,
                      cp=cp)
+    else:
+        logging.info(f'no rtags in dataset.')
 
-
+    logging.info(f'Filtering fields. ')
     df = filter_fields(df,
                        drop=None,
                        cp=cp)
