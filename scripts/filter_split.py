@@ -193,7 +193,7 @@ if __name__ == '__main__':
                         cp=cp)
     write_mapseq_df(df, of)
 
-    if rtag in df.columns:
+    if 'rtag' in df.columns:
         logging.info(f'rtag column found, doing counts.')
         make_rtag_counts(df,
                      outdir=outdir,
