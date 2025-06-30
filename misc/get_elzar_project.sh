@@ -5,8 +5,17 @@
 DIRLIST="reads.out aggregated.out filtered.out readtable.out collapsed.out vbctable.out"
 USERHOST="hover@bamdev2.cshl.edu"
 PROJECTROOT="/grid/zador/home/hover/project/mapseq"
-PROJECT="M295_207690"
-PROJECT_SHORT="M295"
+#PROJECT="M295_207690"
+#PROJECT_SHORT="M295"
+
+
+if [ "$#" -ne 1 ]; then
+	echo "usage: get_elzar_project.sh <PROJECT_ID> "
+	exit 1
+fi
+	
+PROJECT=$1
+echo "project is $PROJECT"
 
 mkdir $DIRLIST
 
