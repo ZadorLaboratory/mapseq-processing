@@ -603,6 +603,148 @@ def process_fastq_pairs_pd_chunked( infilelist,
     sh.add_value('/fastq','pairs_handled', pairnum )
     return df          
 
+
+def process_fastq_grouped(   infilelist, 
+                             outdir,                         
+                             force=False, 
+                             cp = None):
+    '''
+    parse infiles by pairs. 
+    get extra field(s) 
+     
+    '''
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))
+    
+    chunksize = int(cp.get('fastq','chunksize'))
+    source_regex = cp.get('fastq','source_regex')
+    logging.info(f'chunksize={chunksize} lines.')
+    logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
+    
+    outdf = None
+    sh = get_default_stats()
+    pairnum = 1
+    chunknum = 1
+
+    for (read1file, read2file) in infilelist:
+        df = None
+        source_label = parse_sourcefile(read1file, source_regex)
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label}')
+        start = dt.datetime.now()
+        fh1 = get_fh(read1file)
+        dfi1 = pd.read_csv(fh1, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize) 
+        fh2 = get_fh(read2file)
+        dfi2 = pd.read_csv(fh2, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize)
+        
+        for chunk1 in dfi1:
+            chunk2 = dfi2.get_chunk()
+            logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
+            if df is None:
+                logging.debug(f'making new read sequence DF...')
+                df = pd.DataFrame(columns=['sequence'])
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={df.dtypes}')           
+                df['source'] = source_label
+            else:
+                logging.debug(f'making additional read sequence DF...')
+                ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={ndf.dtypes}')                
+                ndf['source'] = source_label                
+                df = pd.concat([df, ndf], copy=False, ignore_index=True)
+            logging.debug(f'handled chunk number {chunknum}')
+            chunknum += 1
+        # We now have all input from 2 input files.
+        
+        # split out requested fields. 
+        logging.info(f'getting additional field(s)...')
+        fieldlist = add_split_fields(df, 'sequence', cp, 'fastq')
+        
+        # save to file. 
+        logging.info(f'Saving to readfile...')
+        of = os.path.join(outdir, f'{source_label}.reads.tsv')
+        write_mapseq_df(df, of)
+        
+        # gather extra field stats. 
+        for field in fieldlist:
+            try:
+                vc = df[field].value_counts()
+                n_dom = vc.iloc[0]
+                logging.debug(f'dominant value count for {field} = {n_dom} ') 
+                pct_dom = n_dom / len(df) * 100
+                spct = f'{pct_dom:.2f}'
+                sh.add_value('/fastq', f'pair{pairnum}_{source_label}_{field}_percent', spct )
+            except Exception as e:
+                logging.warning(f'issue dealing with source={source_label} field={field}')
+        logging.debug(f'handled pair number {pairnum}')
+        
+        # Measure file read speed.
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo( [read1file, read2file] , delta_seconds)
+        sh.add_value('/fastq',f'pair{pairnum}_len', len(df) )
+        pairnum += 1
+
+        logging.debug(f'continuing creation of full outdf...')
+        outdf = pd.concat([outdf, df], copy=False, ignore_index=True)
+
+    logging.debug(f'dtypes =\n{outdf.dtypes}')
+    logging.info('Finished processing all input.')
+    sh.add_value('/fastq','reads_handled', len(outdf) )
+    sh.add_value('/fastq','pairs_handled', pairnum )
+    return outdf          
+
+
+def add_split_fields(df, column, cp, section):
+    '''
+    given a dataframe, column, and a configparser w/ section
+    pull out all items in section with _st and _end, and create
+    new columns in <df> from <column>. 
+    
+    '''
+    plist = cp.items(section)
+    fdict = defaultdict(dict)
+    for (k,v) in plist:
+        if k.endswith('_st'):
+           fname =  k[:-3]
+           fd = fdict[fname]
+           fd['start'] = v
+           
+        elif k.endswith('_end'):
+           fname =  k[:-4]
+           fd = fdict[fname]
+           fd['end'] = v
+    
+    for field in list(fdict.keys()):
+        logging.debug(f'handling field={field}')
+        try:
+            fd = fdict[field]
+            logging.debug(f'info for field={field} = {fdict[field]}')
+            fstart = int( fdict[field]['start'])
+            fend = int( fdict[field]['end'] )
+            logging.debug(f'splitting field={field} start = {fstart} end = {fend}')
+            df[field] = df[column].str.slice(fstart, fend).astype('string[pyarrow]')
+            logging.debug(f'successfully split field={field}')
+        
+        except Exception as ex:
+            logging.warning(f'problem with field={field} bad start/end? Check config?')
+    
+    return list(fdict.keys())
+
+
+
 def get_fh(infile):
     '''
     Opens compressed/uncompressed file as appropriate... 
