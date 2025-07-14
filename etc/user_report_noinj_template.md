@@ -6,33 +6,33 @@
 1. We take the barcodes of all remaining reads, and perform an all-against-all alignment to find all sets of barcodes with Hamming distance of 3 or less from each other (based on 30 bp of barcode length). These sets are then used to 'collapse' the barcode in all the full sequences (VBC+UMI+SSI) to a single unique sequence, essentially 'fixing' replication and sequencing errors in the barcodes.   
 1. We then take the full sequences and sort them all according to SSIs (which correspond to unique brain areas), and then determine the molecule number of a unique barcode in a certain brain area by counting the UMIs associated with it. As this is done we aggregate the original read counts for each VBC+UMI+SSI. 
 1. Within each SSI we separate out spike-in and real sequences based on their properties.   
-1. We then create a full aggregate table {{ conf['project']['project_id'] }}.vbctable.tsv. This is the step at which we apply a minimum read count threshold of {{ conf['vbctable']['target_min_reads'] }}.         
-1. We then apply all filters and thresholds to create {{ conf['project']['project_id'] }}.vbfiltered.tsv. This table represents only data that will be included in the per-brain matrices.     
-1. The filtered table can now be converted to connection matrices, with the number of each real and spike-in barcode in each brain area. In this matrix, each row is one barcode, each column is a brain area, and the element of the matrix corresponds to the molecule number of the barcode in the brain area.  
+1. We then create a full aggregate table **{{ conf['project']['project_id'] }}.vbctable.tsv**. This is the step at which we apply a minimum read count threshold of {{ conf['vbctable']['target_min_reads'] }}.         
+1. We then apply all filters and thresholds to create **{{ conf['project']['project_id'] }}.vbfiltered.tsv (for barcodes but not for spike-ins)**. This is the step where we  retain only barcodes that appear in at least one target with more than {{ conf['vbcfilter']['target_min_umi'] }} UMIs. The UMI thresholds were set based on the UMI counts observed from the negative controls. This table represents only data that will be included in the per-brain matrices.     
+1. This filtered table can now be converted to connection matrices, with the number of each real and spike-in barcode in each brain area. In this matrix, each row is one barcode, each column is a brain area, and the element of the matrix corresponds to the molecule number of the barcode in the brain area. 
 7. Lastly, we normalized the number of molecules of each barcode in each brain area to the total number of spike-in molecules in the corresponding brain area. This is to compensate for RT/PCR variations during sequencing library preparation.  This produces the normalized barcode matrix above. 
 
 
 ## Table and Matrix information
 
-{{ conf['project']['project_id'] }}.vbctable.tsv: All viral barcode (VBC) sequences, broken down by type (real, spike-in, L1) and target region.  
-			Barcode sequences may appear more than once, if found in multiple target areas. \`\`  
+**{{ conf['project']['project_id'] }}.vbctable.tsv**: All viral barcode (VBC) sequences, broken down by type (real, spike-in) and target region.  
+		Barcode sequences may appear more than once, if found in multiple target areas. \`\`  
 umi\_count is the number of unique UMIs seen, with read\_count representing the total number of reads behind those UMIs (the allocation of reads to UMIs is not included). 
 
 For each brain:  
 \<brain\>.rbcm.tsv	raw (real) barcode matrix	  
 &nbsp; &nbsp; Raw real barcode UMI counts from filtered VBC table.   
 &nbsp; &nbsp; Only includes barcodes where:   
-&nbsp; &nbsp; &nbsp; &nbsp; At least one target area had \> {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
+&nbsp; &nbsp; &nbsp; &nbsp; At least one target area had \>= {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
 &nbsp; &nbsp; &nbsp; &nbsp; Rows represent barcodes and columns represent areas.  
 
 \<brain\>.sbcm.tsv	spike-in barcode matrix.   
-&nbsp; &nbsp;Spike in barcode UMI counts.   
+&nbsp; &nbsp; Spike in barcode UMI counts.   
 &nbsp; &nbsp; Rows represent barcodes and columns represent areas. 
 
 \<brain\>.nbcm.tsv	normalized barcode matrix  
 &nbsp; &nbsp; Filtered barcode values normalized by spike-in counts per SSI area.
 
-The columns for all the matrices represent the 'ourtube' ID contained in the 'sampleinfo.tsv' file. That file includes the mappings between user-supplied tube labels, our tube labels, and the rtprimer label for each sample. 
+**The column labels for all the matrices are the BC<rtprimer> contained in the ‘sampleinfo.tsv’ file.** That file includes the mappings between user-supplied tube labels, our tube labels, and the rtprimer label for each sample. 
 
 
 ## Quality Control
@@ -42,14 +42,11 @@ The columns for all the matrices represent the 'ourtube' ID contained in the 'sa
 1. Sequencing depth for projection sites. 
    There are a minimum of {{ conf['vbctable']['target_min_reads'] }} reads for each VBC+UMI+SSI combination in target site samples. This sequencing depth is considered enough for target sites.
 
-Spike-in counts are mostly uniform across all projections sites.  
-We have seen at most 2-3 folds difference in spike-in counts between projection sites, which is considered normal. 
+Spike-in counts are mostly uniform across all projections sites. We have seen at most 2-3 folds difference in spike-in counts between projection sites, which is considered normal. 
 
 1. We have checked barcode amount in controls. 
 
-The UMI counts from negative controls are listed in the TSV named “vbc_controls.tsv”. This background looks normal. 
-
-1. We have calculated false positive rates. For target sites, the false positive rate is 0 when the UMI threshold is set to {{ conf['vbcfilter']['target_min_umi'] }}.  
+The UMI counts from negative controls are listed in the TSV named “{{ conf['project']['project_id'] }}.controls.tsv”. This background looks normal. We used the UMI counts found in the controls to set up the UMI thresholds for samples. 
 
 
 ## Further Analysis

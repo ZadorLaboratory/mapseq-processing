@@ -409,6 +409,7 @@ def package_pairs(itemlist):
 def parse_sourcefile(infile, source_regex):
     '''
     return matching portion of the filename to indicate source of data.
+    
     '''
     infile = os.path.abspath(infile)
     #if infile.endswith('.gz'):

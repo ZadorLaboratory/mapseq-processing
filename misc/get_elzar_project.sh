@@ -27,4 +27,8 @@ done
 
 scp $USERHOST:$PROJECTROOT/$PROJECT/readtable.out/sampleinfo.tsv ./readtable.out/
 scp $USERHOST:$PROJECTROOT/$PROJECT/vbctable.out/*.vbctable.* ./vbctable.out/
-scp $USERHOST:$PROJECTROOT/$PROJECT/$PROJECT_SHORT.mapseq.conf ./
+scp $USERHOST:$PROJECTROOT/$PROJECT/*.mapseq.conf ./
+
+scp -r $USERHOST:$PROJECTROOT/$PROJECT/vbcfiltered.out ./
+scp -r $USERHOST:$PROJECTROOT/$PROJECT/matrices.out ./
+
