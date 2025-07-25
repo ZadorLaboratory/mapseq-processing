@@ -1799,11 +1799,16 @@ def process_filter_vbctable(df,
             logging.info(f'[{brain_id}]: No targets passed filtering. Not including.')
     
     # merge all brains into one dataframe...
-    logging.debug(f'sizes={[ len(x) for x in bdflist ]} ')    
-    df = pd.concat(bdflist, ignore_index = True)
-    df.reset_index(inplace=True, drop=True)
-    logging.info(f'All brains. Final merged filtered DF len={len(df)}')
-    df = fix_mapseq_df_types(df, fformat='vbctable')
+    logging.debug(f'sizes={[ len(x) for x in bdflist ]} ')
+
+    if len(bdflist) > 0:    
+        df = pd.concat(bdflist, ignore_index = True)
+        df.reset_index(inplace=True, drop=True)
+        logging.info(f'All brains. Final merged filtered DF len={len(df)}')
+        df = fix_mapseq_df_types(df, fformat='vbctable')
+    else:
+        logging.warning('No data passed filtering. Creating empty dataframe.')
+        df = pd.DataFrame(columns=df.columns)
     return df
 
 
