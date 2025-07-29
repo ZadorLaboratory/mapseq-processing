@@ -2548,15 +2548,37 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     byfiledf = pd.DataFrame(byfile)
             
     # Write out results
-    outfile = os.path.join(outdir, f'{project_id}.source_reads.xlsx')
+    outfile = os.path.join(outdir, f'{project_id}.read_sources.xlsx')
     with pd.ExcelWriter(outfile) as writer:
         sldf.to_excel(writer, sheet_name='Source SSI matrix')
         byssidf.to_excel(writer,sheet_name='Dominant by SSI' )
         byfiledf.to_excel(writer,sheet_name='Dominant by file' )
     return sldf
     
-       
+
+def filter_by_source_ssi(   df,
+                            cp=None,
+                            group_column = 'source',
+                            dom_column = 'ssi'
+                             ):
+    '''
+    determine dominant <dom_col> value when grouped by <group_column>
+    remove all rows without dominant value. 
+    assumes group_column is deterministic, limited set (like filenames) 
+    expect dom_column to have lots of varied values (like sequence)
         
+    '''       
+    if cp is None:
+        cp = get_default_config()
         
-        
+    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') ) 
+    project_id = cp.get('project','project_id')
+    
+    # group by source file and filter. 
+    gbdf = gdf.groupby(by=[dom_column, group_column], observed=True).agg( {group_column:'count'})
+    gbdf.columns = ['count']
+    gbdf.reset_index(inplace=True,drop=False)
+    
+         
+
 
