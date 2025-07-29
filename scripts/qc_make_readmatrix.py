@@ -62,6 +62,13 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='outdir. input file base dir if not given.')   
+
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='QC TSV.') 
    
     parser.add_argument('infile',
                         metavar='infile',
@@ -86,10 +93,31 @@ if __name__ == '__main__':
     logging.debug(f'infiles={args.infile}')
           
     # set outdir / outfile
+    outdir = os.path.abspath('./')
+    outfile = f'{outdir}/read.table.tsv'
     if args.outdir is None:
-        outdir = os.path.abspath('./')
+        if args.outfile is not None:
+            logging.debug(f'outdir not specified. outfile specified.')
+            outfile = os.path.abspath(args.outfile)
+            filepath = os.path.abspath(outfile)    
+            dirname = os.path.dirname(filepath)
+            filename = os.path.basename(filepath)
+            (base, ext) = os.path.splitext(filename)   
+            head = base.split('.')[0]
+            outdir = dirname
+            logging.debug(f'outdir set to {outdir}')
+        else:
+            logging.debug(f'outdir/file not specified.')        
     else:
+        # outdir specified
         outdir = os.path.abspath(args.outdir)
+        if args.outfile is not None:
+            logging.debug(f'outdir specified. outfile specified.')
+            outfile = os.path.abspath(args.outfile)
+        else:
+            logging.debug(f'outdir specified. outfile not specified.')
+            project_id = cp.get('project','project_id')
+            outfile = f'{outdir}/{project_id}.read_sources.tsv'
  
     os.makedirs(outdir, exist_ok=True)
     logging.info(f'handling {args.infile} to outdir {outdir}')    
@@ -115,9 +143,8 @@ if __name__ == '__main__':
                         sampdf=sampdf,
                         outdir=outdir, 
                         cp=cp)
-    outfile = os.path.join(outdir, 'EXP.source_reads.tsv')
-    sldf.to_csv(outfile, sep='\t')
-        
+    
+    sldf.to_csv(outfile, sep='\t')    
     logging.info(f'Made QC read matrix in {outfile}...')
 
     

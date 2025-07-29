@@ -2471,6 +2471,7 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     if cp is None:
         cp = get_default_config()
     bcfile = os.path.expanduser( cp.get('barcodes','ssifile') ) 
+    project_id = cp.get('project','project_id')
 
     # Map label, rtprimer to SSIs    
     logging.debug(f'getting rt labels...')
@@ -2495,7 +2496,6 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     df['label'] = df['rtprimer'].map(rtbcdict)
     df['label'] = df['label'].astype('category')
     
-    
     gdf = df.dropna()
     gdf.reset_index(inplace=True, drop=True)
     n_readswssi =  len(gdf)
@@ -2515,9 +2515,44 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     nsindex = natsorted(sldf.index)
     sldf = sldf.loc[nsindex]
     
-    outfile = os.path.join(outdir, 'EXP.source_reads.xlsx')
+    # Calc percentage in non-dominant, by SSI
+    byssi = []
+    for col in list(sldf.columns):
+        bcc = sldf[col].sort_values(ascending=False)
+        n_dom = bcc.iloc[0]
+        f_dom = bcc.index[0]
+        n_total = bcc.sum()
+        dom_pct = ( n_dom / n_total ) * 100
+        sdom_pct = f'{dom_pct:.2f}'
+        sh.add_value(f'/qcreads/sources/ssi/{col}', 'dom_pct', str(sdom_pct) )
+        sh.add_value(f'/qcreads/sources/ssi/{col}', 'dom_file', str(f_dom) )
+        byssi.append( { 'ssi'     : col , 
+                          'dom_pct': dom_pct , 
+                         'dom_file':  str(f_dom)} )
+    byssidf = pd.DataFrame(byssi)
+    
+    # Calc percentage in non-dominant, by source file.
+    byfile = []
+    for ridx in list(sldf.index):
+        scc = sldf.loc[ridx].sort_values(ascending=False)
+        n_dom = scc.iloc[0]
+        s_dom = scc.index[0]
+        n_total = scc.sum()
+        dom_pct = ( n_dom / n_total ) * 100
+        sdom_pct = f'{dom_pct:.2f}'
+        sh.add_value(f'/qcreads/sources/ssi/{ridx}', 'dom_pct', str(sdom_pct) )
+        sh.add_value(f'/qcreads/sources/ssi/{ridx}', 'dom_ssi', str(s_dom) )
+        byfile.append( {'file': str(ridx), 
+                          'dom_pct': dom_pct , 
+                          'dom_ssi':  str(s_dom)} )
+    byfiledf = pd.DataFrame(byfile)
+            
+    # Write out results
+    outfile = os.path.join(outdir, f'{project_id}.source_reads.xlsx')
     with pd.ExcelWriter(outfile) as writer:
-        sldf.to_excel(writer, sheet_name='source by SSI')
+        sldf.to_excel(writer, sheet_name='Source SSI matrix')
+        byssidf.to_excel(writer,sheet_name='Dominant by SSI' )
+        byfiledf.to_excel(writer,sheet_name='Dominant by file' )
     return sldf
     
        
