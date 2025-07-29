@@ -40,25 +40,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-i','--inj_min_reads', 
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Minimum injection reads for inclusion.')
-    
-    parser.add_argument('-t','--target_min_reads', 
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Minimum target reads for inclusion.')
-
-    parser.add_argument('-G','--group_column', 
-                    metavar='group_column',
-                    required=False,
-                    default='vbc_read', 
-                    type=str, 
-                    help='column to collapse on. ')
-
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
@@ -91,7 +72,7 @@ if __name__ == '__main__':
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single readtable TSV or Parquet.')
+                        help='Single vbctable TSV or Parquet.')
         
     args= parser.parse_args()
     
@@ -112,7 +93,7 @@ if __name__ == '__main__':
           
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/read.table.tsv'
+    outfile = f'{outdir}/vbc_parameter_report.xlsx'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -149,16 +130,6 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    if args.inj_min_reads is None:
-        inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
-    else:
-        inj_min_reads = args.inj_min_reads
-
-    if args.target_min_reads is None:
-        target_min_reads = int(cp.get('vbctable','target_min_reads'))
-    else:
-        target_min_reads = args.target_min_reads
-
     logging.info(f'loading {args.infile}') 
     df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
@@ -171,30 +142,16 @@ if __name__ == '__main__':
     
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
-    df = process_make_vbctable_pd(df,
-                               outdir=outdir,
-                               inj_min_reads = inj_min_reads,
-                               target_min_reads = target_min_reads, 
-                               cp=cp)
 
-    logging.debug(f'Got vbctable DF len={len(df)}')
-    write_mapseq_df(df, outfile)  
-
-    logging.info(f'Making qctables')
-    make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
+    df = load_mapseq_df(args.infile, 
+                        fformat='vbctable')
 
     logging.info('Making UMI parameter report.')
     make_vbctable_parameter_report_xlsx(df, 
                                    outdir=outdir, 
                                    cp=cp, 
                                    params=None )
-
-    logging.info(f'Making frequency plots.')
-    make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
-    make_counts_plots(df, outdir=outdir, type='real', column='umi_count', cp=cp )
-    make_counts_plots(df, outdir=outdir, type='spike', column='umi_count', cp=cp )
-    
  
-    logging.info('Done make_vbctable.')
+    logging.info('Done make_vbc_params_report().')
     
     
