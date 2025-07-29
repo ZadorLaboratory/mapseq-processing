@@ -18,7 +18,6 @@ from Bio.SeqRecord import SeqRecord
 
 from collections import defaultdict
 
-
 from mapseq.stats import *
 from mapseq.utils import *
 

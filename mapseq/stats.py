@@ -11,9 +11,9 @@ from collections import defaultdict
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.core import *
-from mapseq.barcode import *
-from mapseq.utils import *
+#from mapseq.core import get_rtlist, get_default_config
+#from mapseq.barcode import *
+#from mapseq.utils import *
 
 from jinja2 import Template
 import codecs
@@ -351,66 +351,6 @@ def merge_stats(infiles, outfile):
     logging.debug('done.')
 
 
-def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
-    '''
-    make matrix of SSI vs. FASTQ  
-    
-    '''
-    logging.debug(f'inbound df len={len(df)} columns={df.columns}')
-    sh = StatsHandler(outdir=outdir)
 
-    if cp is None:
-        cp = get_default_config()
-    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') ) 
-
-    # Map label, rtprimer to SSIs    
-    logging.debug(f'getting rt labels...')
-    labels = None
-    if sampdf is not None:
-        labels = get_rtlist(sampdf)
-    n_reads = len(df)
-    sh.add_value('/qcreads/sources', 'n_reads', str(n_reads ) )
-    logging.debug(f'rtlabels={labels}')
-    bcdict = get_barcode_dict(bcfile, labels)
-    n_ssis =  len(bcdict)
-    sh.add_value('/qcreads/sources', 'n_ssis', str(n_ssis) )
-    rtdict = get_rtprimer_dict(bcfile, labels)
-    rtbcdict = get_rtbc_dict(bcfile, labels)
-    logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
-
-    logging.info('filling in rtprimer number by SSI sequence...')    
-    df['rtprimer'] = df['ssi'].map(rtdict)
-    df['rtprimer'] = df['rtprimer'].astype('category')
-    
-    logging.info('filling in label by rtprimer...')
-    df['label'] = df['rtprimer'].map(rtbcdict)
-    df['label'] = df['label'].astype('category')
-    
-    
-    gdf = df.dropna()
-    gdf.reset_index(inplace=True, drop=True)
-    n_readswssi =  len(gdf)
-    sh.add_value('/qcreads/sources', 'n_readswssi', str(n_readswssi) )
-    good_pct = ( n_readswssi / n_reads ) * 100
-    good_spct = f'{good_pct:.2f}'
-    sh.add_value('/qcreads/sources', 'n_reads_valid_ssi', str(good_spct) )
-    
-    gadf = gdf.groupby(by=['label','source'], observed=True).agg( {'source':'count'})
-    gadf.columns = ['count']
-    gadf.reset_index(inplace=True,drop=False)
-    
-    sldf = gadf.pivot(index='source',columns='label',values='count')
-    sldf.fillna(0.0, inplace=True)
-    scol = natsorted(list(sldf.columns))
-    sldf = sldf[scol]
-    nsindex = natsorted(sldf.index)
-    sldf = sldf.loc[nsindex]
-    
-    outfile = os.path.join(outdir, 'EXP.source_reads.xlsx')
-    with pd.ExcelWriter(outfile) as writer:
-        sldf.to_excel(writer, sheet_name='source by SSI')
-    return sldf
-    
-    
 
 
