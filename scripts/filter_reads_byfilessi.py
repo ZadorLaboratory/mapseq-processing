@@ -173,6 +173,7 @@ if __name__ == '__main__':
     df = filter_by_source_ssi(df,
                              cp=cp
                              )
+    
 
     logging.debug(f'filtering by read quality. repeats. Ns.')
     df = filter_reads_pd(df, 
