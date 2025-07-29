@@ -11,8 +11,9 @@ from collections import defaultdict
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
-from mapseq.utils import *
 from mapseq.core import *
+from mapseq.barcode import *
+from mapseq.utils import *
 
 from jinja2 import Template
 import codecs
@@ -357,8 +358,6 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     '''
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     sh = StatsHandler(outdir=outdir)
-    logging.debug(f'dropping sequence column...')    
-    df = df.drop('sequence',axis=1)
 
     if cp is None:
         cp = get_default_config()

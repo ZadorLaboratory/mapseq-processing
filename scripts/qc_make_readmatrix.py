@@ -107,6 +107,9 @@ if __name__ == '__main__':
     logging.info(f'loading {args.infile}') 
     df = load_mapseq_df( args.infile, fformat='reads', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+    
+    logging.info(f'dropping sequence column...')
+    df = df.drop('sequence', axis=1)
 
     sldf = qc_make_readmatrix( df,
                         sampdf=sampdf,
