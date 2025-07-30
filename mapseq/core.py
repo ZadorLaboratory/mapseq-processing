@@ -39,6 +39,7 @@ from mapseq.barcode import *
 from mapseq.stats import *
 from mapseq.plotting import *
 from mapseq.collapse import *
+from lib2to3.pgen2.pgen import DFAState
 
 
 #
@@ -607,10 +608,15 @@ def process_fastq_pairs_pd_chunked( infilelist,
 def process_fastq_grouped(   infilelist, 
                              outdir,                         
                              force=False, 
-                             cp = None):
+                             cp = None,
+                             write_each=False,
+                             filter_ssi=True,
+                             ):
     '''
     parse infiles by pairs. 
-    get extra field(s) 
+    get extra field(s)
+    optionally filter by extra fields values. 
+         
      
     '''
     r1s = int(cp.get('fastq','r1start'))
@@ -672,10 +678,11 @@ def process_fastq_grouped(   infilelist,
         logging.info(f'getting additional field(s)...')
         fieldlist = add_split_fields(df, 'sequence', cp, 'fastq')
         
-        # save to file. 
-        logging.info(f'Saving to readfile...')
-        of = os.path.join(outdir, f'{source_label}.reads.tsv')
-        write_mapseq_df(df, of)
+        # save to file.
+        if write_each: 
+            logging.info(f'Saving to readfile...')
+            of = os.path.join(outdir, f'{source_label}.reads.tsv')
+            write_mapseq_df(df, of)
         
         # gather extra field stats. 
         for field in fieldlist:
@@ -697,6 +704,13 @@ def process_fastq_grouped(   infilelist,
         sh.add_value('/fastq',f'pair{pairnum}_len', len(df) )
         pairnum += 1
 
+        # Optionally handle per-file SSI filtering.
+        if filter_ssi:
+            logging.debug(f'filtering by dominant SSI value in source.')
+            df = filter_non_dominant(df)
+        else:
+            logging.debug(f'no filtering by SSI.')
+
         logging.debug(f'continuing creation of full outdf...')
         outdf = pd.concat([outdf, df], copy=False, ignore_index=True)
 
@@ -704,7 +718,27 @@ def process_fastq_grouped(   infilelist,
     logging.info('Finished processing all input.')
     sh.add_value('/fastq','reads_handled', len(outdf) )
     sh.add_value('/fastq','pairs_handled', pairnum )
+    outdf.reset_index(inplace=True, drop=True)
     return outdf          
+
+
+def filter_non_dominant(df,
+                        dom_column = 'ssi',
+                        drop_dom = True,
+                        ):
+    '''
+    filter rows of df that do not have the dominant value of <dom_column>
+    '''
+    init_len = len(df)
+    logging.debug(f'handling df len={init_len}')
+    vcser = df[dom_column].value_counts()
+    dom_val = vcser.index[0]
+    logging.debug(f'dominant value={dom_val}')
+    df = df[ df[dom_column]  ==  dom_val ]
+    logging.debug(f'filtered len={len(df)}')
+    if drop_dom:
+        df = df.drop(dom_column, axis=1)
+    return df 
 
 
 def add_split_fields(df, column, cp, section):
