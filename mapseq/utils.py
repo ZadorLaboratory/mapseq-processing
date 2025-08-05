@@ -404,7 +404,7 @@ def package_pairs(itemlist):
     return pairlist
 
 
-def parse_sourcefile(infile, source_regex):
+def parse_sourcefile(infile, base_regex, group_no=1):
     '''
     return matching portion of the filename to indicate source of data.
     
@@ -414,8 +414,8 @@ def parse_sourcefile(infile, source_regex):
     #    infile = infile[:-3]
     dirpath = os.path.dirname(infile)
     filename = os.path.basename(infile)
-    m = re.search(source_regex, filename)
-    label = m.group(1)
+    m = re.search(base_regex, filename)
+    label = m.group(group_no)
     logging.debug(f'matched {label} part of {filename}')
     return label
     

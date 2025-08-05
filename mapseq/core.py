@@ -606,18 +606,16 @@ def process_fastq_pairs_pd_chunked( infilelist,
 
 
 def process_fastq_grouped(   infilelist, 
-                             outdir,                         
+                             outdir,
+                             sampdf=None,                         
                              force=False, 
                              cp = None,
-                             write_each=False,
-                             filter_ssi=True,
                              ):
     '''
     parse infiles by pairs. 
     get extra field(s)
     optionally filter by extra fields values. 
-         
-     
+        
     '''
     r1s = int(cp.get('fastq','r1start'))
     r1e = int(cp.get('fastq','r1end'))
@@ -626,7 +624,16 @@ def process_fastq_grouped(   infilelist,
     
     chunksize = int(cp.get('fastq','chunksize'))
     source_regex = cp.get('fastq','source_regex')
-    logging.info(f'chunksize={chunksize} lines.')
+    ourtube_regex = cp.get('fastq','ourtube_regex')
+
+    logging.info(f' source_regex = {source_regex} ourtube_regex = {ourtube_regex}')
+
+    write_each = cp.getboolean('fastq','write_each')
+    filter_by_non_dominant = cp.getboolean('fastq','filter_by_non_dominant')
+    filter_column = cp.get('fastq','filter_column')
+    drop_filter_column = cp.getboolean('fastq','drop_filter_column')
+   
+    logging.info(f' write_each = {write_each} filter_by_non_dominant={filter_by_non_dominant} filter_column={filter_column} drop_filter_column={drop_filter_column} chunksize={chunksize} lines.')
     logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
     
     outdf = None
@@ -636,8 +643,9 @@ def process_fastq_grouped(   infilelist,
 
     for (read1file, read2file) in infilelist:
         df = None
-        source_label = parse_sourcefile(read1file, source_regex)
-        logging.info(f'handling {read1file}, {read2file} source_label={source_label}')
+        source_label = parse_sourcefile(read1file, source_regex, 1 )
+        source_tube = parse_sourcefile(read1file, ourtube_regex, 1 )
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label} ourtube={source_tube}')
         start = dt.datetime.now()
         fh1 = get_fh(read1file)
         dfi1 = pd.read_csv(fh1, 
@@ -680,9 +688,11 @@ def process_fastq_grouped(   infilelist,
         
         # save to file.
         if write_each: 
-            logging.info(f'Saving to readfile...')
+            logging.info(f'write_each={write_each}  Saving to readfile...')
             of = os.path.join(outdir, f'{source_label}.reads.tsv')
             write_mapseq_df(df, of)
+        else:
+            logging.debug(f'write_each={write_each} skipping.')
         
         # gather extra field stats. 
         for field in fieldlist:
@@ -704,12 +714,25 @@ def process_fastq_grouped(   infilelist,
         sh.add_value('/fastq',f'pair{pairnum}_len', len(df) )
         pairnum += 1
 
-        # Optionally handle per-file SSI filtering.
-        if filter_ssi:
-            logging.debug(f'filtering by dominant SSI value in source.')
-            df = filter_non_dominant(df)
+        # Optionally handle per-file non-dominant filtering.
+        if filter_by_non_dominant:
+            filter_column = cp.get('fastq','filter_column')
+            logging.debug(f'filtering by dominant value in source.')
+            df = filter_non_dominant( df, 
+                                      filter_column=filter_column, 
+                                      drop_filter_column=drop_filter_column)
         else:
-            logging.debug(f'no filtering by SSI.')
+            logging.debug(f'no filtering by non-dominant column value.')
+
+        if filter_by_sampleinfo:
+            filter_column = cp.get('fastq','filter_column')
+            df = filter_by_sampleinfo(df,
+                                      sampdf = sampdf,
+                                      ourtube = source_tube,
+                                      cp=cp
+                                      )
+        else:
+            logging.debug(f'no filtering by sampleinfo SSI.') 
 
         logging.debug(f'continuing creation of full outdf...')
         outdf = pd.concat([outdf, df], copy=False, ignore_index=True)
@@ -723,23 +746,72 @@ def process_fastq_grouped(   infilelist,
 
 
 def filter_non_dominant(df,
-                        dom_column = 'ssi',
-                        drop_dom = True,
+                        filter_column = 'ssi',
+                        drop_filter_column = True,
                         ):
     '''
     filter rows of df that do not have the dominant value of <dom_column>
     '''
     init_len = len(df)
     logging.debug(f'handling df len={init_len}')
-    vcser = df[dom_column].value_counts()
+    vcser = df[filter_column].value_counts()
     dom_val = vcser.index[0]
     logging.debug(f'dominant value={dom_val}')
-    df = df[ df[dom_column]  ==  dom_val ]
+    df = df[ df[filter_column]  ==  dom_val ]
     logging.debug(f'filtered len={len(df)}')
-    if drop_dom:
-        df = df.drop(dom_column, axis=1)
+    if drop_filter_column:
+        df = df.drop(filter_column, axis=1)
     return df 
 
+
+def filter_by_sampleinfo(df,
+                         sampdf,
+                         ourtube,
+                         cp=None
+                         ):
+    '''
+    fairly hard-coded, assumes 'ssi' column. 
+    assign rtprimer from ssi sequence
+    choose rtprimer form sampdf given ourtube value. 
+    only retain rows with the correct rtprimer.
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    logging.debug(f'len(df)={len(df)} ourtube={ourtube}')
+    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
+    logging.debug(f'bcfile={bcfile}')
+
+    drop_sampleinfo_columns = cp.getboolean('fastq','drop_sampleinfo_columns')
+
+    # Map label, rtprimer to SSIs    
+    logging.debug(f'getting rt labels...')
+    labels = get_rtlist(sampdf)
+    logging.debug(f'rtlabels={labels}')
+    bcdict = get_barcode_dict(bcfile, labels)
+    rtdict = get_rtprimer_dict(bcfile, labels)
+    rtbcdict = get_rtbc_dict(bcfile, labels)
+    logging.debug(f'got {len(bcdict)} barcodes with labels and primer number.')    
+   
+    logging.info('filling in rtprimer number by SSI sequence...')    
+    df['rtprimer'] = df['ssi'].map(rtdict)
+    df['rtprimer'] = df['rtprimer'].astype('category')
+
+    sr = sampdf.loc[ sampdf['ourtube'] == ourtube]
+    logging.debug(f'ourtube={ourtube} row={sr}')
+    sv = sr['rtprimer']
+    logging.debug(f'rtprimer ser = {sv}')
+    rtprimer_val = sv.iloc[0]
+    logging.info(f'rtprimer value = {rtprimer_val}')
+
+    df = df[df['rtprimer'] == rtprimer_val]
+    df.reset_index(inplace=True, drop=True)
+    if drop_sampleinfo_columns:
+        logging.debug('dropping ssi, rtprimer')
+        df = df.drop(['ssi','rtprimer'], axis=1)   
+    logging.debug(f'filtered len(df)={len(df)} ')
+    return df
+    
 
 def add_split_fields(df, column, cp, section):
     '''
@@ -2588,52 +2660,4 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
         byssidf.to_excel(writer,sheet_name='Dominant by SSI' )
         byfiledf.to_excel(writer,sheet_name='Dominant by file' )
     return sldf
-    
-
-def filter_by_source_ssi(   df,
-                            cp=None,
-                            group_column = 'source',
-                            dom_column = 'ssi',
-                            drop_dom = True,
-                             ):
-    '''
-    determine dominant <dom_col> value when grouped by <group_column>
-    remove all rows without dominant value. 
-    assumes group_column is deterministic, limited set (like filenames) 
-    expect dom_column to have lots of varied values (like sequence)
-        
-    '''       
-    if cp is None:
-        cp = get_default_config()
-        
-    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') ) 
-    project_id = cp.get('project','project_id')
-    
-    # group by source file and filter. 
-    gbdf = df.groupby(by=[ group_column, dom_column], observed=True).agg( {group_column:'count'})
-    gbdf.columns = ['count']
-    gbdf.reset_index(inplace=True,drop=False)
-
-    groups = list( gbdf[group_column].unique() )
-    logging.debug(f'handling {len(groups)} unique groups: {groups}')
-    ndf = pd.DataFrame(columns=df.columns)
-    
-    for group in groups:
-        logging.debug(f'handling group={group}')
-        gdf = gbdf[ gbdf[group_column] == group ]
-        dom_val = gdf.sort_values(by='count', ascending=False).iloc[0][dom_column]    
-        fdf = df[  df[group_column] ==  group ]
-        logging.debug(f'group={group} len={len(fdf)} dominant value = {dom_val}')
-        fdf = fdf[ fdf[dom_column]  ==  dom_val ]
-        logging.debug(f'group={group} len={len(fdf)} dominant value = {dom_val}')
-               
-        ndf = pd.concat([ndf, fdf], copy=False, ignore_index=True)
-    if drop_dom:
-        logging.debug(f'dropping redundant column={dom_column}')
-        ndf = ndf.drop(dom_column, axis=1)
-    logging.debug(f'original DF len={len(df)} filtered DF len={len(ndf)}')
-    return ndf
-    
-         
-
 

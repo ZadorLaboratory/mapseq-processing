@@ -151,10 +151,10 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
-    df = process_fastq_grouped(infilelist, 
-                                     outdir,                         
-                                     force=args.force,
-                                     cp = cp)
+    df = process_fastq_pairs(infilelist, 
+                             outdir,                         
+                             force=args.force,
+                             cp = cp)
     
     write_mapseq_df(df, outfile)    
     logging.info('Done process_fastq_pairs')  

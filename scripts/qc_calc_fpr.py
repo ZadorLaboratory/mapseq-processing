@@ -100,10 +100,12 @@ if __name__ == '__main__':
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infile}')
+    
+    project_id = cp.get('project','project_id')
           
     # set outdir / outfile
     outdir = os.path.abspath('./')
-    outfile = f'{outdir}/readtable.tsv'
+    outfile = f'{outdir}/{project_id}.false_positive.tsv'
     if args.outdir is None:
         if args.outfile is not None:
             logging.debug(f'outdir not specified. outfile specified.')
@@ -132,12 +134,7 @@ if __name__ == '__main__':
 
     logging.info(f'handling {args.infile} to outdir {outdir}')    
     logging.debug(f'infile = {args.infile}')
-        
-    logging.debug(f'loading sample DF...')
-    sampdf = load_sample_info(args.sampleinfo, args.samplesheet, cp)
-    logging.debug(f'\n{sampdf}')
-    sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-    
+           
     logging.info(f'loading {args.infile}') 
     df = load_mapseq_df( args.infile, fformat='vbctable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
@@ -149,7 +146,7 @@ if __name__ == '__main__':
     sh = StatsHandler(outdir=outdir, datestr=datestr)        
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}')
     
-    rs = calc_false_positive(df, cp=cp)
-    print(rs)
+    fprdf = calc_false_positive(df, cp=cp)
+    logging.info(f'Done. FPR table={outfile}')
     
      

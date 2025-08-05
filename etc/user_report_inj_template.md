@@ -45,7 +45,7 @@ For each brain:
 1. Sequencing depth for projection sites. 
    There are a minimum of {{ conf['vbctable']['target_min_reads'] }} reads for each VBC+UMI+SSI combination in target site samples. This sequencing depth is considered enough for target sites.
 
-Spike-in counts are mostly uniform across all projections sites.  
+1. Spike-in counts are mostly uniform across all projections sites.  
 
 1. We have checked barcode amount in controls. 
 

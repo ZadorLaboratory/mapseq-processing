@@ -7,13 +7,10 @@ import datetime as dt
 
 from pprint import pprint
 from collections import defaultdict
+from natsort import natsorted
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
-
-#from mapseq.core import get_rtlist, get_default_config
-#from mapseq.barcode import *
-#from mapseq.utils import *
 
 from jinja2 import Template
 import codecs
@@ -205,10 +202,14 @@ def calc_template_switch(df, cp=None):
     '''
 
 
-def calc_false_positive(df, cp=None):
+def calc_false_positive(df, 
+                        label_column='label',
+                        inj_min_umi=5, 
+                        cp=None):
     '''
-    from full VBCtable, calculate false positive rate. 
-    
+    from full VBCtable, calculate false positive rate based on target-negative samples, for a given
+    injection threshold.   
+        
     from UMI_threshold.m 
 
     threshold_UMI = 0:10;       % test a variety of UMI threshold_UMI
@@ -232,10 +233,72 @@ def calc_false_positive(df, cp=None):
     '''    
     if cp is None:
         cp = get_default_config()
+
+    require_injection = cp.getboolean('vbcfilter','require_injection')
+    
+    twcdf = df[ (df['site'] == 'target-water-control') &  (df['type'] == 'real' ) ]
+    tar_max_ctrl = twcdf.umi_count.max()
+    logging.debug(f'max target control = {tar_max_ctrl}')
+    
+    iwc = df[ (df['site'] == 'injection-water-control') &  (df['type'] == 'real' ) ]
+    inj_max_ctrl = iwc.umi_count.max()
+    logging.debug(f'max injection control = {inj_max_ctrl}')
+    
+    # make unfiltered matrix of ALL real data. 
+    reals = df[df['type'] == 'real']       
+    rmdf = reals.pivot(index='vbc_read', columns=label_column, values='umi_count')
+    scol = natsorted(list(rmdf.columns))
+    rmdf = rmdf[scol]
+    rmdf.fillna(value=0, inplace=True)
+    
+    tar_labels = list( reals[ reals['site'] == 'target'  ]['label'].unique())
+    inj_labels = list( reals[ reals['site'] == 'injection' ]['label'].unique())
+    
+    tar_ctrl_labels = list( reals[ reals['site'] == 'target-water-control' ]['label'].unique())
+    tar_neg_labels = list( reals[ reals['site'] == 'target-negative' ]['label'].unique())
+    #inj_ctrl_labels = list( reals[ reals['site'] == 'injection-water-control' ]['label'].unique())
+
+    injections = rmdf[inj_labels]
+    #target_ctrls = rmdf[tar_ctrl_labels]
+    target_ctrls = rmdf[tar_neg_labels]
+    
+    #for clabel in tar_ctrl_labels:
+    for clabel in tar_neg_labels:
+        tar_labels.append(clabel)
+        #logging.debug(f'expanded tar_labels={tar_labels}\ntar_ctrl_labels={tar_ctrl_labels}\ninj_labels={inj_labels} ')
+        logging.debug(f'expanded tar_labels={tar_labels}\ntar_neg_labels={tar_neg_labels}\ninj_labels={inj_labels} ')
+    targets = rmdf[tar_labels]
+
+    for tar_min_umi in range(0,int(tar_max_ctrl)):
+        projecting_barcodes = rmdf[(injections.max(axis=1) > inj_min_umi)  & (targets.max(axis=1) > tar_min_umi)]
+        logging.debug(f'[{tar_min_umi}] n_projecting = {len(projecting_barcodes)}')
+        ipass = injections.max(axis=1) > inj_min_umi 
+        #logging.debug(f'[{tar_min_umi}] n_ipass = {sum(ipass)}')
+        tcpass = target_ctrls.max(axis=1) > tar_min_umi
+        #logging.debug(f'[{tar_min_umi}] n_tcpass = {sum(tcpass)}')
+        num_false_positive = sum( ipass & tcpass )
+        logging.debug(f'[{tar_min_umi}] n_ipass = {sum(ipass)} n_tcpass = {sum(tcpass)} num_false_positive={num_false_positive} ')
+
+        tpass = targets.max(axis=1) > tar_min_umi
+        #logging.debug(f'[{tar_min_umi}] n_tpass = {sum(tpass)}')
+        num_total = sum( ipass & tpass )        
+        logging.debug(f'[{tar_min_umi}] n_tpass = {sum(tpass)} num_total={num_total} ')
         
+        if num_total != 0:      
+            error_rate_false_positive = num_false_positive / num_total
+        else:
+            error_rate_false_positive = 0.0
+        logging.debug(f'[{tar_min_umi}] error_rate_false_positive = {error_rate_false_positive} ')
+    return df
+    
 #
 #        QC/ Assessment routines. 
-#
+
+
+
+
+
+
         
 def assess_readinfo(df,
                     outdir=None, 

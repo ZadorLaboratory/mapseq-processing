@@ -55,7 +55,7 @@ if __name__ == '__main__':
                         required=True,
                         default=None,
                         type=str, 
-                        help='XLS sampleinfo file. ')
+                        help='XLS or TSV sampleinfo file. ')
 
     parser.add_argument('-S','--samplesheet', 
                         metavar='samplesheet',

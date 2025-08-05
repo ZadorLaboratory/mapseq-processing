@@ -40,6 +40,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=False,
+                        default=None,
+                        type=str, 
+                        help='XLS or TSV sampleinfo file. ')
+
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=False,
@@ -65,6 +72,16 @@ if __name__ == '__main__':
                     action="store_true", 
                     default=False, 
                     help='Recalculate even if output exists.') 
+
+    parser.add_argument('-w','--write_each', 
+                    action="store_true", 
+                    default=None, 
+                    help='Write output for each input pair. ')
+
+    parser.add_argument('-F','--filter_non_dominant', 
+                    action="store_true", 
+                    default=None, 
+                    help='Remove non-dominant values.')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -95,6 +112,13 @@ if __name__ == '__main__':
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'force={args.force} infiles={args.infiles}')
+
+    # override via config if needed. 
+    if args.filter_non_dominant is not None:
+        cp.set('fastq','filter_non_dominant', str(args.filter_non_dominant))
+
+    if args.write_each is not None:
+        cp.set('fastq','write_each', str( args.write_each ))
 
     # check nargs. 
     if (len(args.infiles) < 2)  or (len(args.infiles) % 2 != 0 ):
@@ -144,6 +168,16 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
+
+    if args.sampleinfo is not None:
+        logging.debug(f'loading sample DF...')
+        sampdf = load_sample_info(args.sampleinfo, cp=cp)
+        logging.debug(f'\n{sampdf}')
+        sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
+    else:
+        sampdf = None
+        logging.warning('No sampleinfo. Cannot guarantee SSI per FASTQ pair.')
+    
         
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
@@ -151,10 +185,11 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
-    df = process_fastq_pairs(infilelist, 
-                             outdir,                         
-                             force=args.force,
-                             cp = cp)
+    df = process_fastq_grouped( infilelist, 
+                                outdir,
+                                sampdf = sampdf,                          
+                                force=args.force,
+                                cp = cp)
     
     write_mapseq_df(df, outfile)    
     logging.info('Done process_fastq_pairs')  

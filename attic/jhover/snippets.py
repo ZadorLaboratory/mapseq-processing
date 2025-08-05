@@ -3017,3 +3017,48 @@ def process_filter_vbctable_global(df,
     
     return df
 
+def filter_by_source_ssi(   df,
+                            cp=None,
+                            group_column = 'source',
+                            dom_column = 'ssi',
+                            drop_dom = True,
+                             ):
+    '''
+    determine dominant <dom_col> value when grouped by <group_column>
+    remove all rows without dominant value. 
+    assumes group_column is deterministic, limited set (like filenames) 
+    expect dom_column to have lots of varied values (like sequence)
+        
+    '''       
+    if cp is None:
+        cp = get_default_config()
+        
+    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') ) 
+    project_id = cp.get('project','project_id')
+    
+    # group by source file and filter. 
+    gbdf = df.groupby(by=[ group_column, dom_column], observed=True).agg( {group_column:'count'})
+    gbdf.columns = ['count']
+    gbdf.reset_index(inplace=True,drop=False)
+
+    groups = list( gbdf[group_column].unique() )
+    logging.debug(f'handling {len(groups)} unique groups: {groups}')
+    ndf = pd.DataFrame(columns=df.columns)
+    
+    for group in groups:
+        logging.debug(f'handling group={group}')
+        gdf = gbdf[ gbdf[group_column] == group ]
+        dom_val = gdf.sort_values(by='count', ascending=False).iloc[0][dom_column]    
+        fdf = df[  df[group_column] ==  group ]
+        logging.debug(f'group={group} len={len(fdf)} dominant value = {dom_val}')
+        fdf = fdf[ fdf[dom_column]  ==  dom_val ]
+        logging.debug(f'group={group} len={len(fdf)} dominant value = {dom_val}')
+               
+        ndf = pd.concat([ndf, fdf], copy=False, ignore_index=True)
+    if drop_dom:
+        logging.debug(f'dropping redundant column={dom_column}')
+        ndf = ndf.drop(dom_column, axis=1)
+    logging.debug(f'original DF len={len(df)} filtered DF len={len(ndf)}')
+    return ndf
+    
+         
