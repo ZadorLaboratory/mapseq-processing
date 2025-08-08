@@ -632,8 +632,11 @@ def process_fastq_grouped(   infilelist,
     filter_by_non_dominant = cp.getboolean('fastq','filter_by_non_dominant')
     filter_column = cp.get('fastq','filter_column')
     drop_filter_column = cp.getboolean('fastq','drop_filter_column')
-   
-    logging.info(f' write_each = {write_each} filter_by_non_dominant={filter_by_non_dominant} filter_column={filter_column} drop_filter_column={drop_filter_column} chunksize={chunksize} lines.')
+    filter_by_sampleinfo_ssi = cp.getboolean('fastq','filter_by_sampleinfo_ssi')
+    if sampdf is None:
+        filter_by_sampleinfo_ssi = False
+        logging.warning('No sampleinfo provided. Filename-based SSI filtering not possible.')
+    logging.info(f' write_each = {write_each} filter_by_non_dominant={filter_by_non_dominant} filter_column={filter_column} drop_filter_column={drop_filter_column} filter_by_sampleinfo_ssi={filter_by_sampleinfo_ssi} chunksize={chunksize} lines.')
     logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
     
     outdf = None
@@ -644,7 +647,8 @@ def process_fastq_grouped(   infilelist,
     for (read1file, read2file) in infilelist:
         df = None
         source_label = parse_sourcefile(read1file, source_regex, 1 )
-        source_tube = parse_sourcefile(read1file, ourtube_regex, 1 )
+        if filter_by_sampleinfo_ssi:
+            source_tube = parse_sourcefile(read1file, ourtube_regex, 1 )
         logging.info(f'handling {read1file}, {read2file} source_label={source_label} ourtube={source_tube}')
         start = dt.datetime.now()
         fh1 = get_fh(read1file)
@@ -724,7 +728,7 @@ def process_fastq_grouped(   infilelist,
         else:
             logging.debug(f'no filtering by non-dominant column value.')
 
-        if filter_by_sampleinfo:
+        if filter_by_sampleinfo_ssi:
             filter_column = cp.get('fastq','filter_column')
             df = filter_by_sampleinfo(df,
                                       sampdf = sampdf,
