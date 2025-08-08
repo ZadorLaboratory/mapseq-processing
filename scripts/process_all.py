@@ -103,7 +103,8 @@ def process_mapseq_all(config_file,
         # define infile
         if sname != 'reads':
             instep = STEPLIST [ STEPLIST.index(step) - 1 ]
-            insname = DIRMAP[instep] 
+            sprog = STEPMAP[instep]
+            insname = DIRMAP[sprog]
             infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.parquet')
         
         log_file = os.path.join(outdir, f'{step}.log')
