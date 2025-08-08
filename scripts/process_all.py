@@ -19,15 +19,25 @@ from mapseq.utils import *
 from mapseq.stats import *  
 
 
-STEPLIST=[ 'process_fastq_pairs',
-           'aggregate_reads',
-           'filter_split' ,
-           'make_readtable',
-           'align_collapse',
-           'make_vbctable',
-           'filter_vbctable',
-           'make_matrices'
-           ]
+STEPLIST=[ 'reads'      ,
+          'aggregated',
+          'filtered',
+          'readtable' ,
+          'collapsed' ,
+          'vbctable'  ,
+          'vbcfiltered',
+          'matrices' 
+         ]
+
+STEPMAP={ 'reads'       : 'process_fastq_pairs',
+          'aggregated'  : 'aggregate_reads',
+          'filtered'    : 'filter_split' ,
+          'readtable'   : 'make_readtable',
+          'collapsed'   : 'align_collapse',
+          'vbctable'    : 'make_vbctable',
+          'vbcfiltered' : 'filter_vbctable',
+          'matrices'    : 'make_matrices'
+        }
 
 
 DIRMAP = { 'process_fastq_pairs': 'reads',
@@ -45,16 +55,19 @@ def process_mapseq_all(config_file,
                        sampleinfo_file, 
                        infiles , 
                        outdir=None, 
-                       force=False ):    
+                       force=False,
+                       halt=None ):    
     '''    
     performs end-to-end default processing. 
     executes each pipeline script in an external process. 
     
     '''
+    global STEPLIST
+    
     logging.info(f'{len(infiles)} input files. config={config_file} sampleinfo={sampleinfo_file}, outdir={outdir}, force={force}')
     cp = ConfigParser()
     cp.read(config_file)
-    expid = cp.get('project','project_id')
+    project_id = cp.get('project','project_id')
 
     if outdir is None:
         outdir = os.path.abspath('./')
@@ -63,25 +76,38 @@ def process_mapseq_all(config_file,
     (dirpath, base, ext) = split_path(sys.argv[0])
     logging.debug(f'script_dir = {dirpath}')
 
+    if halt is not None:
+        newstep = []
+        for step in STEPLIST:
+            if step != halt:
+                newstep.append(step)
+            elif step == halt:
+                newstep.append(step)
+                logging.debug(f'found halting step {halt}. breaking. ')
+                break
+        logging.debug(f'new STEPLIST={STEPLIST}')
+        STEPLIST = newstep
+
     for step in STEPLIST:
         runstep = True
         soutdir = None
         soutfile = None
-        sname = DIRMAP[step]
-        logging.debug(f'handling step={step} sname={sname}')
+        sprog = STEPMAP[step]
+        sname = DIRMAP[sprog]
+        logging.debug(f'handling step={step} sprog={sprog} sname={sname}')
         if sname == 'matrices':
             soutdir = os.path.join(outdir, f'{sname}.out/')
         else:
-            soutfile = os.path.join(outdir, f'{sname}.out/{expid}.{sname}.tsv')
+            soutfile = os.path.join(outdir, f'{sname}.out/{project_id}.{sname}.tsv')
     
         # define infile
         if sname != 'reads':
             instep = STEPLIST [ STEPLIST.index(step) - 1 ]
             insname = DIRMAP[instep] 
-            infile = os.path.join( outdir, f'{insname}.out/{expid}.{insname}.parquet')
+            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.parquet')
         
         log_file = os.path.join(outdir, f'{step}.log')
-        cmd = [ os.path.join(dirpath, f'{step}.py'),
+        cmd = [ os.path.join(dirpath, f'{sprog}.py'),
            '-d',
            '-c', config_file, 
            '-L', log_file,
@@ -176,8 +202,7 @@ if __name__ == '__main__':
                         required=False,
                         default=None,
                         type=str, 
-                        help='Step name to stop after.')
-
+                        help=f'Stage name to stop after: {STEPLIST}')
 
     parser.add_argument('infiles' ,
                         metavar='infiles', 
@@ -218,7 +243,8 @@ if __name__ == '__main__':
                         sampleinfo_file=args.sampleinfo, 
                         infiles=args.infiles , 
                         outdir=outdir, 
-                        force=args.force
+                        force=args.force, 
+                        halt = args.halt
                         )
 
     logging.info('Done process_all.') 
