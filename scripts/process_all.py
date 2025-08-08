@@ -20,13 +20,13 @@ from mapseq.stats import *
 
 
 STEPLIST=[ 'reads'      ,
-          'aggregated',
-          'filtered',
-          'readtable' ,
-          'collapsed' ,
-          'vbctable'  ,
-          'vbcfiltered',
-          'matrices' 
+           'aggregated',
+           'filtered',
+           'readtable' ,
+           'collapsed' ,
+           'vbctable'  ,
+           'vbcfiltered',
+           'matrices' 
          ]
 
 STEPMAP={ 'reads'       : 'process_fastq_pairs',
@@ -95,6 +95,7 @@ def process_mapseq_all(config_file,
         sprog = STEPMAP[step]
         sname = DIRMAP[sprog]
         logging.debug(f'handling step={step} sprog={sprog} sname={sname}')
+        
         if sname == 'matrices':
             soutdir = os.path.join(outdir, f'{sname}.out/')
         else:
@@ -103,8 +104,8 @@ def process_mapseq_all(config_file,
         # define infile
         if sname != 'reads':
             instep = STEPLIST [ STEPLIST.index(step) - 1 ]
-            sprog = STEPMAP[instep]
-            insname = DIRMAP[sprog]
+            inprog = STEPMAP[instep]
+            insname = DIRMAP[inprog]
             infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.parquet')
         
         log_file = os.path.join(outdir, f'{step}.log')
