@@ -649,7 +649,8 @@ def process_fastq_grouped(   infilelist,
         source_label = parse_sourcefile(read1file, source_regex, 1 )
         if filter_by_sampleinfo_ssi:
             source_tube = parse_sourcefile(read1file, ourtube_regex, 1 )
-        logging.info(f'handling {read1file}, {read2file} source_label={source_label} ourtube={source_tube}')
+            logging.info(f'source_tube={source_tube}')
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label} ')
         start = dt.datetime.now()
         fh1 = get_fh(read1file)
         dfi1 = pd.read_csv(fh1, 
