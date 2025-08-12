@@ -131,7 +131,7 @@ if __name__ == '__main__':
         log.addHandler(logStream)
     
     logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
+    df = load_mapseq_df( args.infile, fformat='vbctable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
        
     if args.datestr is None:
