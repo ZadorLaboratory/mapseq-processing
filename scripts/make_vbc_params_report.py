@@ -130,9 +130,6 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
     
-    logging.info(f'loading {args.infile}') 
-    df = load_mapseq_df( args.infile, fformat='vbctable', use_dask=False)
-    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
        
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
@@ -142,7 +139,7 @@ if __name__ == '__main__':
     
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
-
+    logging.info(f'loading {args.infile}') 
     df = load_mapseq_df(args.infile, 
                         fformat='vbctable')
 
