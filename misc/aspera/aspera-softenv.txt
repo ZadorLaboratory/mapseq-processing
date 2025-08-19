@@ -29,6 +29,10 @@ Create an environment for the MAPseq pipeline:
 Activate the environment:
 	conda activate aspera
 
+Install copy command within the client:
+
+ascli conf ascp install
+
 Optionally update client/Ruby base. 
 
 

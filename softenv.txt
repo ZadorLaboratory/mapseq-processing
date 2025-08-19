@@ -60,7 +60,19 @@ Clone the mapseq-processing software from the repository to the standard locatio
 
 	mkdir -p ~/git ; cd ~/git
 	git clone https://github.com/ZadorLaboratory/mapseq-processing.git
+	
+	Add script to path for mapseq environment.
+	activate.d/mapseq_scriptpath.sh
+	#!/bin/bash
 	export PATH=~/git/mapseq-processing/scripts:$PATH
+	
+	deactivate.d/mapseq_scriptpath.sh
+	#!/bin/bash
+	# Remove the custom path added during activation
+	# Need to expand tilde for sed input.
+	GITSCRIPTS=~/git/mapseq-processing/scripts
+	export PATH=$(echo $PATH | sed -e "s|$GITSCRIPTS||g")
+	 
 	
 Optionally also clone the mapseq-analysis package similarly:
 	git clone https://github.com/ZadorLaboratory/mapseq-analysis.git
