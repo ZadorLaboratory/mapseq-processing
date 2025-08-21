@@ -128,6 +128,8 @@ def process_mapseq_all(config_file,
             cmd.append(sampleinfo_file)
                     
         if sname == 'reads':
+            cmd.append('-s')
+            cmd.append(sampleinfo_file)
             for fn in infiles:
                 cmd.append(fn)
         else:
