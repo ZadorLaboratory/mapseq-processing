@@ -730,6 +730,7 @@ def process_fastq_grouped(   infilelist,
             logging.debug(f'no filtering by non-dominant column value.')
 
         if filter_by_sampleinfo_ssi:
+            logging.debug(f'filtering by ssi. source_label={source_label} source_tube={source_tube}')
             filter_column = cp.get('fastq','filter_column')
             df = filter_by_sampleinfo(df,
                                       sampdf = sampdf,
@@ -783,7 +784,7 @@ def filter_by_sampleinfo(df,
     '''
     if cp is None:
         cp = get_default_config()
-    logging.debug(f'len(df)={len(df)} ourtube={ourtube}')
+    logging.debug(f'len(df)={len(df)} ourtube={ourtube} type(ourtube)={type(ourtube)} ')
     bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
     logging.debug(f'bcfile={bcfile}')
 
