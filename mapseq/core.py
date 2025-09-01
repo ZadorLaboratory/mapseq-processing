@@ -802,7 +802,11 @@ def filter_by_sampleinfo(df,
     logging.info('filling in rtprimer number by SSI sequence...')    
     df['rtprimer'] = df['ssi'].map(rtdict)
     df['rtprimer'] = df['rtprimer'].astype('category')
-
+    
+    # Normalize case for both filename and sampleinfo
+    ourtube = ourtube.lower()
+    sampdf['ourtube'] = sampdf['ourtube'].str.lower()
+    
     sr = sampdf.loc[ sampdf['ourtube'] == ourtube]
     logging.debug(f'ourtube={ourtube} row={sr}')
     sv = sr['rtprimer']
