@@ -44,11 +44,14 @@ Install dependencies, useful tools:
     conda install -y pandas pyarrow ipython jupyter numpy scikit-learn matplotlib seaborn biopython scipy openpyxl natsort paramiko h5py dask
 	brew install bowtie2
 
-	conda install pypandoc
+	conda install pypandoc texlive-core 
+
+	
 
     # For printing notebook as PDF
     # See https://gist.github.com/peterhurford/75957ba9335e755013b87254ec85fab1
     #  conda install pandoc 
+
     #  Install global MacTeX 2024/TexLive from 
     #  http://www.texts.io/support/0001/   i.e. https://tug.org/mactex/mactex-download.html
     #  sudo tlmgr update --self

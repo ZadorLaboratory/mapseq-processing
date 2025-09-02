@@ -154,12 +154,12 @@ if __name__ == '__main__':
         filename = os.path.basename(filepath)
         (base, ext) = os.path.splitext(filename)
         pdfoutfile = os.path.join(dirname, f'{base}.pdf')           
-        rv = pypandoc.convert_file(args.outfile, 
-                                   'pdf', 
-                                   outputfile=pdfoutfile,
-                                   extra_args=[f'--metadata-file', f'{args.metadata}']
-                                   )
-        logging.info(f'writing PDF to {pdfoutfile} ')
+        #rv = pypandoc.convert_file(args.outfile, 
+        #                           'pdf', 
+        #                           outputfile=pdfoutfile,
+        #                           extra_args=[f'--metadata-file', f'{args.metadata}']
+        #                           )
+        #logging.info(f'writing PDF to {pdfoutfile} ')
         
         docxoutfile = os.path.join(dirname, f'{base}.docx') 
         rv = pypandoc.convert_file( args.outfile, 
