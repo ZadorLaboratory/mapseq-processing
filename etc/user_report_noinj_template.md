@@ -22,7 +22,7 @@ For each brain:
 \<brain\>.rbcm.tsv	raw (real) barcode matrix	  
 &nbsp; &nbsp; Raw real barcode UMI counts from filtered VBC table.   
 &nbsp; &nbsp; Only includes barcodes where:   
-&nbsp; &nbsp; &nbsp; &nbsp; At least one target area had \>= {{conf['vbctable']['target_min_umi']}} molecules (UMIs)  
+&nbsp; &nbsp; &nbsp; &nbsp; At least one target area had \>= {{conf['vbcfilter']['target_min_umi']}} molecules (UMIs)  
 &nbsp; &nbsp; &nbsp; &nbsp; Rows represent barcodes and columns represent areas.  
 
 \<brain\>.sbcm.tsv	spike-in barcode matrix.   
