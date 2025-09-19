@@ -220,6 +220,7 @@ def align_collapse_pd_grouped(df,
     logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
     sh = get_default_stats()      
     sh.add_value('/collapse','n_full_sequences', len(df) )
+    sh.add_value(f'/collapse','api_max_mismatch', str(max_mismatch) )
 
     # Get list of ids to group collapse by...
     df[gcolumn] = df[gcolumn].astype('string')

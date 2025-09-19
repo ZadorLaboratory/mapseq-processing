@@ -1610,7 +1610,7 @@ def align_collapse(df,
     if gcolumn is not None:
         logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
         sh.add_value(f'/collapse','collapse_mode', 'grouped' )
-        sh.add_value(f'/collapse','max_mismatch', str(max_mismatch) )
+        sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
         df = align_collapse_pd_grouped( df, 
                                         column = column,
                                         pcolumn = pcolumn,
@@ -1624,7 +1624,7 @@ def align_collapse(df,
     else:
         logging.info(f'Global align_collapse.')
         sh.add_value(f'/collapse','collapse_mode', 'global' )
-        sh.add_value(f'/collapse','max_mismatch', str(max_mismatch) )
+        sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
         df = align_collapse_pd( df = df,
                                 column = column,
                                 pcolumn = pcolumn,
