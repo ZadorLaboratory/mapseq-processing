@@ -164,10 +164,11 @@ if __name__ == '__main__':
            
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
-    results = assess_components(udf,
+    size_df = assess_components(udf,
                                 components)
     
     outfile = args.outfile
+    size_df.to_csv(outfile, sep='\t')
     logging.info('Done assessing components. ')
     
     
