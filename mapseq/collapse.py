@@ -1,3 +1,4 @@
+import itertools
 import logging
 import os
 import subprocess
@@ -761,6 +762,57 @@ def read_listlist(infile):
     except:
         logging.warning(f'error reading{infile} ')
         return []
+
+def max_hamming(seq_list, max_ok=3):
+    '''
+    Calculate max hamming for set of sequences. 
+    Keep track of how many exceed a given max. 
+    
+    '''
+    hmax = 0
+    n_pairs = 0
+    n_exceed = 0
+    for a,b in itertools.combinations(seq_list, 2):
+        n_pairs += 1
+        hd = calc_hamming(a,b)
+        if hd > max_ok:
+            n_exceed += 1
+        if hd > hmax:
+            hmax = hd
+    logging.debug(f'considered {n_pairs} pairs, {n_exceed} were > {max_ok}')
+    return ( hmax, n_pairs, n_exceed, max_ok)       
+    
+    
+def calc_hamming( a, b):
+    '''
+    simple calc. 
+    '''
+    mismatch = 0
+    for i,c in enumerate(a):
+        if c != b[i]:
+            mismatch += 1
+    return mismatch
+
+
+def parse_components(compfile):
+    '''
+    parse components.txt file. 
+    
+    '''
+    component_lists = []
+    
+    with open(compfile) as f:
+        lines = f.readlines()
+        logging.debug(f'got {len(lines)} component lines')
+        for line in lines:
+            complist = eval(line.strip())
+            component_lists.append(complist)            
+    logging.debug(f'got list of {len(component_lists)} components')
+    return component_lists
+
+
+
+
 
 
 if __name__ == '__main__':
