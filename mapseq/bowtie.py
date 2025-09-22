@@ -163,7 +163,7 @@ def make_bowtie_df(infile, max_mismatch=3, ignore_self=False):
         # alignments to *other* sequences only
         if ignore_self:
             df = df[df['n_mismatch'] > 0]
-        logging.debug(f'df before max_mismatch =< {max_mismatch} length={len(df)} df=\n{df}')
+        logging.debug(f'df after max_mismatch =< {max_mismatch} length={len(df)} df=\n{df}')
     else:
         logging.debug('Detected bowtie1 input.')
         df = make_bowtie1_df(infile)
