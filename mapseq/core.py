@@ -1284,7 +1284,7 @@ def filter_fields(df,
         sys.exit(1)
 
     if drop is None:
-        drop_mismatch = cp.getboolean('readfilter','drop_mismatch')
+        drop_mismatch = cp.getboolean('readfilter','drop_mismatch', fallback=False)
 
     sh = get_default_stats()
 
@@ -1397,7 +1397,7 @@ def process_make_readtable_pd(df,
     spikeseq = cp.get('readtable','spikeseq')
     realregex = cp.get('readtable', 'realregex' )
     loneregex = cp.get('readtable', 'loneregex' )
-    use_libtag = cp.getboolean('readtable','use_libtag')
+    use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
     
     if bcfile is None:
         bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
