@@ -878,7 +878,7 @@ def parse_components(compfile):
 
 
 
-def assess_components(uniques, component_lists, min_seq_count = 10, top_x = None):
+def assess_components(uniques, component_lists, min_seq_count = None, top_x = None):
     '''
     Take top 10 components and calculate fraction that exceed max_hamming. 
     
@@ -900,10 +900,11 @@ def assess_components(uniques, component_lists, min_seq_count = 10, top_x = None
     comp_df.reset_index(inplace=True, drop=True)   
     logging.debug(f'stats: \n{comp_df.seq_count.describe()}')
 
-    comp_df = comp_df[comp_df['seq_count'] >= min_seq_count ]
+    if min_seq_count is not None:
+        comp_df = comp_df[comp_df['seq_count'] >= min_seq_count ]
 
     if top_x is None:
-        top_x = len(comps) - 1
+        top_x = len(comp_df) - 1
 
     # Assess top X
     
