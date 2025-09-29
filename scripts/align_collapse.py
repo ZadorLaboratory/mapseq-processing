@@ -51,6 +51,13 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
+    parser.add_argument('-R','--min_reads', 
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Minimum reads for inclusion.')
+    
+
     parser.add_argument('-a','--aligner', 
                     metavar='aligner',
                     required=False,
@@ -207,7 +214,9 @@ if __name__ == '__main__':
                         max_recursion=args.max_recursion,
                         outdir=outdir,
                         force = args.force, 
-                        cp=cp)
+                        min_reads = args.min_reads,                       
+                        cp=cp
+                        )
 
     write_mapseq_df(df, outfile)
     logging.info('Done align_collapse.')

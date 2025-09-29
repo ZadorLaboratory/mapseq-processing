@@ -238,9 +238,6 @@ def make_bowtie2_df(infile):
                 allfields = [x.strip() for x in line.split('\t')]
                 flist = allfields[0:11]
                 optfields = allfields[11:]
-                #logging.debug(f'allfields length={len(allfields)} mands len={len(mands)} opts len={len(optfields)}')
-                #logging.debug(f'mands=\n{mands}')
-                #logging.debug(f'opts=\n{optfields}')
                 optdict = defaultdict(def_value)
                 for of in optfields:
                     ofields = of.split(':')

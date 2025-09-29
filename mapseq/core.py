@@ -1588,7 +1588,8 @@ def align_collapse(df,
                       max_recursion=None, 
                       outdir=None, 
                       datestr=None,
-                      force=False, 
+                      force=False,
+                      min_reads = None, 
                       cp=None):
     '''
     Entry point for CLI align_collapse. 
@@ -1601,7 +1602,8 @@ def align_collapse(df,
     @arg max_recursion  Max recursion to set for Python interpreter. 
     @arg outdir         Base outdir for intermediate output. 
     @arg datestr        Optional date string for logging
-    @arg force          Recalculate intermediate steps, otherwise pick up. 
+    @arg force          Recalculate intermediate steps, otherwise pick up.
+    @arg min_reads      Optional thresholding before collapse 
     @arg cp             ConfigParser object with [collapse] section.
     
     '''
@@ -1619,7 +1621,8 @@ def align_collapse(df,
                                         max_recursion=max_recursion, 
                                         outdir=outdir, 
                                         datestr=datestr,
-                                        force=force, 
+                                        force=force,
+                                        min_reads = min_reads,
                                         cp=cp )
     else:
         logging.info(f'Global align_collapse.')
@@ -1633,6 +1636,7 @@ def align_collapse(df,
                                 outdir=outdir, 
                                 datestr=datestr,
                                 force=force, 
+                                min_reads = min_reads,
                                 cp=cp ) 
     logging.info(f'Got DF len={len(df)} Fixing dtypes...')
     df = fix_mapseq_df_types(df, fformat='readtable')

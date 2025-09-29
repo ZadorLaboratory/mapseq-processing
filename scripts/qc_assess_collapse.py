@@ -19,6 +19,53 @@ from mapseq.utils import *
 from mapseq.stats import *
 
 
+def assess_collapse(unique_df, bowtie_df, component_lists, top_x = 10):
+    '''
+
+    Explore structure of top X components...
+
+    '''
+    logging.debug(f'assessing uniques/components')
+    sh = get_default_stats()
+    
+
+    udf = unique_df
+    comps = component_lists
+    logging.debug(f' {len(comps)} components ')
+    logging.debug(f' {len(udf)} unique sequences ')
+    
+    sizemap = []
+    for i, clist in enumerate(comps):
+        csize = len(clist)
+        sizemap.append( [ i, csize ])
+    size_df = pd.DataFrame(sizemap, columns=['comp_idx','seq_count'])
+    size_df.sort_values('seq_count', ascending=False, inplace=True)
+    size_df.reset_index(inplace=True, drop=True)   
+    logging.debug(f'stats: \n{size_df.seq_count.describe()}')
+
+    size_df = size_df[size_df['seq_count'] >= min_seq_count ]
+
+    # Assess top X
+    for i in range(0, top_x):
+        max_comp_idx = size_df.iloc[i].comp_idx
+        max_comp = comps[max_comp_idx]
+        
+        slist = []
+        for idx in max_comp:
+            s = udf.iloc[idx].vbc_read
+            slist.append(s)
+        logging.debug(f'made list of len={len(slist)} component sequence list. checking...')
+        ( hmax, n_pairs, n_exceed, max_ok)=  max_hamming(slist)
+        sh.add_value(f'/collapse/top_{i}','n_seqs', len(slist) )
+        sh.add_value(f'/collapse/top_{i}','max_hamming', hmax )
+        sh.add_value(f'/collapse/top_{i}','n_pairs', n_pairs )
+        sh.add_value(f'/collapse/top_{i}','n_pairs_exceed', n_exceed )
+        good_prop = 1.0 - (n_exceed / n_pairs)
+        sh.add_value(f'/collapse/top_{i}','pct_good', good_prop )        
+    
+    return size_df
+
+
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
     logging.basicConfig(format=FORMAT)
@@ -55,7 +102,13 @@ if __name__ == '__main__':
                     required=False,
                     default=None, 
                     type=str, 
-                    help='Dataframe of component properties.') 
+                    help='Component sets.') 
+
+    parser.add_argument('-b', '--bowtiedf',
+                        metavar='bowtiedf',
+                        required=True,
+                        type=str,
+                        help='Dataframe TSV with bowtie data, index same as uniques/components.txt')
 
     parser.add_argument('-u', '--uniques',
                         metavar='uniques',
@@ -111,19 +164,23 @@ if __name__ == '__main__':
          
     sh = StatsHandler(outdir=outdir, datestr=datestr)
  
-    udf = load_mapseq_df( args.uniques, use_dask=False)
-    logging.debug(f'loaded. len={len(udf)} dtypes =\n{udf.dtypes}') 
+    unique_df = load_mapseq_df( args.uniques, use_dask=False)
+    logging.debug(f'loaded. len={len(unique_df)} dtypes =\n{unique_df.dtypes}') 
+    
+    bowtie_df = load_mapseq_df( args.bowtiedf, use_dask=False)
+    logging.debug(f'loaded. len={len(bowtie_df)} dtypes =\n{bowtie_df.dtypes}') 
     
     # list of indices.
     components = parse_components(args.components)
            
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
-    comp_df = assess_components(udf,
-                                components)
+    assess_df = assess_components(unique_df, 
+                                  bowtie_df, 
+                                  components)
     
     outfile = args.outfile
-    comp_df.to_csv(outfile, sep='\t')
-    logging.info('Done assessing components. ')
+    assess_df.to_csv(outfile, sep='\t')
+    logging.info('Done assessing collapse. ')
     
     

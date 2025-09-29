@@ -24,7 +24,8 @@ def align_collapse_pd(df,
                       max_recursion=None, 
                       outdir=None, 
                       datestr=None,
-                      force=False, 
+                      force=False,
+                      min_reads = None, 
                       cp=None):
     '''
     Assumes dataframe with sequence and read_count columns
@@ -49,6 +50,11 @@ def align_collapse_pd(df,
         max_mismatch = int(cp.get('collapse', 'max_mismatch'))
     else:
         max_mismatch = int(max_mismatch)
+
+    if min_reads is None:
+        min_reads = int(cp.get('collapse', 'min_reads'))
+    else:
+        min_reads = int(min_reads)
 
     if max_recursion is not None:
         rlimit = int(max_recursion)
@@ -167,11 +173,12 @@ def align_collapse_pd_grouped(df,
                               column='vbc_read',
                               pcolumn='read_count',
                               gcolumn='brain', 
-                              max_mismatch=None,
-                              max_recursion=None, 
-                              outdir=None, 
-                              datestr=None,
-                              force=False, 
+                              max_mismatch = None,
+                              max_recursion = None, 
+                              outdir= None, 
+                              datestr= None,
+                              force= False,
+                              min_reads = None, 
                               cp=None):
     '''
     Groups alignment and collapse by gcolumn value. [brain]
@@ -199,6 +206,11 @@ def align_collapse_pd_grouped(df,
     else:
         max_mismatch = int(max_mismatch)
 
+    if min_reads is None:
+        min_reads = int(cp.get('collapse', 'min_reads', fallback=1))
+    else:
+        min_reads = int(min_reads)
+
     if max_recursion is not None:
         rlimit = int(max_recursion)
         logging.info(f'set new recursionlimit={rlimit}')
@@ -219,7 +231,15 @@ def align_collapse_pd_grouped(df,
     os.makedirs(outdir, exist_ok=True)
 
     logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
-    sh = get_default_stats()      
+    sh = get_default_stats()
+    
+    sh.add_value('/collapse','n_initial_sequences', len(df) )
+    if min_reads > 1:
+        logging.info(f'thresholding by min_reads={min_reads} before collapse. len={len(df)} ')
+        df = df[ df['read_count'] >= min_reads  ]
+        df.reset_index(inplace=True, drop=True)
+        logging.info(f'after min_reads={min_reads} filter. len={len(df)} ')
+    sh.add_value('/collapse','n_thresholded_sequences', len(df) )    
     sh.add_value('/collapse','n_full_sequences', len(df) )
     sh.add_value(f'/collapse','api_max_mismatch', str(max_mismatch) )
 
@@ -794,6 +814,52 @@ def calc_hamming( a, b):
     return mismatch
 
 
+def make_networkx_graph( seq_list, n_mismatch = 3 ):
+    '''
+    Given list of sequences expected to form a Hamming 
+    graph, create graph and return. 
+    '''
+    G = nx.Graph()
+    for a,b in itertools.combinations(slist, 2):
+        hd = calc_hamming(a,b)
+        if hd < 4:
+            G.add_edge(a,b)
+    logging.debug(f'made Graph: nodes={len(G.nodes)} edges={len(G.edges)} ')
+    
+
+def make_degree_df( nxgraph):
+    '''
+    Make sorted list of node degree by sequence. 
+    
+    '''            
+    dlist = []
+    for n in nxgraph.nodes:
+        dlist.append([n, nxgraph.degree[n]] )
+    deg_df = pd.DataFrame(dlist, columns=['sequence','node_degree'])
+    deg_df.sort_values('node_degree', ascending=False, inplace=True) 
+    deg_df.reset_index(inplace=True, drop=True)
+    
+    return deg_df
+
+
+def display_diff(a, b):
+    '''
+    Mark edits between two sequences, 
+    
+    CGACATCTACCCAGCGCCCTTTTTGGCCTT
+    ||||||||-|||||-|||||||||||||-|
+    CGACATCTCCCCAGTGCCCTTTTTGGCCCT
+    '''
+    dstr = ''
+    for i, c in enumerate(a):
+        if c != b[i]:
+            dstr += '-'
+        else:
+            dstr += '|'
+    out = f'{a}\n{dstr}\n{b}'
+    return out
+
+
 def parse_components(compfile):
     '''
     parse components.txt file. 
@@ -809,6 +875,78 @@ def parse_components(compfile):
             component_lists.append(complist)            
     logging.debug(f'got list of {len(component_lists)} components')
     return component_lists
+
+
+
+def assess_components(uniques, component_lists, min_seq_count = 10, top_x = None):
+    '''
+    Take top 10 components and calculate fraction that exceed max_hamming. 
+    
+    '''
+    logging.debug(f'assessing uniques/components')
+    #sh = get_default_stats()
+    
+    udf = uniques
+    comps = component_lists
+    logging.debug(f' {len(comps)} components ')
+    logging.debug(f' {len(udf)} unique sequences ')
+    
+    sizemap = []
+    for i, clist in enumerate(comps):
+        csize = len(clist)
+        sizemap.append( [ i, csize ])
+    comp_df = pd.DataFrame(sizemap, columns=['comp_idx','seq_count'])
+    comp_df.sort_values('seq_count', ascending=False, inplace=True)
+    comp_df.reset_index(inplace=True, drop=True)   
+    logging.debug(f'stats: \n{comp_df.seq_count.describe()}')
+
+    comp_df = comp_df[comp_df['seq_count'] >= min_seq_count ]
+
+    if top_x is None:
+        top_x = len(comps) - 1
+
+    # Assess top X
+    
+    max_hamming_list = []
+    n_pairs_list = []
+    n_exceed_list = []
+    good_prop_list = []
+    
+    for i in range(0, top_x):
+        comp_idx = comp_df.iloc[i].comp_idx
+        comp = comps[comp_idx]
+        
+        slist = []
+        for idx in comp:
+            s = udf.iloc[idx].vbc_read
+            slist.append(s)
+        logging.debug(f'made list of len={len(slist)} component sequence list. checking...')
+        ( hmax, n_pairs, n_exceed, max_ok)=  max_hamming(slist)
+        logging.debug(f'got properties. hmax={hmax}')
+        #sh.add_value(f'/collapse/top_{i}','seq_count', len(slist) )
+        #sh.add_value(f'/collapse/top_{i}','max_hamming', hmax )
+        #sh.add_value(f'/collapse/top_{i}','n_pairs', n_pairs )
+        #sh.add_value(f'/collapse/top_{i}','n_pairs_exceed', n_exceed )
+        try:
+            good_prop = 1.0 - (n_exceed / n_pairs)
+        except ZeroDivisionError:
+            good_prop = 0.0
+        #sh.add_value(f'/collapse/top_{i}','pct_good', good_prop )
+        max_hamming_list.append(hmax)
+        n_pairs_list.append(n_pairs)
+        n_exceed_list.append(n_exceed)
+        good_prop_list.append( good_prop)
+    
+    logging.debug(f'adding columns. max_hamming...')
+    comp_df['max_hamming'] = pd.Series(max_hamming_list)        
+    logging.debug(f'adding columns. n_pairs...')
+    comp_df['n_pairs'] = pd.Series(n_pairs_list, dtype='int')
+    logging.debug(f'adding columns. n_exceed...')
+    comp_df['n_exceed'] =  pd.Series(n_exceed_list, dtype='int')
+    logging.debug(f'adding columns. good_prop...')
+    comp_df['good_prop'] = pd.Series(good_prop_list, dtype='float')
+    logging.debug(f'made component properties DF...')
+    return comp_df
 
 
 
