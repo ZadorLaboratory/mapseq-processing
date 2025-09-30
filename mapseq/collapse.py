@@ -914,7 +914,7 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
     good_prop_list = []
     
     for i in range(0, top_x):
-        comp_idx = comp_df.iloc[i].comp_idx
+        comp_idx = comp_df.iloc[i].cmp_idx
         comp = comps[comp_idx]
         
         slist = []
