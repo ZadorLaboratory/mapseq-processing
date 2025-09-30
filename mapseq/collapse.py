@@ -895,13 +895,13 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
     for i, clist in enumerate(comps):
         csize = len(clist)
         sizemap.append( [ i, csize ])
-    comp_df = pd.DataFrame(sizemap, columns=['comp_idx','seq_count'])
-    comp_df.sort_values('seq_count', ascending=False, inplace=True)
+    comp_df = pd.DataFrame(sizemap, columns=['cmp_idx','n_seq'])
+    comp_df.sort_values('n_seq', ascending=False, inplace=True)
     comp_df.reset_index(inplace=True, drop=True)   
-    logging.debug(f'stats: \n{comp_df.seq_count.describe()}')
+    logging.debug(f'stats: \n{comp_df.n_seq.describe()}')
 
     if min_seq_count is not None:
-        comp_df = comp_df[comp_df['seq_count'] >= min_seq_count ]
+        comp_df = comp_df[comp_df['n_seq'] >= min_seq_count ]
 
     if top_x is None:
         top_x = len(comp_df) - 1
@@ -939,7 +939,7 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
         good_prop_list.append( good_prop)
     
     logging.debug(f'adding columns. max_hamming...')
-    comp_df['max_hamming'] = pd.Series(max_hamming_list)        
+    comp_df['max_ham'] = pd.Series(max_hamming_list)        
     logging.debug(f'adding columns. n_pairs...')
     comp_df['n_pairs'] = pd.Series(n_pairs_list, dtype='int')
     logging.debug(f'adding columns. n_exceed...')
@@ -949,7 +949,7 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
     logging.debug(f'made component properties DF...')
 
     comp_df.fillna(0, inplace=True)
-    for cn in ['max_hamming','n_pairs','n_exceed']:
+    for cn in ['max_ham','n_pairs','n_exceed']:
         comp_df[cn] = comp_df[cn].astype(int)   
     return comp_df
 
