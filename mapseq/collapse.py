@@ -923,7 +923,7 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
             slist.append(s)
         logging.debug(f'made list of len={len(slist)} component sequence list. checking...')
         ( hmax, n_pairs, n_exceed, max_ok)=  max_hamming(slist)
-        logging.debug(f'got properties. hmax={hmax}')
+        logging.debug(f'got properties. hmax={hmax} n_pairs={n_pairs} n_exceed={n_exceed}')
         #sh.add_value(f'/collapse/top_{i}','seq_count', len(slist) )
         #sh.add_value(f'/collapse/top_{i}','max_hamming', hmax )
         #sh.add_value(f'/collapse/top_{i}','n_pairs', n_pairs )
@@ -947,11 +947,11 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
     logging.debug(f'adding columns. good_prop...')
     comp_df['good_prop'] = pd.Series(good_prop_list, dtype='float')
     logging.debug(f'made component properties DF...')
+
+    comp_df.fillna(0, inplace=True)
+    for cn in ['max_hamming','n_pairs','n_exceed']:
+        comp_df[cn] = [cn].astype(int)   
     return comp_df
-
-
-
-
 
 
 if __name__ == '__main__':
