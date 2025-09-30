@@ -950,7 +950,7 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
 
     comp_df.fillna(0, inplace=True)
     for cn in ['max_hamming','n_pairs','n_exceed']:
-        comp_df[cn] = [cn].astype(int)   
+        comp_df[cn] = comp_df[cn].astype(int)   
     return comp_df
 
 
