@@ -110,10 +110,10 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
 
     logging.debug(f'bowtie-build done.')
 
-    threads = config.get(tool, 'threads')
+    threads = config.get(tool, 'threads', fallback=8)
 
     if tool == 'bowtie':    
-        max_mismatch = config.get('bowtie', 'max_mismatch')
+        max_mismatch = config.get('collapse', 'max_mismatch', fallback=3)
         cmd = ['bowtie',
                '-v', max_mismatch,
                '-p', threads, # # threads
@@ -127,9 +127,12 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
     elif tool == 'bowtie2':
         cmd = ['bowtie2',
                #'-N', '3',
-               '-p',threads,   # # threads
+               '-p', threads,   # # threads
                '-f',       # -f query input files are (multi-)FASTA .fa/.mfa
                #'--best',
+               '--end-to-end',   # force ends to line up. seems to be default
+               #'--rfg 10,10 --rdg 10,10',  #penalties for read/align gap open, extend. 
+               # 
                '--all',   # -a/--all report all alignments; very slow, MAPQ not meaningful
                '-x', idxpfx,
                '-S', outfile, 
@@ -187,6 +190,95 @@ def make_bowtie1_df( infile):
 
 def make_bowtie2_df(infile):
     '''
+    bt1: name_read  strand  name_align  offset  seq  quals   ceil    mm_desc
+    
+    bt2: name_read flagsum  name_align  offset  seq  quals   
+            algn_score  next_score  n_amb  n_mm  n_gaps n_gapext  distance      
+    
+    parse bowtie2 output format.
+    produce dataframe.     
+    '''
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)
+    outfile = os.path.join(dirname, f'{base}.btdf')
+    logging.debug(f'handling filename={filename}  ->  {outfile}')    
+
+    try:
+        logging.debug(f" attempting to open '{infile}'")
+        filehandle = open(infile, 'r')
+    except FileNotFoundError:
+        logging.error(f"No such file {infile}")
+        raise                
+    
+    current = 0
+    sumreport = 1
+    suminterval = 1000000
+    repthresh = sumreport * suminterval
+    # list of lists to hold data
+    lol = []
+    #
+    def def_value(): 
+        return "None"
+    
+    # BOWTIE_2_COLS=['name_read', 'flagsum', 'name_align','offset', 'qual', 'cigar', 'mate', 'mate_offset', 'fraglen', 'seq', 'quals', 
+    # 'score', 'next_score', 'n_amb', 'n_mismatch', 'n_gaps', 'n_gapext', 'distance','md','yt' ]
+    line_no = 0
+    try:
+        while True:
+            line = filehandle.readline()
+            line_no += 1
+            if line == '':
+                break
+            if line.startswith("@HD"):
+                pass
+            elif line.startswith("@SQ"):
+                pass                   
+            elif line.startswith("@PG"):
+                pass
+            else:
+                allfields = [x.strip() for x in line.split('\t')]
+                flist = allfields[0:11]
+                optfields = allfields[11:]
+                optdict = defaultdict(def_value)
+                for of in optfields:
+                    ofields = of.split(':')
+                    key = ofields[0]
+                    val = ofields[2]
+                    optdict[key] = val 
+                    #logging.debug(f'handling optkey {key} = {val}')
+                for colname in BOWTIE_OPT_COLS:
+                    mapid = OPT_MAP[colname]
+                    val = optdict[mapid]
+                    #logging.debug(f'for colname={colname} map={mapid} val={val}')
+                    flist.append(val)
+                
+                lol.append(flist)
+                current += 1                        
+                if current >= repthresh:
+                    logging.info(f"Processed {current} entries. Last line+no={line_no}")
+                    sumreport +=1
+                    repthresh = sumreport * suminterval
+                    
+    except Exception as e:
+        logging.error(f'exception while parsing. line={line_no}')
+        traceback.print_exc(file=sys.stdout)                
+    
+    if filehandle is not None:
+        filehandle.close()
+                  
+    logging.debug(f'making dataframe from list of lists. len={len(lol)}')
+    df = pd.DataFrame(data=lol, columns=BOWTIE_2_COLS, dtype='string[pyarrow]')
+    logging.debug('fixing column types...')    
+    df = fix_columns_int(df, BOWTIE_2_INT_COLS)
+    logging.debug(f'done. returning dataframe {df.dtypes}') 
+    return df
+
+def make_bowtie2_df_test(infile):
+    '''
+    input:  Bowtie .sam output file. 
+    
     bt1: name_read  strand  name_align  offset  seq  quals   ceil    mm_desc
     
     bt2: name_read  name_align  offset  seq  quals   
@@ -271,6 +363,9 @@ def make_bowtie2_df(infile):
     df = fix_columns_int(df, BOWTIE_2_INT_COLS)
     logging.debug(f'done. returning dataframe {df.dtypes}') 
     return df
+
+
+
 
 
 def make_adjacency_df(bowtiedf):

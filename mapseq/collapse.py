@@ -10,11 +10,15 @@ import datetime as dt
 from configparser import ConfigParser
 from collections import defaultdict
 
-import pandas as pd
+import networkx as nx
 import numpy as np
+import pandas as pd
+
+from Bio import SeqIO
 
 from mapseq.core import *
 from mapseq.stats import *
+from lib2to3.pgen2.pgen import DFAState
 
 
 def align_collapse_pd(df,
@@ -25,7 +29,8 @@ def align_collapse_pd(df,
                       outdir=None, 
                       datestr=None,
                       force=False,
-                      min_reads = None, 
+                      min_reads = None,
+                      drop=True, 
                       cp=None):
     '''
     Assumes dataframe with sequence and read_count columns
@@ -81,7 +86,14 @@ def align_collapse_pd(df,
     udf = df[column].value_counts().reset_index() 
     sh.add_value('/collapse','n_unique_sequences', len(udf) )    
 
-    # handle writing unique fasta    
+    # handle writing unique fasta
+    of = os.path.join( outdir , f'{column}.unique.tsv')  
+    if os.path.exists(of) and not force:
+        logging.debug(f'Output {of} exists and not force.')
+    else:
+        logging.debug(f'Writing uniques to {of}')
+        udf.to_csv(of, sep='\t')
+        
     of = os.path.join( outdir , f'{column}.unique.fasta')      
     if os.path.exists(of) and not force:
         logging.debug(f'Output {of} exists and not force.')
@@ -154,18 +166,17 @@ def align_collapse_pd(df,
 
     logging.info(f'Collapsing {len(components)} components...')
     newdf = collapse_by_components_pd(df, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=outdir)
-    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
     newcol = f'{column}_col'        
     newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
     logging.info(f'Got collapsed DF. len={len(newdf)}')
 
-    rdf = newdf[[ column, newcol, 'read_count' ]]
+    rdf = newdf[[ column, newcol, pcolumn ]]
     of = os.path.join( outdir , f'read_collapsed.tsv')
     logging.info(f'Writing reduced mapping TSV to {of}')
     rdf.to_csv(of, sep='\t')
-    
-    newdf.drop(column, inplace=True, axis=1)
-    newdf.rename( { newcol : column }, inplace=True, axis=1)       
+    if drop:
+        newdf.drop(column, inplace=True, axis=1)
+        newdf.rename( { newcol : column }, inplace=True, axis=1)       
     return newdf        
 
 
@@ -352,7 +363,7 @@ def align_collapse_pd_grouped(df,
         newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
         logging.info(f'Got collapsed DF. len={len(newdf)}')
     
-        rdf = newdf[[ column, newcol, 'read_count' ]]
+        rdf = newdf[[ column, newcol, pcolumn ]]
         of = os.path.join( gdir , f'read_collapsed.tsv')
         logging.info(f'Writing reduced mapping TSV to {of}')
         rdf.to_csv(of, sep='\t')
@@ -512,7 +523,12 @@ def build_seqmapdict_pd(udf, components, column='vbc_read', pcolumn='count'):
     return seqmapdict
 
 
-def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdir=None):
+def collapse_by_components_pd(fulldf, 
+                              uniqdf, 
+                              components, 
+                              column, 
+                              pcolumn, 
+                              outdir=None):
     #
     # *** Assumes components are multi-element components only ***
     #
@@ -551,7 +567,7 @@ def collapse_by_components_pd(fulldf, uniqdf, components, column, pcolumn, outdi
     fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
     # fill in NaN with original values. 
     
-    fulldf.fillna( { 'vbc_read_col' : fulldf['vbc_read'] }, inplace=True)    
+    fulldf.fillna( { 'vbc_read_col' : fulldf[column] }, inplace=True)    
     logging.info(f'New collapsed df = \n{fulldf}')
     log_objectinfo(fulldf, 'fulldf')
     return fulldf
@@ -794,7 +810,7 @@ def max_hamming(seq_list, max_ok=3):
     n_exceed = 0
     for a,b in itertools.combinations(seq_list, 2):
         n_pairs += 1
-        hd = calc_hamming(a,b)
+        hd = calc_hamming(a,b, use_rc=False)
         if hd > max_ok:
             n_exceed += 1
         if hd > hmax:
@@ -803,28 +819,40 @@ def max_hamming(seq_list, max_ok=3):
     return ( hmax, n_pairs, n_exceed, max_ok)       
     
     
-def calc_hamming( a, b):
+def calc_hamming( a, b, use_rc=False):
     '''
     simple calc. 
+    Optionally check against reverse complement, and return minimum.
     '''
     mismatch = 0
     for i,c in enumerate(a):
         if c != b[i]:
             mismatch += 1
+
+    if use_rc:
+        b = Seq(b)
+        rb = str( b.reverse_complement())
+                
+        mismatch_rc = 0
+        for i,c in enumerate(a):
+            if c != rb[i]:
+                mismatch_rc += 1
+        mismatch = min(mismatch, mismatch_rc)
     return mismatch
 
 
-def make_networkx_graph( seq_list, n_mismatch = 3 ):
+def make_networkx_graph( seq_list, max_mismatch = 3 ):
     '''
     Given list of sequences expected to form a Hamming 
     graph, create graph and return. 
     '''
     G = nx.Graph()
-    for a,b in itertools.combinations(slist, 2):
+    for a,b in itertools.combinations(seq_list, 2):
         hd = calc_hamming(a,b)
-        if hd < 4:
+        if hd <= max_mismatch :
             G.add_edge(a,b)
     logging.debug(f'made Graph: nodes={len(G.nodes)} edges={len(G.edges)} ')
+    return G
     
 
 def make_degree_df( nxgraph):
@@ -860,6 +888,51 @@ def display_diff(a, b):
     return out
 
 
+def parse_edges(edgefile):
+    '''
+    parse edges.txt file. 
+    
+    ['20163', '19273']
+    ['20163', '14372']
+    
+    '''
+    edge_lists = []
+    
+    with open(edgefile) as f:
+        lines = f.readlines()
+        logging.debug(f'got {len(lines)} edge lines')
+        for line in lines:
+            edgepair = eval(line.strip())
+            edge_lists.append(edgepair)            
+    logging.debug(f'got list of {len(edge_lists)} edges')
+    return edge_lists
+
+def make_edge_df(edgelist, unique_df, column='sequence'):
+    '''
+    make edge df containing 
+    pairs of actual sequences 
+
+    edgelist may have string index numbers
+
+    '''
+    edgelist_list = []
+    
+    for pairlist in edgelist:
+        a = int( pairlist[0])
+        b = int( pairlist[1])
+        aseq = unique_df.iloc[a][column]
+        bseq = unique_df.iloc[b][column]
+        ham = calc_hamming(aseq, bseq)
+        edgelist_list.append([aseq, bseq, ham])
+    
+    df = pd.DataFrame(edgelist_list, columns=['aseq', 'bseq', 'hamming'])
+    return df 
+
+
+    
+
+
+
 def parse_components(compfile):
     '''
     parse components.txt file. 
@@ -877,16 +950,80 @@ def parse_components(compfile):
     return component_lists
 
 
-
-def assess_components(uniques, component_lists, min_seq_count = None, top_x = None):
+def assess_topx_components( component_df, unique_df, component_lists, top_x = 10 ):
     '''
-    Take top 10 components and calculate fraction that exceed max_hamming. 
+    @arg component_df        Product of make_component_df()
+    @arg component_lists     List of Lists representation of components.txt 
+    @arg unique_df           Pandas Dataframe with unique vbc_read and count columns. 
+   
     
+    '''
+    for i in range(0,top_x):
+        logging.debug(f'handling index {i}')
+        comp_idx = comp_df.iloc[i]['cmp_idx'].astype(int)
+        comp = component_lists[comp_idx]    
+        slist = []
+        for idx in comp:
+            s = unique_df.iloc[idx].vbc_read
+            slist.append(s)
+        g, deg_df = assess_component(slist)
+
+
+def assess_component( seq_list, max_mismatch=3 ):
+    '''
+    Make graph and node degree dataframe for one component. 
+    
+    '''
+    g = make_networkx_graph(seq_list, max_mismatch )
+    deg_df = make_degree_df(g)
+    return g, deg_df
+
+
+def check_components(uniques_file, 
+                     components_file,
+                     edges_file, 
+                     column='vbc_read', cp=None):
+    '''
+    Called  via command line out of band of pipeline.    
+    Handles filenames, params, and calls functions. 
+    
+    '''
+    udf = load_mapseq_df( uniques_file, use_dask=False)
+    logging.debug(f'loaded. len={len(udf)} dtypes =\n{udf.dtypes}')
+    edges = parse_edges(edges_file)
+    
+    
+     
+    components = parse_components(components_file)   
+    comp_df = make_component_df(udf, components, column=column )
+    return comp_df
+
+     
+def make_component_df(uniques_df, 
+                      component_lists, 
+                      min_seq_count = None, 
+                      top_x = None, 
+                      column='vbc_read'):
+    '''
+
+    Take top_x / all components and calculate fraction that exceed 3 max_hamming. 
+    
+    @arg uniques_df          Pandas Dataframe with unique vbc_read and count columns. 
+    @arg component_lists     List of Lists representation of components.txt 
+    @arg min_seq_count       Only process components with more sequences.
+    
+    @return comp_df          Dataframe with component info. 
+                                 cmp_idx      index within uniques DF
+                                 n_seq        Number of sequences in component.
+                                 max_ham      Maximum pairwise Hamming distance in component.
+                                 n_pairs      Number of unique pairs
+                                 n_exceed     Number that exceed 3
+                                 good_prop    Proportion less than 3
     '''
     logging.debug(f'assessing uniques/components')
-    #sh = get_default_stats()
-    
-    udf = uniques
+    start = dt.datetime.now()
+   
+    udf = uniques_df
     comps = component_lists
     logging.debug(f' {len(comps)} components ')
     logging.debug(f' {len(udf)} unique sequences ')
@@ -904,9 +1041,7 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
         comp_df = comp_df[comp_df['n_seq'] >= min_seq_count ]
 
     if top_x is None:
-        top_x = len(comp_df) - 1
-
-    # Assess top X
+        top_x = len(comp_df)
     
     max_hamming_list = []
     n_pairs_list = []
@@ -915,24 +1050,19 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
     
     for i in range(0, top_x):
         comp_idx = comp_df.iloc[i].cmp_idx
-        comp = comps[comp_idx]
-        
+        comp = comps[comp_idx]    
         slist = []
         for idx in comp:
-            s = udf.iloc[idx].vbc_read
+            s = udf.iloc[idx][column]
             slist.append(s)
         logging.debug(f'made list of len={len(slist)} component sequence list. checking...')
         ( hmax, n_pairs, n_exceed, max_ok)=  max_hamming(slist)
         logging.debug(f'got properties. hmax={hmax} n_pairs={n_pairs} n_exceed={n_exceed}')
-        #sh.add_value(f'/collapse/top_{i}','seq_count', len(slist) )
-        #sh.add_value(f'/collapse/top_{i}','max_hamming', hmax )
-        #sh.add_value(f'/collapse/top_{i}','n_pairs', n_pairs )
-        #sh.add_value(f'/collapse/top_{i}','n_pairs_exceed', n_exceed )
         try:
             good_prop = 1.0 - (n_exceed / n_pairs)
         except ZeroDivisionError:
             good_prop = 0.0
-        #sh.add_value(f'/collapse/top_{i}','pct_good', good_prop )
+
         max_hamming_list.append(hmax)
         n_pairs_list.append(n_pairs)
         n_exceed_list.append(n_exceed)
@@ -951,6 +1081,9 @@ def assess_components(uniques, component_lists, min_seq_count = None, top_x = No
     comp_df.fillna(0, inplace=True)
     for cn in ['max_ham','n_pairs','n_exceed']:
         comp_df[cn] = comp_df[cn].astype(int)   
+    end = dt.datetime.now()
+    td = end - start
+    logging.info(f'handled {top_x} components in {td.total_seconds()} seconds.')
     return comp_df
 
 

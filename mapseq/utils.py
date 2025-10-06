@@ -5,6 +5,7 @@ import itertools
 import os
 import logging
 import pprint
+import random
 import re
 import shutil
 import subprocess
@@ -594,6 +595,9 @@ def dataframe_to_seqlist(df, seqcol='sequence',idcol=None, desccols=None, sep=':
         srlist.append(sr)
     logging.debug(f'made list of {len(srlist)} SeqRecords')
     return srlist    
+
+
+
 
 
 def calc_thread_count(nthreads):

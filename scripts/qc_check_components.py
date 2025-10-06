@@ -68,6 +68,19 @@ if __name__ == '__main__':
                         required=True,
                         type=str,
                         help='Text file with component sets. ')
+
+    parser.add_argument('-e','--edges',
+                        metavar='edges',
+                        required=True,
+                        type=str,
+                        help='Text file with edge pairs.')
+
+    parser.add_argument('-s','--column', 
+                    metavar='column',
+                    required=False,
+                    default='vbc_read', 
+                    type=str, 
+                    help='Column that was collapsed.') 
         
     args= parser.parse_args()
     
@@ -77,10 +90,15 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.INFO)   
 
     cp = ConfigParser()
-    o = cp.read(args.config)
-    if len(o) < 1:
-        logging.error(f'No valid configuration. {args.config}')
-        sys.exit(1)
+    
+    if args.config is None:
+        cp = get_default_config()
+    else:
+        cp = ConfigParser()
+        o = cp.read(args.config)
+        if len(o) < 1:
+            logging.error(f'No valid configuration. {args.config}')
+            sys.exit(1)
        
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
@@ -103,7 +121,6 @@ if __name__ == '__main__':
     os.makedirs(outdir, exist_ok=True)
     logging.info(f'handling {args.uniques} {args.components}  to outdir {args.outfile}')    
 
-
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
@@ -111,17 +128,12 @@ if __name__ == '__main__':
          
     sh = StatsHandler(outdir=outdir, datestr=datestr)
  
-    udf = load_mapseq_df( args.uniques, use_dask=False)
-    logging.debug(f'loaded. len={len(udf)} dtypes =\n{udf.dtypes}') 
-    
-    # list of indices.
-    components = parse_components(args.components)
-           
-    # Make final VBC/UMI based table (each row is a neuron)
-    logging.debug(f'args={args}')
-    comp_df = assess_components(udf,
-                                components)
-    
+    comp_df = check_components(uniques_file=args.uniques, 
+                               components_file=args.components,
+                               edges_file = args.edges,
+                               column=args.column, 
+                               cp=cp )
+   
     outfile = args.outfile
     comp_df.to_csv(outfile, sep='\t')
     logging.info('Done assessing components. ')

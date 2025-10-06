@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import random
 import subprocess
 import sys
 import traceback
@@ -39,7 +40,7 @@ from mapseq.barcode import *
 from mapseq.stats import *
 from mapseq.plotting import *
 from mapseq.collapse import *
-from lib2to3.pgen2.pgen import DFAState
+
 
 
 #
@@ -473,17 +474,35 @@ def guess_site(infile, sampdf):
     return (rtprimer_num, site, brain, region )
 
 
+############################################################
+#
+#              Generic Utils not moved to mapseq.utils
+#
+############################################################
+
+def get_fh(infile):
+    '''
+    Opens compressed/uncompressed file as appropriate...
+    Used by FASTQ handling 
+    '''
+    if infile.endswith('.gz'):
+        fh = gzip.open(infile, "rt")
+        logging.debug('handling gzipped file...')
+    else:
+        fh = open(infile, 'rt')
+    return fh    
+
+
+
   
 
 
 
-####################################################################
-#    PIPELINE PHASES
-####################################################################
-
+############################################################
 #
-#    FASTQ  HANDLING 
+#                       Pipeline process phases
 #
+############################################################
 def process_fastq_pairs(infilelist, 
                         outdir,                         
                         force=True,
@@ -861,18 +880,6 @@ def add_split_fields(df, column, cp, section):
 
 
 
-def get_fh(infile):
-    '''
-    Opens compressed/uncompressed file as appropriate... 
-    '''
-    if infile.endswith('.gz'):
-        fh = gzip.open(infile, "rt")
-        logging.debug('handling gzipped file...')
-    else:
-        fh = open(infile, 'rt')
-    return fh    
-
-
 
 #
 #        AGGREGATE  READS 
@@ -1189,6 +1196,7 @@ def split_fields(df, column='sequence', drop=False, cp=None):
         logging.info(f'drop is false. keeping {column} column.')
     logging.info(f'df done. len={len(df)} returning...')
     return df
+
 
 
 def filter_reads_pd(df,
@@ -1639,15 +1647,14 @@ def align_collapse(df,
                                 min_reads = min_reads,
                                 cp=cp ) 
     logging.info(f'Got DF len={len(df)} Fixing dtypes...')
-    df = fix_mapseq_df_types(df, fformat='readtable')
+    try:
+        df = fix_mapseq_df_types(df, fformat='readtable')
+    except KeyError:
+        logging.warning(f'cannot fix types. May not be readtable format. ')
+    
     logging.info(f'Returning DF len={len(df)} dtypes={df.dtypes}')
     return df
                             
-
-
-
-
-
 
 #
 #            VBCTABLE
@@ -2580,6 +2587,14 @@ def make_vbctable_parameter_report_xlsx(df,
     return outdf
 
 
+
+############################################################
+#
+#                       Assessment/QC/Validation
+#
+############################################################
+
+
 def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     '''
     make matrix of SSI vs. FASTQ  
@@ -2674,4 +2689,266 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
         byssidf.to_excel(writer,sheet_name='Dominant by SSI' )
         byfiledf.to_excel(writer,sheet_name='Dominant by file' )
     return sldf
+
+
+
+class RandomSet():
+    '''
+    Allows random sampling without cast set to list. 
+    No removals!! Add only. 
+    '''
+    
+    def __init__(self):
+        self.data_map = {}
+        self.data = []
+
+    def add(self, element):
+        if element in self.data_map:
+            return False
+
+        self.data_map[element] = len(self.data)
+        self.data.append(element)
+
+    def update(self, element_list):
+        for elem in element_list:
+            self.add(elem)
+        
+    def discard(self, element):
+        if not element in self.data_map:
+            return False
+        
+        last_element = self.data[-1]
+        rem_idx = self.data_map[element]
+        self.data_map[last_element] = rem_idx
+        self.data[rem_idx] = last_element
+        self.data[-1] = element
+        
+        self.data.pop()
+        self.data_map.pop(element)
+        return True
+    
+
+    def getRandom(self):
+        return random.choice(self.data)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __repr__(self):
+        return str(self.data)
+
+
+
+def generate_mutation_cycle( sequence_list,
+                             n_copies=5,
+                             max_mismatch=3,
+                             alphabet='CAGT'
+                             ):
+    logging.debug(f'mutation_cycle: input: {len(sequence_list)} sequences. max_mismatch={max_mismatch}')
+    output_list = sequence_list.copy()
+    sequences_handled = 0
+    LOG_INTERVAL =  50
+    for seq in sequence_list:
+        for i in range(0, n_copies):
+            mseq = mutate_sequence(seq, alphabet, max_mismatch)
+            output_list.append(mseq)
+        sequences_handled += 1
+        if i % LOG_INTERVAL == 0:
+            logging.debug(f'handled {i} sequences...')
+    logging.debug(f'mutation_cycle: output: {len(output_list)} sequences.')
+    return output_list
+
+def generate_mutated_list( sequence_list, 
+                           n_copies=5, 
+                           n_cycles=5, 
+                           max_mismatch=3, 
+                           alphabet='CAGT'):
+    '''
+    Simple list version of mutation cycle. 
+    Each cycle takes output of entire previous cycle. 
+    Uses list and allows duplicates. 
+    Mimics dominance of parent sequence.  
+    
+    '''
+    logging.debug(f'args sequence_list n={len(sequence_list)} n_cycles={n_cycles} max_mismatch={max_mismatch}')
+    output_list = sequence_list.copy()
+    for i in range(0, n_cycles):
+        logging.debug(f'cycle {i} ')
+        output_list = generate_mutation_cycle( output_list, n_copies, max_mismatch, alphabet)
+    logging.info(f'generated mutation list. len={len(output_list)} n_cycles={n_cycles} max_mismatch={max_mismatch} ')
+    return output_list
+
+
+def generate_mutated_df(   sequence_df, 
+                           n_copies=5, 
+                           n_cycles=5, 
+                           max_mismatch=3, 
+                           alphabet='CAGT'):
+    '''
+    Each cycle takes output of entire previous cycle. 
+    Uses list and allows duplicates. 
+    Mimics dominance of parent sequence.
+    Labels every mutated sequence with the parent_idx of its parent.   
+    
+    '''
+    logging.debug(f'args sequence_df n={len(sequence_df)} n_cycles={n_cycles} max_mismatch={max_mismatch}')
+    for i in range(0, n_cycles):
+        logging.debug(f'cycle {i} ')
+        sequence_df = mutate_sequence_df(  sequence_df,
+                                           n_copies, 
+                                           max_mismatch, 
+                                           alphabet )        
+    logging.info(f'generated mutation list. len={len(sequence_df)} n_cycles={n_cycles} max_mismatch={max_mismatch} ')
+    return sequence_df
+
+
+def mutate_sequence_df( sequence_df,
+                        n_copies, 
+                        max_mismatch, 
+                        alphabet ):
+    '''
+    Performs a single cycle of mutation on a sequence DF.
+    Each sequence is mutated <n_copies> times and added to output. 
+    Keep copy of all other columns in output, and include all contents of sequence_df.
+    
+    '''
+    logging.debug(f'args sequence_df n={len(sequence_df)} n_copies={n_copies} max_mismatch={max_mismatch}')
+    other_columns = list( sequence_df.columns )
+    other_columns.remove('sequence')
+    logging.debug(f'will retain columns {other_columns}')
+    concat_list = []
+    concat_list.append(sequence_df)
+    for i in range(0, len(sequence_df)):
+        mlist = []
+        row =  sequence_df.iloc[i]
+        for j in range(0, n_copies):
+            mseq = mutate_sequence(row['sequence'])
+            rlist = list( sequence_df.iloc[i])
+            mlist.append(mseq)
+        copy_df = pd.DataFrame(columns = sequence_df.columns)
+        mser = pd.Series(mlist)
+        copy_df['sequence'] = mser
+        for c in other_columns:
+            copy_df[c] = row[c]
+        #logging.debug(f'copy_df=\n{copy_df}')
+        concat_list.append(copy_df)
+    #logging.debug(f'made concat list = {concat_list}')
+    output_df = pd.concat(concat_list, copy=False, ignore_index=True )
+    logging.debug(f'completed cycle. new n={len(output_df)}')
+    return output_df
+
+
+def mutate_sequence(sequence, alphabet='CAGT', max_mismatch=3):
+    '''
+    Take sequence, perform random mutation from alphabet to random position(s) 
+    between 1 and max_mismatch times, with equal probability of each.  
+    Return mutated sequence. 
+    
+        
+    '''            
+    alph_ba = bytearray(alphabet, encoding='UTF-8')
+    n_edits = random.randint(1, max_mismatch)
+    n_chars = len(sequence)
+    sba = bytearray(sequence, encoding='UTF-8')
+    for i in range(0, n_edits):
+        m_idx = random.randint(0, n_chars - 1)
+        sba[m_idx] = random.choice(alph_ba)
+        #logging.debug(f'mutating index {m_idx} to {sba[m_idx]} ')
+    return sba.decode('UTF-8')
+
+
+def generate_simulated_vbcreads(n_parents=100):
+    '''
+    Simulate viral replication with mutation. 
+    '''
+    (parent_list, parent_df) = generate_random(n_sequences=n_parents)
+    logging.debug(f'got parent list, df len={len(parent_df)}')
+
+    mutated_list = generate_mutated_list(parent_list)    
+    logging.debug(f'got flattened mutated list len={len(mutated_list)}')
+    
+    df = pd.DataFrame()
+    sser = pd.Series(mutated_list)
+    df['vbc_read'] = sser
+    return df
+
+def generate_simulated_vbcreads_df(n_parents=100):
+    '''
+    Simulate viral replication with mutation.
+    Include parent_idx column for all sequences, including mutated. 
+    '''
+    (parent_list, parent_df) = generate_random(n_sequences=n_parents)
+    parent_df['parent_idx'] = parent_df.index
+    logging.debug(f'got parent df, df len={len(parent_df)}')
+
+    mutated_df = generate_mutated_df(parent_df)    
+    logging.debug(f'got flattened mutated list len={len(parent_df)}')
+  
+
+      
+def generate_random(n_sequences=1000, n_bases=30, alphabet='CAGT'):
+    '''
+    Generate random vbc_reads/sequence dataframe.  
+    Aggregate to remove (unlikely) duplicates. 
+    Filter by homopolymers
+
+    vbc_read   count
+
+    '''
+    logging.debug(f'args n_bases={n_bases} n_sequences={n_sequences}')
+    ALPH=['C','A','G','T']
+    LOG_INTERVAL=1000000
+    
+    sequence_list = []
+    for i in range(0, n_sequences):
+        seq = ''.join(random.choices(ALPH, k=n_bases))
+        sequence_list.append(seq)
+        if i % LOG_INTERVAL == 0:
+            logging.debug(f'created {i} sequences...')
+    ss = pd.Series(sequence_list, dtype='string[pyarrow]')
+    df = pd.DataFrame()
+    df['sequence'] = ss
+
+    vcs = df.value_counts( ['sequence'] )
+    df = pd.DataFrame( vcs )
+    df.reset_index(inplace=True, drop=False)
+    df = filter_homopolymers(df, column='sequence')
+    df['count'] = 1
+    df['parent_idx'] = df.index
+    seqlist = list(df['sequence'])
+    return ( seqlist, df )
+
+
+
+def filter_homopolymers(df, max_repeats=7, column='sequence', remove=True):
+    '''
+    find/remove Ns
+    Find and remove homopolymer runs
+    
+    '''    
+    # Find Ns
+    df['nb_valid'] = ~df[column].str.contains('N')
+    num_has_n = str( len(df) - df['nb_valid'].sum() )
+    
+    # Find homopolymer runs
+    df['nr_valid'] = True
+    for nt in ['A','C','G','T']:
+        rnt =  nt * (max_repeats + 1)
+        logging.info(f'checking for {rnt}')
+        rmap = ~df[column].str.contains(rnt)
+        n_bad = len(df) - rmap.sum()
+        logging.info(f'found {n_bad} max_repeat sequences for {nt}') 
+        df['nr_valid'] = df['nr_valid'] & rmap
+        
+    logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
+    num_has_repeats = str( len(df) - df['nr_valid'].sum() )
+    
+    if remove:
+        validmap = df['nr_valid'] & df['nb_valid']
+        df = df[validmap]
+        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
+        df.reset_index(drop=True, inplace=True)
+        logging.info(f'remove=True, new len={len(df)}')
+    logging.debug(f'types = {df.dtypes}')
+    return df
 
