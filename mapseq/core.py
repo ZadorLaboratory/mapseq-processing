@@ -2117,6 +2117,8 @@ def process_make_matrices(df,
     sh = get_default_stats()
 
     norm_dict = {}
+    spike_dict = {}
+    real_dict = {}
 
     for brain_id in bidlist:
         valid = True 
@@ -2176,7 +2178,11 @@ def process_make_matrices(df,
             nbcmdf = nbcmdf[ natsorted( list(nbcmdf.columns) ) ]
          
             logging.debug(f'nbcmdf.describe()=\n{nbcmdf.describe()}')
+            
             norm_dict[brain_id] = nbcmdf
+            spike_dict[brain_id] = sbcmdf
+            real_dict[brain_id] = rbcmdf
+            
             sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_real', len(rbcmdf) )
             sh.add_value(f'/matrices/brain_{brain_id}','n_vbcs_spike', len(sbcmdf) )
             
@@ -2191,7 +2197,7 @@ def process_make_matrices(df,
             logging.warning(f'brain={brain_id} skipped.')    
         
     logging.info(f'got dict of {len(norm_dict)} normalized barcode matrices. returning.')
-    return norm_dict
+    return (real_dict, spike_dict, norm_dict)
 
 
 def sync_columns(df1, df2, fillval=0.0):
@@ -2235,7 +2241,11 @@ def get_si_ratio_map(sampdf, column = 'label'):
     sirdict = {}
     for i, ser in sampdf.iterrows():
         colval = ser[column]
-        si_ratio = float(ser['si_ratio'])
+        try:
+            si_ratio = float(ser['si_ratio'])
+        except ValueError:
+            logging.warning(f"{ser['si_ratio']} not convertible to float. Setting to 1.0 ")
+            si_ratio = 1.0
         sirdict[colval] = si_ratio
     return sirdict 
 
@@ -2330,7 +2340,7 @@ def make_read_report_xlsx(df,
                      step='collapsed',                      
                      cp=None):
     '''
-    creates excel sheet of unique VBC counts for 
+    creates excel sheet of unique VBC counts and UMI sums for 
     SSIs and types. 
     
     produced for readtable and collapsed. 
@@ -2351,19 +2361,19 @@ def make_read_report_xlsx(df,
     
     logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
     
-    vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read':'nunique'} )
+    vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read':'nunique','umi':'nunique'} )
     vdf.reset_index(inplace=True, drop=False)
     vdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( vdf['label'])))
     vdf.reset_index(inplace=True, drop=True)
 
     sdf = df[df['type'] == 'spike']
-    sdf = sdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique'} )
+    sdf = sdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique','umi':'nunique'} )
     sdf.reset_index(inplace=True, drop=False)
     sdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( sdf['label'])))
     sdf.reset_index(inplace=True, drop=True)    
 
     rdf = df[df['type'] == 'real']
-    rdf = rdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique'} )
+    rdf = rdf.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique','umi':'nunique'} )
     rdf.reset_index(inplace=True, drop=False)
     rdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( rdf['label'])))
     rdf.reset_index(inplace=True, drop=True)
@@ -2374,7 +2384,7 @@ def make_read_report_xlsx(df,
     rcdf.reset_index(inplace=True, drop=True)    
 
     with pd.ExcelWriter(outfile) as writer:
-        vdf.to_excel(writer, sheet_name='Unique VBC')
+        vdf.to_excel(writer, sheet_name='All Unique VBC')
         sdf.to_excel(writer, sheet_name='Spike Unique VBC')
         rdf.to_excel(writer, sheet_name='Real Unique VBC')
         rcdf.to_excel(writer, sheet_name='Read Count Sum')

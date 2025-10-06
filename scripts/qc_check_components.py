@@ -135,6 +135,7 @@ if __name__ == '__main__':
                                cp=cp )
    
     outfile = args.outfile
+    logging.debug(f'Writing output to {outfile}')
     comp_df.to_csv(outfile, sep='\t')
     logging.info('Done assessing components. ')
     

@@ -821,8 +821,10 @@ def max_hamming(seq_list, max_ok=3):
     
 def calc_hamming( a, b, use_rc=False):
     '''
-    simple calc. 
+    simple naive Hamming calculation.  
     Optionally check against reverse complement, and return minimum.
+    use_rc is very slow. do not use in production. MAPseq only uses forward
+    reads anyway--so no purpose. 
     '''
     mismatch = 0
     for i,c in enumerate(a):

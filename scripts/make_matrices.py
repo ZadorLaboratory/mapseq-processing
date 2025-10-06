@@ -179,12 +179,12 @@ if __name__ == '__main__':
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
 
-    process_make_matrices(df,
-                          sampdf=sampdf,  
-                          outdir=outdir, 
-                          exp_id = args.expid,
-                          label_column=args.label, 
-                          cp=cp)
+    (real_dict, spike_dict, norm_dict) = process_make_matrices(df,
+                                                               sampdf=sampdf,  
+                                                               outdir=outdir, 
+                                                               exp_id = args.expid,
+                                                               label_column=args.label, 
+                                                               cp=cp)
     logging.info(f'Made matrices in {outdir}...')
 
     
