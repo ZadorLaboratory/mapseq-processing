@@ -641,9 +641,9 @@ def process_fastq_grouped(   infilelist,
     r2s = int(cp.get('fastq','r2start'))
     r2e = int(cp.get('fastq','r2end'))
     
-    chunksize = int(cp.get('fastq','chunksize'))
-    source_regex = cp.get('fastq','source_regex')
-    ourtube_regex = cp.get('fastq','ourtube_regex')
+    chunksize = int(cp.get('fastq','chunksize', fallback=50000))
+    source_regex = cp.get('fastq','source_regex', fallback='(.+?_S.+?_L.+?)_')
+    ourtube_regex = cp.get('fastq','ourtube_regex', fallback='.+?-(.+?)_')
 
     logging.info(f' source_regex = {source_regex} ourtube_regex = {ourtube_regex}')
 
