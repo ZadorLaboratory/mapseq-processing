@@ -158,11 +158,25 @@ if __name__ == '__main__':
                          drop=False, 
                          force=True, 
                          column='sequence', 
-                         pcolumn='count')
+                         pcolumn='count',
+                         cp=cp)
     
     
     outf = os.path.join(outdir, 'collapsed_sequences.tsv')
     cdf.to_csv(outf, sep='\t')
-    logging.info(f'Done wrote {outf} ')
+    
+    uniques_file = os.path.join(outdir, 'sequence.unique.tsv')    
+    components_file = os.path.join(outdir, 'components.txt')
+    edges_file = os.path.join(outdir, 'edgelist.txt')
+    
+    
+    comp_df = check_components(uniques_file=uniques_file, 
+                               components_file=components_file,
+                               edges_file = edges_file,
+                               column='sequence', 
+                               cp=cp )    
+    
+    comp_df.to_csv(outfile, sep='\t')
+    logging.info(f'Done wrote {outfile} ')
     
     

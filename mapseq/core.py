@@ -647,11 +647,11 @@ def process_fastq_grouped(   infilelist,
 
     logging.info(f' source_regex = {source_regex} ourtube_regex = {ourtube_regex}')
 
-    write_each = cp.getboolean('fastq','write_each')
-    filter_by_non_dominant = cp.getboolean('fastq','filter_by_non_dominant')
-    filter_column = cp.get('fastq','filter_column')
-    drop_filter_column = cp.getboolean('fastq','drop_filter_column')
-    filter_by_sampleinfo_ssi = cp.getboolean('fastq','filter_by_sampleinfo_ssi')
+    write_each = cp.getboolean('fastq','write_each', fallback=False)
+    filter_by_non_dominant = cp.getboolean('fastq','filter_by_non_dominant',fallback=False )
+    filter_column = cp.get('fastq','filter_column', fallback='ssi')
+    drop_filter_column = cp.getboolean('fastq','drop_filter_column', fallback=False)
+    filter_by_sampleinfo_ssi = cp.getboolean('fastq','filter_by_sampleinfo_ssi', fallback=False)
     if sampdf is None:
         filter_by_sampleinfo_ssi = False
         logging.warning('No sampleinfo provided. Filename-based SSI filtering not possible.')
