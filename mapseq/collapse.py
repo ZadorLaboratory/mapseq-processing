@@ -311,7 +311,9 @@ def align_collapse_pd_grouped(df,
             btdf = load_bowtie_df(of)
         else:
             logging.info(f'Creating btdf dataframe from {btfile} max_mismatch={max_mismatch}')    
-            btdf = make_bowtie_df(btfile, max_mismatch=max_mismatch, ignore_self=True)
+            btdf = make_bowtie_df(btfile, 
+                                  max_mismatch=max_mismatch, 
+                                  ignore_self=True)
             logging.debug(f'Writing output to {of}')
             btdf.to_csv(of, sep='\t')
         sh.add_value(f'/collapse/{gcolumn}_{gid}','n_bowtie_entries', len(btdf) )
