@@ -384,8 +384,15 @@ def load_sample_info(file_name,
                     sdf[scol] = 1.0
                 elif scol == 'min_reads':
                     sdf[scol] = 1
-
         logging.info(f'loaded DF from Excel {file_name}')
+
+        # Fix missing values with defaults. 
+        mmap = sdf['min_reads'] == ''
+        sdf.loc[mmap, 'min_reads'] = 1
+        
+        rmap = sdf['si_ratio'] == ''
+        sdf.loc[rmap, 'si_ratio'] = 1.0
+        
         
     elif file_name.endswith('.tsv'):
         sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
@@ -1572,7 +1579,14 @@ def process_make_readtable_pd(df,
     # remove known template switch from readtable
     df.drop(tsdf.index, inplace=True)
     df.reset_index(drop=True, inplace=True)
+
+    # perform optional per-sample read thresholding.
+    if int( sampdf['min_reads'].max()) > 1:
+        df = threshold_by_sample(df, sampdf)
+    df.reset_index(drop=True, inplace=True)
+    
     n_final = len(df)
+
     
     sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
     sh.add_value('/readtable', 'n_badssi', str(n_badssi) )
@@ -1583,6 +1597,31 @@ def process_make_readtable_pd(df,
     
     df = fix_mapseq_df_types(df, fformat='readtable')
     return df
+
+
+def threshold_by_sample(df, sampdf):
+    '''
+    min_reads by sample from sampleinfo
+    
+    '''
+    logging.debug(f'thresholding per sample: initial size={len(df)}')
+    outdf = None
+    sampmap = list( zip(sampdf['rtprimer'], sampdf['min_reads']))
+    for (rtprimer, min_reads) in sampmap:
+        min_reads = int(min_reads)
+        logging.debug(f'thresholding rtprimer {rtprimer} to min_reads={min_reads}')
+        rtdf = df[df['rtprimer'] == rtprimer]
+        rtdf = rtdf[rtdf['read_count'] >= min_reads ]
+        if outdf is None:
+            outdf = rtdf
+        else:
+            outdf = pd.concat([outdf, rtdf], ignore_index=True)
+    outdf.reset_index(inplace=True, drop=True)
+    logging.debug(f'thresholding per sample: final size={len(outdf)}')    
+    return outdf
+
+
+
 
 #
 #
@@ -1699,6 +1738,7 @@ def process_make_vbctable_pd(df,
     tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
     idf = ndf[ndf['site'].str.startswith('injection')]
     idf = idf[idf['read_count'] >= int(inj_min_reads)]    
+   
     thdf = pd.concat([tdf, idf])
     thdf.reset_index(drop=True, inplace=True)
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
@@ -2548,7 +2588,7 @@ def make_vbctable_parameter_report_xlsx(df,
     if cp is None:
         cp = get_default_config()
     if params is None:
-        params = eval(  cp.get( 'vbctable','test_params') ) 
+        params = eval(  cp.get( 'vbctable', 'test_params', fallback='[ (5,3) ,(10,3), (10,5), (20,5), (30,5),(30,10)]')  ) 
     if outdir is None:
         outdir = os.path.abspath('./')
     else:

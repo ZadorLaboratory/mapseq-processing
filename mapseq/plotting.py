@@ -134,6 +134,7 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
         #  Switch to non-log-scaled X axis
         #df['log10index'] = np.log10(df['index'] + 1)
         df['n_index'] = df['index'] + 1
+        #df.loc[row_indexer, col_indexer] = value
         df['log10counts'] = np.log10(df[column])
         #sns.lineplot(ax=ax, x=df['log10index'], y=df['log10counts'] )
         sns.lineplot(ax=ax, x=df['n_index'], y=df['log10counts'] )

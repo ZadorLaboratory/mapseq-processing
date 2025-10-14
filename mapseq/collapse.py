@@ -1,3 +1,7 @@
+#!/usr/bin/env python 
+
+
+
 import itertools
 import logging
 import os
@@ -16,9 +20,11 @@ import pandas as pd
 
 from Bio import SeqIO
 
+gitpath=os.path.expanduser("~/git/mapseq-processing")
+sys.path.append(gitpath)
+
 from mapseq.core import *
 from mapseq.stats import *
-from lib2to3.pgen2.pgen import DFAState
 
 
 def align_collapse_pd(df,
@@ -781,6 +787,7 @@ def robust_topological_sort(graph):
 
     return topological_sort(component_graph)
 
+
 def read_listlist(infile):
     '''
     Reads a file, assumes each line is a Python list. 
@@ -803,7 +810,7 @@ def read_listlist(infile):
 
 def max_hamming(seq_list, max_ok=3):
     '''
-    Calculate max hamming for set of sequences. 
+    Calculate naive max hamming for set of sequences. 
     Keep track of how many exceed a given max. 
     
     '''
@@ -845,7 +852,7 @@ def calc_hamming( a, b, use_rc=False):
     return mismatch
 
 
-def make_networkx_graph( seq_list, max_mismatch = 3 ):
+def make_nxgraph_seqlist( seq_list, max_mismatch = 3 ):
     '''
     Given list of sequences expected to form a Hamming 
     graph, create graph and return. 
@@ -858,21 +865,6 @@ def make_networkx_graph( seq_list, max_mismatch = 3 ):
     logging.debug(f'made Graph: nodes={len(G.nodes)} edges={len(G.edges)} ')
     return G
     
-
-def make_degree_df( nxgraph):
-    '''
-    Make sorted list of node degree by sequence. 
-    
-    '''            
-    dlist = []
-    for n in nxgraph.nodes:
-        dlist.append([n, nxgraph.degree[n]] )
-    deg_df = pd.DataFrame(dlist, columns=['sequence','node_degree'])
-    deg_df.sort_values('node_degree', ascending=False, inplace=True) 
-    deg_df.reset_index(inplace=True, drop=True)
-    
-    return deg_df
-
 
 def display_diff(a, b):
     '''
@@ -932,11 +924,7 @@ def make_edge_df(edgelist, unique_df, column='sequence'):
     df = pd.DataFrame(edgelist_list, columns=['aseq', 'bseq', 'hamming'])
     return df 
 
-
-    
-
-
-
+ 
 def parse_components(compfile):
     '''
     parse components.txt file. 
@@ -978,7 +966,7 @@ def assess_component( seq_list, max_mismatch=3 ):
     Make graph and node degree dataframe for one component. 
     
     '''
-    g = make_networkx_graph(seq_list, max_mismatch )
+    g = make_nxgraph_seqlist(seq_list, max_mismatch )
     deg_df = make_degree_df(g)
     return g, deg_df
 
@@ -1090,6 +1078,387 @@ def make_component_df(uniques_df,
     logging.info(f'handled {top_x} components in {td.total_seconds()} seconds.')
     return comp_df
 
+#####################################################
+#
+#            NetworkX based processing
+#
+#####################################################
+
+
+def make_degree_df( nxgraph):
+    '''
+    Make sorted list of node degree by sequence. 
+    
+    '''            
+    dlist = []
+    for n in nxgraph.nodes:
+        dlist.append([n, nxgraph.degree[n]] )
+    deg_df = pd.DataFrame(dlist, columns=['sequence','node_degree'])
+    deg_df.sort_values('node_degree', ascending=False, inplace=True) 
+    deg_df.reset_index(inplace=True, drop=True)
+    
+    return deg_df
+
+
+def make_nxgraph_bt2df(btdf, 
+                       seqdf, 
+                       seq_col='vbc_read',
+                       count_col = 'count', 
+                       seq_len = 30, 
+                       min_score = -18.6):
+    '''
+    Make networkx graph with node properties (read_count) and edge properties (positive 
+    bowtie2 score) for more sophisticated algorithms with weighting. 
+    
+    seqdf has sequences corresponding to name_read and name_align values in btdf.  
+    columns  vbc_read, count
+    
+    Bowtie 2 BTDF columns:
+    'name_read', 'flagsum', 'name_align', 'offset', 'qual', 'cigar', 'mate',
+       'mate_offset', 'fraglen', 'seq', 'quals', 'score', 'next', 'n_amb',
+       'n_mismatch', 'n_gap', 'n_gapext', 'distance', 'md', 'yt']
+    
+    '''
+    
+    # Logging intervals...
+    SEQ_INTERVAL = 10000
+    EDGE_INTERVAL = 100000
+    COMP_INTERVAL = 1000 
+    
+    # Edge info
+    btdf['pscore'] = btdf['score'] + abs(min_score)
+    
+    # Node info
+    seq_list = list( seqdf[seq_col] )
+    count_list = list( seqdf[count_col])      
+    
+    # these are indices, so must be integers
+    read_list = list( btdf['name_read'].astype(int))
+    align_list = list( btdf['name_align'].astype(int))
+    pscore_list = list( btdf['pscore'].astype(float))
+    distance_list = list( btdf['distance'].astype(int))
+    
+    G = nx.DiGraph()
+    edges_handled = 0
+    for i in range(0, len(btdf)):
+        rseq = seq_list[ read_list[i] ]
+        aseq = seq_list[ align_list[i] ]
+        #prop_dict = { "pscore": pscore_list[i] }
+        G.add_edge(rseq, aseq, distance= distance_list[i] )
+        G.add_edge(aseq, rseq, distance= distance_list[i] )        
+        edges_handled += 1
+        if edges_handled % EDGE_INTERVAL == 0:
+            logging.debug(f'handled {edges_handled} edges...')
+    logging.info(f'handled all {edges_handled} edges.')
+    
+    # set nodes properties.
+    nodes_handled = 0 
+    n_singletons = 0
+    for i in range(0, len(seq_list)):
+        seq = seq_list[i]
+        try:
+            G.nodes[seq]['count'] = count_list[i]
+            nodes_handled += 1
+            if nodes_handled % SEQ_INTERVAL == 0:
+                logging.debug(f'handled {nodes_handled} edges...')
+        except KeyError:
+            n_singletons += 1
+    logging.debug(f'handled {nodes_handled} nodes. n_singletons={n_singletons}')
+    logging.info(f'made Graph: nodes={len(G.nodes)} edges={len(G.edges)} ')
+    return G
+
+
+def plot_subgraph( subgraph):
+    '''
+    matplotlib subgraph
+    '''
+    pos = nx.spring_layout(subgraph, seed=42)
+    nx.draw_networkx_nodes(subgraph, pos, node_size=700)
+    weights = nx.get_edge_attributes(subgraph, 'distance')
+    nx.draw_networkx_edges(subgraph, pos, width=[w + 1 for w in weights.values()])
+    nx.draw_networkx_labels(subgraph, pos, font_size=9, font_color="black")
+    nx.draw_networkx_edge_labels(subgraph, pos, edge_labels=weights)
+    plt.axis("off")
+    plt.show()
+
+def calc_diameter_nx(graph, component):
+    '''
+    
+    
+    '''
+    pass
+
+def check_components_nx( uniques_file, 
+                         components_file,
+                         edges_file, 
+                         column='vbc_read', cp=None):
+    '''
+    Called  via command line out of band of pipeline.    
+    Handles filenames, params, and calls functions. 
+    
+    '''
+    udf = load_mapseq_df( uniques_file, use_dask=False)
+    logging.debug(f'loaded. len={len(udf)} dtypes =\n{udf.dtypes}')
+    edges = parse_edges(edges_file)
+    
+    
+     
+    components = parse_components(components_file)   
+    comp_df = make_component_df(udf, components, column=column )
+    return comp_df
+
+
+def align_collapse_nx_grouped(df,
+                              column='vbc_read',
+                              pcolumn='read_count',
+                              gcolumn='brain', 
+                              max_mismatch = None,
+                              max_recursion = None, 
+                              outdir= None, 
+                              datestr= None,
+                              force= False,
+                              min_reads = None, 
+                              cp=None):
+    '''
+    Groups alignment and collapse by gcolumn value. [brain]
+    Uses sub-directories for standard intermediate output/scratch. 
+    Assumes dataframe with sequence (vbc_read) and read_count columns
+                
+    '''
+    # housekeeping...
+    if cp is None:
+        cp = get_default_config()
+    
+    if max_mismatch is None:
+        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    else:
+        max_mismatch = int(max_mismatch)
+
+    if min_reads is None:
+        min_reads = int(cp.get('collapse', 'min_reads', fallback=1))
+    else:
+        min_reads = int(min_reads)
+
+    if max_recursion is not None:
+        rlimit = int(max_recursion)
+        logging.info(f'set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)
+    else:
+        rlimit = int(cp.get('collapse','max_recursion'))
+        logging.info(f'(from config) set new recursionlimit={rlimit}')
+        sys.setrecursionlimit(rlimit)        
+
+    aligner = cp.get('collapse','tool')
+
+    if datestr is None:
+        datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+    
+    if outdir is None:
+        outdir = './'
+    outdir = os.path.abspath(outdir)    
+    os.makedirs(outdir, exist_ok=True)
+
+    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
+    sh = get_default_stats()
+    
+    sh.add_value('/collapse','n_initial_sequences', len(df) )
+    if min_reads > 1:
+        logging.info(f'thresholding by min_reads={min_reads} before collapse. len={len(df)} ')
+        df = df[ df['read_count'] >= min_reads  ]
+        df.reset_index(inplace=True, drop=True)
+        logging.info(f'after min_reads={min_reads} filter. len={len(df)} ')
+    sh.add_value('/collapse','n_thresholded_sequences', len(df) )    
+    sh.add_value('/collapse','n_full_sequences', len(df) )
+    sh.add_value(f'/collapse','api_max_mismatch', str(max_mismatch) )
+
+    # Get list of ids to group collapse by...
+    df[gcolumn] = df[gcolumn].astype('string')
+    gidlist = list( df[gcolumn].dropna().unique() )
+    gidlist = [ x for x in gidlist if len(x) > 0 ]
+    gidlist.sort()
+    logging.debug(f'handling group list: {gidlist}')
+
+    logging.info(f'pulling out no group for merging at end...')
+    nogroup_df = df[ df[gcolumn] == '' ]
+    sh.add_value('/collapse','n_no_group', len(nogroup_df) )
+
+    gdflist = []
+
+    for gid in gidlist:
+        logging.info(f"collapsing '{column}' by {gcolumn} = '{gid}' ")
+        gdir = os.path.join( outdir, f'{gcolumn}.{gid}' )
+        os.makedirs(gdir, exist_ok=True)
+        
+        gdf = df[df[gcolumn] == gid]
+        gdf.reset_index(inplace=True, drop=True)
+        initial_len = len(gdf)  
+        logging.info(f'[{gcolumn}:{gid}] initial len={len(gdf)} subdir={gdir}')        
+        
+        # get reduced dataframe of unique head sequences
+        logging.info('Getting unique DF...')    
+        udf = gdf[column].value_counts().reset_index() 
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_unique_sequences', len(udf) )    
+    
+        of = os.path.join( gdir , f'{column}.unique.tsv')
+        logging.info(f'Writing unique DF to {of}')
+        udf.to_csv(of, sep='\t') 
+        
+        # handle writing unique fasta    
+        of = os.path.join( gdir , f'{column}.unique.fasta')      
+        if os.path.exists(of) and not force:
+            logging.debug(f'Output {of} exists and not force.')
+            seqfasta = of
+        else: 
+            logging.info(f'Writing uniques as FASTA to {of}')
+            seqfasta = write_fasta_from_df(udf, outfile=of, sequence=[column])        
+     
+        # run allXall bowtiex
+        of = os.path.join( gdir , f'unique_sequences.bt2.sam')
+        if os.path.exists(of) and not force:
+            logging.debug(f'Output {of} exists and not force.')
+            btfile = of
+        else:
+            logging.info(f'Running {aligner} on {seqfasta} file to {of}')
+            btfile = run_bowtie(cp, seqfasta, of, tool=aligner) 
+            
+        logging.info(f'Bowtie done. Produced output {btfile}. Checking DF.')
+        of = os.path.join( gdir , f'unique_sequences.btdf.tsv')
+        if os.path.exists(of) and not force:
+            logging.debug(f'Output {of} exists and not force.')
+            btdf = load_bowtie_df(of)
+        else:
+            logging.info(f'Creating btdf dataframe from {btfile} max_mismatch={max_mismatch}')    
+            btdf = make_bowtie_df(btfile, 
+                                  max_mismatch=max_mismatch, 
+                                  ignore_self=True)
+            logging.debug(f'Writing output to {of}')
+            btdf.to_csv(of, sep='\t')
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_bowtie_entries', len(btdf) )
+
+        G = make_nxgraph_bt2df(btdf, udf, seq_col=column, count_col='count' )
+        
+        # Write edges
+        of = os.path.join( gdir , f'edgelist.txt')
+        writelist(of, list(G.edges))
+        logging.debug(f'edgelist len={len(edgelist)}')
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
+
+        logging.info(f'finding components.')
+        # scc is generator, so must be processed. 
+        scc = nx.strongly_connected_components(G)
+        components = list( scc)
+        logging.info(f'done finding {len(components)} components')
+        
+        # write components (sets)
+        of = os.path.join( gdir , f'components.txt')
+        writelist(of, components)
+        logging.debug(f'all components len={len(components)}')
+
+        n_comps = len(components)
+        comps_handled = 0
+        COMP_INTERVAL = 100
+        #   component info for DF:  cmp_idx, cmp_size, cmp_diam, cmp_max_deg 
+        COMPINFO_COLUMNS = [ 'cmp_idx', 'size', 'diam', 'max_deg', 'max_deg_seq', 'max_count', 'max_count_seq']
+        
+        comp_info_list = []
+        logging.debug(f'enumerating components...')
+        for i, comp in enumerate( components ):
+            sg = G.subgraph(comp)
+            c_size = len(sg)
+            c_diam = nx.diameter(sg)
+            degree_sequence = sorted(( (d,n) for n, d in sg.degree()), reverse=True)
+            (c_max_deg, c_max_deg_seq )  = degree_sequence[0]
+            max_count_node = max(sg.nodes(data=True), key=lambda node: node[1]['count'])
+            (c_max_count_seq, ndata) = max_count_node
+            c_max_count = ndata['count']
+            clist = [ i, c_size, c_diam, c_max_deg, c_max_deg_seq, c_max_count, c_max_count_seq ]
+            comp_info_list.append(clist)
+            comps_handled += 1
+            if comps_handled % COMP_INTERVAL == 0:
+                logging.debug(f'handled [{comps_handled}/{n_comps}]') 
+        
+        comp_info_df = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
+        
+        # write component assessment info. 
+        of = os.path.join( gdir , f'component_info.tsv')
+        comp_info_df.to_csv( of, sep='\t')
+        logging.debug(f'all components len={len(components)}')
+        
+        # collapse sequences to max_degree_seq
+        newdf = collapse_by_components_nx(gdf, 
+                                          udf, 
+                                          components, 
+                                          component_info,
+                                          column=column, 
+                                          parent_val='max_deg_seq', 
+                                          outdir=gdir)
+
+
+
+        
+
+    # merge all brains into one dataframe...
+    logging.debug(f'sizes={[ len(x) for x in gdflist ]} adding nogroup len={len(nogroup_df)}')    
+    gdflist.append(nogroup_df)
+    outdf = pd.concat(gdflist, ignore_index = True)
+    outdf.reset_index(inplace=True, drop=True)
+    logging.info(f'All groups. Final DF len={len(outdf)}')
+    return outdf
+
+
+
+def collapse_by_components_nx(fulldf, 
+                              uniqdf, 
+                              components, 
+                              column, 
+                              pcolumn, 
+                              outdir=None):
+    '''
+    newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
+    networkx version of applying collapse info. 
+    
+    '''
+    pass
+
+
+
+
+
+
+def snippet():
+ # assess components...
+        # components is list of lists.
+        data = [ len(c) for c in components]
+        data.sort(reverse=True)
+        ccount = pd.Series(data)
+        of = os.path.join( gdir , f'component_count.tsv')
+        ccount.to_csv(of, sep='\t')            
+    
+        mcomponents = remove_singletons(components)
+        logging.debug(f'multi-element components len={len(mcomponents)}')
+        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_multi_components', len(mcomponents) )
+        of = os.path.join( gdir , f'multi_components.json')
+        logging.debug(f'writing components len={len(components)} t {of}')
+        with open(of, 'w') as fp:
+            json.dump(mcomponents, fp, indent=4)
+    
+        logging.info(f'Collapsing {len(components)} components...')
+        newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
+        # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+        newcol = f'{column}_col'        
+        newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+        logging.info(f'Got collapsed DF. len={len(newdf)}')
+    
+        rdf = newdf[[ column, newcol, pcolumn ]]
+        of = os.path.join( gdir , f'read_collapsed.tsv')
+        logging.info(f'Writing reduced mapping TSV to {of}')
+        rdf.to_csv(of, sep='\t')
+        
+        newdf.drop(column, inplace=True, axis=1)
+        newdf.rename( { newcol : column }, inplace=True, axis=1) 
+        gdflist.append(newdf)           
+
+
 
 if __name__ == '__main__':
     
@@ -1099,7 +1468,7 @@ if __name__ == '__main__':
         2 : [1,3],
         3 : [3],
     }
-    print( robust_topological_sort(graph) )
+    print( graph )
 
 
 
