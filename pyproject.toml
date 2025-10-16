@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mapseq-processing"
+version = "1.0.0"
+authors = [
+  { name="John Hover", email="hover@cshl.edu" },
+]
+description = "Data processing for MAPseq"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "BSD-3-Clause"
+license-files = ["LICEN[CS]E*"]
+
+dependencies = [
+ 	"pandas", 
+ 	"pyarrow", 
+ 	"numpy", 
+ 	"scikit-learn", 
+ 	"matplotlib", 
+ 	"seaborn", 
+ 	"biopython", 
+ 	"scipy", 
+ 	"fastcluster", 
+ 	"openpyxl", 
+ 	"bowtie",
+ 	"bowtie2", 
+ 	"natsort", 
+ 	"paramiko", 
+ 	"h5py", 
+ 	"dask", 
+ 	"networkx", 
+ 	"mergedeep",
+]
+
+
+[project.urls]
+Homepage = "https://github.com/ZadorLaboratory/mapseq-processing"
+Issues = "https://github.com/ZadorLaboratory/mapseq-processing/issues"
