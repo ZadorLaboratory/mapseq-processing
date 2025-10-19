@@ -1,22 +1,24 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mapseq-processing"
 version = "1.0.0"
-authors = [
-  { name="John Hover", email="hover@cshl.edu" },
-]
+
 description = "Data processing for MAPseq"
 readme = "README.md"
-requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
 license = "BSD-3-Clause"
 license-files = ["LICEN[CS]E*"]
+authors = [
+  { name="John Hover", email="hover@cshl.edu" },
+]
+
+requires-python = ">= 3.9"
 
 dependencies = [
  	"pandas", 
@@ -38,6 +40,12 @@ dependencies = [
  	"networkx", 
  	"mergedeep",
 ]
+
+[tool.setuptools.packages.find]
+include = ["mapseq*"]
+
+[project.scripts]
+process_fastq_pairs = "mapseq.cli:process_fastq_pairs" 
 
 
 [project.urls]

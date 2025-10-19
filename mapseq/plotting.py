@@ -6,6 +6,7 @@ import datetime as dt
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import pandas as pd
 
 from natsort import natsorted
 
@@ -161,5 +162,104 @@ def calc_freq_threshold(df, fraction=0.9, column = 'read_count'):
     idx = int(len(ser) * fraction)
     t = int( ser.iloc[idx] + 1 )    
     return t
+
+
+def counts_freq(matlabfile, logscale = 'log10', logcol = 'counts' ):
+    '''
+    '''
+    df = pd.read_csv('barcodematrix.tsv',sep='\t', header=None)
+    rowsum = df.sum(axis=1)
+    rowsort = rowsum.sort_values(ascending=False)
+    df = pd.DataFrame(data=rowsort)
+    df.columns = ['counts']
+    df  = df.reset_index(drop=True)
+       
+    df[f'log_{logcol}'] = np.log10(df[f'{logcol}'])
+
+    
+    #if logscale == 'log2':
+    #    df = np.log2(df)
+    #elif logscale == 'log10':
+    #    df = np.log10(df)
+    
+    ax = sns.lineplot(data=df, x=df.index, y=df[ f'log_{logcol}' ])
+    ax.set_title('HZ120Vamp2 counts frequency')
+    ax.set(xlabel='Sequence Rank', ylabel='log10(BC molecule count)')
+    
+    #   OR 
+    # plt.xlabel('x-axis label')
+    # plt.ylabel('y-axis label')
+    
+    plt.savefig('Z120Vamp2.log10.countsfreq.png')
+    #plt.show()
+
+
+def make_simple_freqplot(df, 
+                         column='read_count', 
+                         title='freqplot', 
+                         outfile = './freqplot.pdf',
+                         xscale=None,
+                         yscale='log10' ):
+    '''
+    Plot a single column as frequency plot, with y-axis scale. 
+    
+    scale = log10 | log2 | None 
+
+    '''
+    ax = None
+    
+    df['n_index'] = pd.Series( df.index ) + 1
+
+    s = df[column].sum()
+    n = len(df)
+    t = df[column].max()
+    r = df['n_index'].max()
+
+    df['log10index'] = np.log10(df['n_index'])
+    df['log10counts'] = np.log10( df[column] )
+
+    if yscale is None:
+        logging.debug(f'making plot with no y scaling.')
+        if xscale is None:
+            ax = sns.lineplot(x=df['n_index'], y=df[column] )
+            logging.debug(f'made axis without x or y axis scaling.')
+            ax.set(xlabel='Sequence Rank')
+        elif xscale == 'log10':
+            ax = sns.lineplot(x=df['log10index'], y=df[column] )
+            ax.set(xlabel='log10( sequence rank )') 
+            logging.debug(f'made axis with x-axis only scaling.')
+        ax.set(ylabel=column)
+        lx = df['index'].max()
+        ly = df[column].max()
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", 
+                fontsize=11, 
+                horizontalalignment='right',
+                verticalalignment='top',) #add text
+ 
+    elif yscale == 'log10':
+        #  Avoid divide by 0 runtime warning...
+        #  Switch to non-log-scaled X axis
+        logging.debug(f'making plot with y scaling = {yscale} .')
+        if xscale is None:
+            ax = sns.lineplot(x=df['n_index'], y=df['log10counts'] )
+            logging.debug(f'made axis with y-axis only scaling.')     
+            ax.set(xlabel='sequence rank')
+        elif xscale == 'log10':
+            ax = sns.lineplot(x=df['log10index'], y=df['log10counts'] )
+            logging.debug(f'made axis with x-axis and y-axis scaling.')
+            ax.set(xlabel='log10( sequence rank )')
+        ax.set(ylabel=f'log10( {column} )')
+        lx = 0.05 * np.log10(t) 
+        ly = 0.05 * np.log10(r)        
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=11) #add text
+              
+    ax.set_title(title)
+    
+    of = os.path.abspath( outfile )
+    logging.info(f'saving to {of} ')       
+    plt.savefig(of)
+    plt.clf()
+    logging.debug(f'done')
+    return ax
 
    

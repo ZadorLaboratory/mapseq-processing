@@ -557,7 +557,7 @@ def collapse_by_components_pd(fulldf,
     logging.debug(f'multi-element components len={len(components)}')
     logging.debug(f'fulldf length={len(fulldf)} uniqdf length={len(uniqdf)} {len(components)} components.')
     logging.info(f'building seqmapdict {len(uniqdf)} unique seqs, {len(components)} components, for {len(fulldf)} raw sequences. ')
-    smd = build_seqmapdict_pd(uniqdf, components,  column, pcolumn)
+    smd = build_seqmapdict_pd(uniqdf, components, column, pcolumn)
       
     # Make new full df:
     logging.info('seqmapdict built. Applying.')
@@ -864,6 +864,54 @@ def make_nxgraph_seqlist( seq_list, max_mismatch = 3 ):
             G.add_edge(a,b)
     logging.debug(f'made Graph: nodes={len(G.nodes)} edges={len(G.edges)} ')
     return G
+
+
+def make_component_df_nx(components, parent_graph):
+    '''
+    Gather component info from native NX objects. , save to componenet DF
+    
+    '''
+    #n_comps = len(components)
+    comps_handled = 0
+    COMP_INTERVAL = 10
+    #   component info for DF:  cmp_idx, cmp_size, cmp_diam, cmp_max_deg 
+    COMPINFO_COLUMNS = [ 'cmp_idx', 'size', 'diam', 'max_deg', 'max_deg_seq', 'max_count', 'max_count_seq']
+    
+    comp_info_list = []
+    logging.debug(f'enumerating components...')
+    for i, comp in enumerate( components ):
+        comp = list(comp)
+        if comps_handled % COMP_INTERVAL == 0:
+            logging.debug(f'[{i}] len={len(comp)} ...')
+        sg = parent_graph.subgraph(comp)
+        c_size = len(sg)
+        c_diam = nx.diameter(sg)
+        if comps_handled % COMP_INTERVAL == 0:
+            logging.debug(f'[{i}] Calculating degree...')
+
+        degree_sequence = sorted(( (d,n) for n, d in sg.degree()), reverse=True)
+        (c_max_deg, c_max_deg_seq )  = degree_sequence[0]
+
+        if comps_handled % COMP_INTERVAL == 0:
+            logging.debug(f'[{i}] Calculating max node count ...')
+        max_count_node = max(sg.nodes(data=True), key=lambda node: node[1]['count'])
+        (c_max_count_seq, ndata) = max_count_node
+        c_max_count = ndata['count']
+        clist = [ i, c_size, c_diam, c_max_deg, c_max_deg_seq, c_max_count, c_max_count_seq ]
+        comp_info_list.append(clist)
+        comps_handled += 1
+        if comps_handled % COMP_INTERVAL == 0:
+            logging.debug(f'[{i}] Done. Handled {comps_handled} components...') 
+    
+    logging.info(f'handled {comps_handled} total components.')
+    comp_info_df = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
+    
+    # write component assessment info. 
+    #of = os.path.join( gdir , f'component_info.tsv')
+    #comp_info_df.to_csv( of, sep='\t')
+    #logging.debug(f'all components len={len(components)}')
+    
+    return comp_info_df
     
 
 def display_diff(a, b):
@@ -1181,6 +1229,22 @@ def plot_subgraph( subgraph):
     plt.axis("off")
     plt.show()
 
+
+def get_components_nx( graph):
+    '''
+    
+    '''
+    complist = nx.strongly_connected_components(graph)
+    return complist
+
+def subgraph_from_nodes( parentgraph, nodelist):
+    '''
+    
+    
+    '''    
+    sg = G.subgraph( nodelist)
+    return sg 
+
 def calc_diameter_nx(graph, component):
     '''
     
@@ -1206,6 +1270,9 @@ def check_components_nx( uniques_file,
     components = parse_components(components_file)   
     comp_df = make_component_df(udf, components, column=column )
     return comp_df
+
+
+
 
 
 def align_collapse_nx_grouped(df,
@@ -1295,8 +1362,15 @@ def align_collapse_nx_grouped(df,
         logging.info(f'[{gcolumn}:{gid}] initial len={len(gdf)} subdir={gdir}')        
         
         # get reduced dataframe of unique head sequences
-        logging.info('Getting unique DF...')    
-        udf = gdf[column].value_counts().reset_index() 
+        #logging.info('Getting unique DF...')    
+        logging.debug('Getting unique DF with sum of counts...')
+        vcdf = gdf[column].value_counts().reset_index()
+        cdf = pd.merge( vcdf, gdf, on=column, how='left')
+        udf = cdf.groupby(column).agg( {'count':'first','read_count':'sum'}).reset_index()
+        udf.sort_values('count', ascending=False).reset_index(inplace=True, drop=True)
+        logging.debug('Unique DF created...')
+        
+        #udf = gdf[column].value_counts().reset_index() 
         sh.add_value(f'/collapse/{gcolumn}_{gid}','n_unique_sequences', len(udf) )    
     
         of = os.path.join( gdir , f'{column}.unique.tsv')
@@ -1339,7 +1413,8 @@ def align_collapse_nx_grouped(df,
         
         # Write edges
         of = os.path.join( gdir , f'edgelist.txt')
-        writelist(of, list(G.edges))
+        edgelist = list(G.edges)
+        writelist(of, edgelist)
         logging.debug(f'edgelist len={len(edgelist)}')
         sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
 
@@ -1347,6 +1422,7 @@ def align_collapse_nx_grouped(df,
         # scc is generator, so must be processed. 
         scc = nx.strongly_connected_components(G)
         components = list( scc)
+        components = [  list(x) for x in components ]
         logging.info(f'done finding {len(components)} components')
         
         # write components (sets)
@@ -1354,48 +1430,23 @@ def align_collapse_nx_grouped(df,
         writelist(of, components)
         logging.debug(f'all components len={len(components)}')
 
-        n_comps = len(components)
-        comps_handled = 0
-        COMP_INTERVAL = 100
-        #   component info for DF:  cmp_idx, cmp_size, cmp_diam, cmp_max_deg 
-        COMPINFO_COLUMNS = [ 'cmp_idx', 'size', 'diam', 'max_deg', 'max_deg_seq', 'max_count', 'max_count_seq']
-        
-        comp_info_list = []
-        logging.debug(f'enumerating components...')
-        for i, comp in enumerate( components ):
-            sg = G.subgraph(comp)
-            c_size = len(sg)
-            c_diam = nx.diameter(sg)
-            degree_sequence = sorted(( (d,n) for n, d in sg.degree()), reverse=True)
-            (c_max_deg, c_max_deg_seq )  = degree_sequence[0]
-            max_count_node = max(sg.nodes(data=True), key=lambda node: node[1]['count'])
-            (c_max_count_seq, ndata) = max_count_node
-            c_max_count = ndata['count']
-            clist = [ i, c_size, c_diam, c_max_deg, c_max_deg_seq, c_max_count, c_max_count_seq ]
-            comp_info_list.append(clist)
-            comps_handled += 1
-            if comps_handled % COMP_INTERVAL == 0:
-                logging.debug(f'handled [{comps_handled}/{n_comps}]') 
-        
-        comp_info_df = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
-        
+        # Gather component information. 
+        comp_info_df = make_component_df_nx(components, G)
+        logging.debug(f'got component info DF len={len(comp_info_df)}')
+
         # write component assessment info. 
         of = os.path.join( gdir , f'component_info.tsv')
         comp_info_df.to_csv( of, sep='\t')
-        logging.debug(f'all components len={len(components)}')
         
         # collapse sequences to max_degree_seq
         newdf = collapse_by_components_nx(gdf, 
                                           udf, 
                                           components, 
-                                          component_info,
+                                          comp_info_df,
                                           column=column, 
                                           parent_val='max_deg_seq', 
                                           outdir=gdir)
-
-
-
-        
+        gdflist.append(newdf)
 
     # merge all brains into one dataframe...
     logging.debug(f'sizes={[ len(x) for x in gdflist ]} adding nogroup len={len(nogroup_df)}')    
@@ -1406,57 +1457,29 @@ def align_collapse_nx_grouped(df,
     return outdf
 
 
-
 def collapse_by_components_nx(fulldf, 
                               uniqdf, 
-                              components, 
+                              components,
+                              component_info_df, 
                               column, 
-                              pcolumn, 
+                              parent_val, 
                               outdir=None):
     '''
+    comp info columns:
+      cmp_idx        id in components.txt
+      size           # sequences in component. 
+      diam           # max pairwise edit distance.
+      max_deg        # max node degree in component. 
+      max_deg_seq    # seq with max node degree
+      max_count      # max count in component. 
+      max_count_seq  # seq with max count
+      
     newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
     networkx version of applying collapse info. 
-    
+
     '''
-    pass
-
-
-
-
-
-
-def snippet():
- # assess components...
-        # components is list of lists.
-        data = [ len(c) for c in components]
-        data.sort(reverse=True)
-        ccount = pd.Series(data)
-        of = os.path.join( gdir , f'component_count.tsv')
-        ccount.to_csv(of, sep='\t')            
     
-        mcomponents = remove_singletons(components)
-        logging.debug(f'multi-element components len={len(mcomponents)}')
-        sh.add_value(f'/collapse/{gcolumn}_{gid}','n_multi_components', len(mcomponents) )
-        of = os.path.join( gdir , f'multi_components.json')
-        logging.debug(f'writing components len={len(components)} t {of}')
-        with open(of, 'w') as fp:
-            json.dump(mcomponents, fp, indent=4)
-    
-        logging.info(f'Collapsing {len(components)} components...')
-        newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
-        # newdf has sequence and newsequence columns, rename to orig_seq and sequence
-        newcol = f'{column}_col'        
-        newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
-        logging.info(f'Got collapsed DF. len={len(newdf)}')
-    
-        rdf = newdf[[ column, newcol, pcolumn ]]
-        of = os.path.join( gdir , f'read_collapsed.tsv')
-        logging.info(f'Writing reduced mapping TSV to {of}')
-        rdf.to_csv(of, sep='\t')
-        
-        newdf.drop(column, inplace=True, axis=1)
-        newdf.rename( { newcol : column }, inplace=True, axis=1) 
-        gdflist.append(newdf)           
+    return fulldf
 
 
 

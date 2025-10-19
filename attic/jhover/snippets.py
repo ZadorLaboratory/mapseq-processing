@@ -3060,5 +3060,70 @@ def filter_by_source_ssi(   df,
         ndf = ndf.drop(dom_column, axis=1)
     logging.debug(f'original DF len={len(df)} filtered DF len={len(ndf)}')
     return ndf
+
+
+def make_nx_df():
+
+    n_comps = len(components)
+    comps_handled = 0
+    COMP_INTERVAL = 100
+    #   component info for DF:  cmp_idx, cmp_size, cmp_diam, cmp_max_deg 
+    COMPINFO_COLUMNS = [ 'cmp_idx', 'size', 'diam', 'max_deg', 'max_deg_seq', 'max_count', 'max_count_seq']
     
-         
+    comp_info_list = []
+    logging.debug(f'enumerating components...')
+    for i, comp in enumerate( components ):
+        sg = G.subgraph(comp)
+        c_size = len(sg)
+        c_diam = nx.diameter(sg)
+        degree_sequence = sorted(( (d,n) for n, d in sg.degree()), reverse=True)
+        (c_max_deg, c_max_deg_seq )  = degree_sequence[0]
+        max_count_node = max(sg.nodes(data=True), key=lambda node: node[1]['count'])
+        (c_max_count_seq, ndata) = max_count_node
+        c_max_count = ndata['count']
+        clist = [ i, c_size, c_diam, c_max_deg, c_max_deg_seq, c_max_count, c_max_count_seq ]
+        comp_info_list.append(clist)
+        comps_handled += 1
+        if comps_handled % COMP_INTERVAL == 0:
+            logging.debug(f'handled [{comps_handled}/{n_comps}]') 
+    
+    comp_info_df = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
+
+
+
+
+
+def snippet():
+ # assess components...
+    # components is list of lists.
+    data = [ len(c) for c in components]
+    data.sort(reverse=True)
+    ccount = pd.Series(data)
+    of = os.path.join( gdir , f'component_count.tsv')
+    ccount.to_csv(of, sep='\t')            
+
+    mcomponents = remove_singletons(components)
+    logging.debug(f'multi-element components len={len(mcomponents)}')
+    sh.add_value(f'/collapse/{gcolumn}_{gid}','n_multi_components', len(mcomponents) )
+    of = os.path.join( gdir , f'multi_components.json')
+    logging.debug(f'writing components len={len(components)} t {of}')
+    with open(of, 'w') as fp:
+        json.dump(mcomponents, fp, indent=4)
+
+    logging.info(f'Collapsing {len(components)} components...')
+    newdf = collapse_by_components_pd(gdf, udf, mcomponents, column=column, pcolumn=pcolumn, outdir=gdir)
+    # newdf has sequence and newsequence columns, rename to orig_seq and sequence
+    newcol = f'{column}_col'        
+    newdf.rename( {'newsequence': newcol}, inplace=True, axis=1)    
+    logging.info(f'Got collapsed DF. len={len(newdf)}')
+
+    rdf = newdf[[ column, newcol, pcolumn ]]
+    of = os.path.join( gdir , f'read_collapsed.tsv')
+    logging.info(f'Writing reduced mapping TSV to {of}')
+    rdf.to_csv(of, sep='\t')
+    
+    newdf.drop(column, inplace=True, axis=1)
+    newdf.rename( { newcol : column }, inplace=True, axis=1) 
+    gdflist.append(newdf)  
+
+     
