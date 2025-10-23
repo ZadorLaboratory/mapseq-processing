@@ -318,7 +318,7 @@ def align_collapse_pd_grouped(df,
         else:
             logging.info(f'Creating btdf dataframe from {btfile} max_mismatch={max_mismatch}')    
             btdf = make_bowtie_df(btfile, 
-                                  max_mismatch=max_mismatch, 
+                                  max_distance=max_mismatch, 
                                   ignore_self=True)
             logging.debug(f'Writing output to {of}')
             btdf.to_csv(of, sep='\t')
@@ -868,7 +868,7 @@ def make_nxgraph_seqlist( seq_list, max_mismatch = 3 ):
 
 def make_component_df_nx(components, parent_graph):
     '''
-    Gather component info from native NX objects. , save to componenet DF
+    Gather component info from native NX objects. , save to component DF
     
     '''
     #n_comps = len(components)
@@ -894,7 +894,7 @@ def make_component_df_nx(components, parent_graph):
 
         if comps_handled % COMP_INTERVAL == 0:
             logging.debug(f'[{i}] Calculating max node count ...')
-        max_count_node = max(sg.nodes(data=True), key=lambda node: node[1]['count'])
+        max_count_node = max( sg.nodes(data=True), key=lambda node: node[1]['count'])
         (c_max_count_seq, ndata) = max_count_node
         c_max_count = ndata['count']
         clist = [ i, c_size, c_diam, c_max_deg, c_max_deg_seq, c_max_count, c_max_count_seq ]
@@ -904,14 +904,16 @@ def make_component_df_nx(components, parent_graph):
             logging.debug(f'[{i}] Done. Handled {comps_handled} components...') 
     
     logging.info(f'handled {comps_handled} total components.')
-    comp_info_df = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
+    cidf = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
+    cidf.sort_values(by='size', inplace=True, ascending=False)
+    cidf.reset_index(inplace=True, drop=True)
     
     # write component assessment info. 
     #of = os.path.join( gdir , f'component_info.tsv')
-    #comp_info_df.to_csv( of, sep='\t')
-    #logging.debug(f'all components len={len(components)}')
+    #cidf.to_csv( of, sep='\t')
+    logging.debug(f'all components len={len(components)}')
     
-    return comp_info_df
+    return cidf
     
 
 def display_diff(a, b):
@@ -1186,14 +1188,15 @@ def make_nxgraph_bt2df(btdf,
     pscore_list = list( btdf['pscore'].astype(float))
     distance_list = list( btdf['distance'].astype(int))
     
-    G = nx.DiGraph()
+    #G = nx.DiGraph()
+    G = nx.Graph()
     edges_handled = 0
     for i in range(0, len(btdf)):
         rseq = seq_list[ read_list[i] ]
         aseq = seq_list[ align_list[i] ]
         #prop_dict = { "pscore": pscore_list[i] }
         G.add_edge(rseq, aseq, distance= distance_list[i] )
-        G.add_edge(aseq, rseq, distance= distance_list[i] )        
+        #G.add_edge(aseq, rseq, distance= distance_list[i] )        
         edges_handled += 1
         if edges_handled % EDGE_INTERVAL == 0:
             logging.debug(f'handled {edges_handled} edges...')
@@ -1206,6 +1209,7 @@ def make_nxgraph_bt2df(btdf,
         seq = seq_list[i]
         try:
             G.nodes[seq]['count'] = count_list[i]
+            G.nodes[seq]['df_idx'] = i
             nodes_handled += 1
             if nodes_handled % SEQ_INTERVAL == 0:
                 logging.debug(f'handled {nodes_handled} edges...')
@@ -1216,41 +1220,76 @@ def make_nxgraph_bt2df(btdf,
     return G
 
 
-def plot_subgraph( subgraph):
+def plot_subgraph( subgraph, comp_idx = '1234'):
     '''
     matplotlib subgraph
     '''
-    pos = nx.spring_layout(subgraph, seed=42)
-    nx.draw_networkx_nodes(subgraph, pos, node_size=700)
-    weights = nx.get_edge_attributes(subgraph, 'distance')
-    nx.draw_networkx_edges(subgraph, pos, width=[w + 1 for w in weights.values()])
-    nx.draw_networkx_labels(subgraph, pos, font_size=9, font_color="black")
-    nx.draw_networkx_edge_labels(subgraph, pos, edge_labels=weights)
+    plt.rcParams["figure.figsize"] = [1.2 * 11.5, 1.2 * 8.5]
+    
+    max_count_node = max( subgraph.nodes(data=True), key=lambda node: node[1]['count'])
+
+    degree_sequence = sorted(( (d,n) for n, d in subgraph.degree()), reverse=True)    
+    (c_max_deg, c_max_deg_seq )  = degree_sequence[0]    
+    max_degree_node = ( c_max_deg_seq, subgraph.nodes(data=True)[c_max_deg_seq] )
+        
+    for u,v, data in subgraph.edges(data=True):
+        if 'distance' in data and data['distance'] != 0:
+            # distance 3 = pull 1
+            # distance 2 = pull 2
+            # distance 1 = pull 3
+            subgraph[u][v]['pull'] = 4 - data['distance']
+    
+    
+    pos = nx.spring_layout(subgraph, 
+                           seed=55, 
+                           weight='pull')
+    nx.draw_networkx_nodes(subgraph, pos, 
+                           node_color='#1f78b4', 
+                           node_size=2)
+    distances = nx.get_edge_attributes(subgraph, 'distance')
+    pulls = nx.get_edge_attributes(subgraph, 'pull')
+    #nx.draw_networkx_edges(subgraph, pos, width=[w for w in weights.values()])
+    nx.draw_networkx_edges(subgraph, pos, width=1)
+    if len(subgraph) < 50:
+        nx.draw_networkx_labels(subgraph,  pos, font_size=9, font_color="black")
+    nx.draw_networkx_edge_labels(subgraph, pos, font_size=5, edge_labels=distances)
     plt.axis("off")
     plt.show()
 
 
-def get_components_nx( graph):
-    '''
-    
-    '''
-    complist = nx.strongly_connected_components(graph)
-    return complist
 
-def subgraph_from_nodes( parentgraph, nodelist):
+def get_components_nx( graph):
+    '''    
+    complist is list of lists of node sequences
+    idxlist  is parallel list o lists of node indexes in unique_df
+
+    assumes "df_idx" data value in every graph node. 
+
     '''
+    scc = nx.connected_components(graph)
+    # scc is a generator, process...
+    compsets = list( scc )
+    # each element is a set, convert to lists
+    complist = [  list(x) for x in compsets ]    
+    idxlist = []    
+    graphdict = graph.nodes(data=True)
     
+    for comp in complist:
+        nidxlist = []
+        for node in comp:
+            nidxlist.append( graphdict[node]['df_idx'] )
+        idxlist.append(nidxlist)
+        
+    return ( complist, idxlist )
+
+
+def get_subgraph( parentgraph, nodelist):
+    '''
     
     '''    
     sg = G.subgraph( nodelist)
     return sg 
 
-def calc_diameter_nx(graph, component):
-    '''
-    
-    
-    '''
-    pass
 
 def check_components_nx( uniques_file, 
                          components_file,
@@ -1279,7 +1318,7 @@ def align_collapse_nx_grouped(df,
                               column='vbc_read',
                               pcolumn='read_count',
                               gcolumn='brain', 
-                              max_mismatch = None,
+                              max_distance = None,
                               max_recursion = None, 
                               outdir= None, 
                               datestr= None,
@@ -1290,16 +1329,23 @@ def align_collapse_nx_grouped(df,
     Groups alignment and collapse by gcolumn value. [brain]
     Uses sub-directories for standard intermediate output/scratch. 
     Assumes dataframe with sequence (vbc_read) and read_count columns
-                
+    
+    column     which column to collapse on. 
+    gcolumn    which column to group by 
+    pcolumn    drives replacement policy. 
+                count       number of appearances of unique vbc_read
+                read_count  sequencing read_count behind unique 
+                degree      node degree in graph of vbc_read.
+    min_reads  threshold read_count by this value before collapse. 
+    
     '''
-    # housekeeping...
     if cp is None:
         cp = get_default_config()
     
-    if max_mismatch is None:
-        max_mismatch = int(cp.get('collapse', 'max_mismatch'))
+    if max_distance is None:
+        max_distance = int(cp.get('collapse', 'max_distance'))
     else:
-        max_mismatch = int(max_mismatch)
+        max_distance = int(max_distance)
 
     if min_reads is None:
         min_reads = int(cp.get('collapse', 'min_reads', fallback=1))
@@ -1325,7 +1371,7 @@ def align_collapse_nx_grouped(df,
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
 
-    logging.debug(f'collapse: aligner={aligner} max_mismatch={max_mismatch} outdir={outdir}')    
+    logging.debug(f'collapse: aligner={aligner} max_distance={max_distance} outdir={outdir}')    
     sh = get_default_stats()
     
     sh.add_value('/collapse','n_initial_sequences', len(df) )
@@ -1336,7 +1382,7 @@ def align_collapse_nx_grouped(df,
         logging.info(f'after min_reads={min_reads} filter. len={len(df)} ')
     sh.add_value('/collapse','n_thresholded_sequences', len(df) )    
     sh.add_value('/collapse','n_full_sequences', len(df) )
-    sh.add_value(f'/collapse','api_max_mismatch', str(max_mismatch) )
+    sh.add_value(f'/collapse','api_max_distance', str(max_distance) )
 
     # Get list of ids to group collapse by...
     df[gcolumn] = df[gcolumn].astype('string')
@@ -1372,11 +1418,7 @@ def align_collapse_nx_grouped(df,
         
         #udf = gdf[column].value_counts().reset_index() 
         sh.add_value(f'/collapse/{gcolumn}_{gid}','n_unique_sequences', len(udf) )    
-    
-        of = os.path.join( gdir , f'{column}.unique.tsv')
-        logging.info(f'Writing unique DF to {of}')
-        udf.to_csv(of, sep='\t') 
-        
+            
         # handle writing unique fasta    
         of = os.path.join( gdir , f'{column}.unique.fasta')      
         if os.path.exists(of) and not force:
@@ -1401,9 +1443,9 @@ def align_collapse_nx_grouped(df,
             logging.debug(f'Output {of} exists and not force.')
             btdf = load_bowtie_df(of)
         else:
-            logging.info(f'Creating btdf dataframe from {btfile} max_mismatch={max_mismatch}')    
+            logging.info(f'Creating btdf dataframe from {btfile} max_distance={max_distance}')    
             btdf = make_bowtie_df(btfile, 
-                                  max_mismatch=max_mismatch, 
+                                  max_distance=max_distance, 
                                   ignore_self=True)
             logging.debug(f'Writing output to {of}')
             btdf.to_csv(of, sep='\t')
@@ -1418,33 +1460,48 @@ def align_collapse_nx_grouped(df,
         logging.debug(f'edgelist len={len(edgelist)}')
         sh.add_value(f'/collapse/{gcolumn}_{gid}','n_edges', len(edgelist) )
 
+        # Set node degree in unique_df. 
+        # fulldf[f'{column}_col'] = fulldf[column].map(smd, na_action='ignore')
+        udf['degree'] = udf[column].map( dict( G.degree ) , na_action='ignore')
+        # Missing values are not in graph, therefor singletons, degree=0
+        udf['degree'] = udf['degree'].fillna(0)
+        udf['degree'] = udf['degree'].astype(int)
+
+        # Now that we have info, time to write unique df. 
+        of = os.path.join( gdir , f'{column}.unique.tsv')
+        logging.info(f'Writing unique DF to {of}')
+        udf.to_csv(of, sep='\t')
+
+
         logging.info(f'finding components.')
-        # scc is generator, so must be processed. 
-        scc = nx.strongly_connected_components(G)
-        components = list( scc)
-        components = [  list(x) for x in components ]
-        logging.info(f'done finding {len(components)} components')
+        complist, idxlist = get_components_nx(G) 
+        logging.info(f'done finding {len(complist)} components')
         
-        # write components (sets)
+        # write components (sequences)
         of = os.path.join( gdir , f'components.txt')
-        writelist(of, components)
-        logging.debug(f'all components len={len(components)}')
+        writelist(of, complist)
+        logging.debug(f'all components len={len(complist)}')
+
+        # write components (indexes)
+        of = os.path.join( gdir , f'comp_indexes.txt')
+        writelist(of, idxlist)
+        logging.debug(f'all comp indexes len={len(idxlist)}')
 
         # Gather component information. 
-        comp_info_df = make_component_df_nx(components, G)
-        logging.debug(f'got component info DF len={len(comp_info_df)}')
+        cidf = make_component_df_nx(complist, G)
+        logging.debug(f'got component info DF len={len(cidf)}')
 
         # write component assessment info. 
         of = os.path.join( gdir , f'component_info.tsv')
-        comp_info_df.to_csv( of, sep='\t')
+        cidf.to_csv( of, sep='\t')
         
         # collapse sequences to max_degree_seq
         newdf = collapse_by_components_nx(gdf, 
                                           udf, 
-                                          components, 
-                                          comp_info_df,
+                                          idxlist, 
+                                          cidf,
                                           column=column, 
-                                          parent_val='max_deg_seq', 
+                                          pcolumn=pcolumn, 
                                           outdir=gdir)
         gdflist.append(newdf)
 
@@ -1459,10 +1516,10 @@ def align_collapse_nx_grouped(df,
 
 def collapse_by_components_nx(fulldf, 
                               uniqdf, 
-                              components,
+                              comp_indexes,
                               component_info_df, 
                               column, 
-                              parent_val, 
+                              pcolumn='read_count', 
                               outdir=None):
     '''
     comp info columns:
@@ -1478,9 +1535,58 @@ def collapse_by_components_nx(fulldf,
     networkx version of applying collapse info. 
 
     '''
-    
+    logging.info('building sequence map dict...')
+    smd = build_seqmapdict_nx(uniqdf, comp_indexes, column, pcolumn=pcolumn)
+    logging.info('seqmapdict built. Applying.')
+    if outdir is not None:
+        outfile = f'{outdir}/seqmapdict.json'
+        logging.debug(f'writing seqmapdict len={len(smd)} tp {outfile}')
+        with open(outfile, 'w') as fp:
+            json.dump(smd, fp, indent=4)
+    else:
+        logging.debug(f'no outdir given.')
+    logging.info(f'applying seqmapdict...')
+    # make deep copy of original sequence column
+    fulldf.loc[:, f'{column}_col'] = fulldf.loc[:, column]    
+    logging.info(f'mapping old {column} values to new {column}_col')
+    fulldf[f'{column}_col'] = fulldf[column].map( smd, na_action='ignore')
+    fulldf = fulldf.fillna( { 'vbc_read_col' : fulldf[column] })    
+    logging.info(f'New collapsed df = \n{fulldf}')
+    log_objectinfo(fulldf, 'fulldf')
     return fulldf
 
+
+def build_seqmapdict_nx(udf, 
+                        comp_idxlist, 
+                        column='vbc_read', 
+                        pcolumn='read_count'):
+    '''
+    May not be right approach for NX data. 
+    Create mappings from all unique sequences to component sequence
+    Can we do this faster? 
+    dict should be oldsequence -> newsequence
+    ???
+    
+    '''
+    seqmapdict = {}
+    comphandled = 0
+    pcolumn='count'
+    logging.debug(f'udf len={len(udf)} components len={len(comp_idxlist)} column={column} pcolumn={pcolumn} ')
+    comphandled_interval = 1000
+    comp_len = len(comp_idxlist)    
+    for i, indexlist in enumerate( comp_idxlist):
+        cdf = udf[[column, pcolumn]].iloc[indexlist]
+        cdf.reset_index(inplace=True, drop=True)
+        #logging.debug(f'component [{i}/{comp_len}]: len={len(cdf)}')
+        maxid = int(cdf[pcolumn].idxmax())
+        t = cdf[column].iloc[maxid]
+        for compseq in list(cdf[column]): 
+            #logging.debug(f'compseq={compseq} -> {t}')
+            seqmapdict[compseq]= t    
+        if comphandled % comphandled_interval == 0:
+            logging.debug(f'[{i}/{comp_len}]: len={len(cdf)} seq = {t} ')
+        comphandled += 1
+    return seqmapdict
 
 
 if __name__ == '__main__':

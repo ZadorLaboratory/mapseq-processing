@@ -148,26 +148,26 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
 
 
 
-def make_bowtie_df(infile, max_mismatch=3, ignore_self=False):
-    max_mismatch = int(max_mismatch)
-    logging.debug(f'bowtie max_mismatch={max_mismatch} ignore_self = {ignore_self}')
+def make_bowtie_df(infile, max_distance=3, ignore_self=True):
+    max_distance = int(max_distance)
+    logging.debug(f'bowtie max_distance={max_distance} ignore_self = {ignore_self}')
     with open(infile) as f:
         line=f.readline()
     if line.startswith('@HD'):
         logging.debug('Detected bowtie2 input.')
         df = make_bowtie2_df(infile)
-        logging.debug(f'bt2: df before max_mismatch =< {max_mismatch} length={len(df)} df=\n{df}')
+        logging.debug(f'bt2: df before max_distance =< {max_distance} length={len(df)} df=\n{df}')
         logging.debug(f'dtypes={df.dtypes}')
-        df = df[df['n_mismatch'] <= max_mismatch]
+        df = df[df['distance'] <= max_distance]
         # alignments to *other* sequences only
         if ignore_self:
-            df = df[df['n_mismatch'] > 0]
-        logging.debug(f'df after max_mismatch =< {max_mismatch} length={len(df)} df=\n{df}')
+            df = df[df['distance'] > 0]
+        logging.debug(f'df after max_distance =< {max_distance} length={len(df)} df=\n{df}')
     else:
         logging.debug('Detected bowtie1 input.')
         df = make_bowtie1_df(infile)
         # bowtie1 already restricts by desired hamming...
-        df['n_mismatch'] = max_mismatch
+        df['n_mismatch'] = max_distance
     return df
 
 

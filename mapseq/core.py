@@ -837,11 +837,15 @@ def filter_by_sampleinfo(df,
     logging.debug(f'ourtube={ourtube} row={sr}')
     sv = sr['rtprimer']
     logging.debug(f'rtprimer ser = {sv}')
-    rtprimer_val = sv.iloc[0]
-    logging.info(f'rtprimer value = {rtprimer_val}')
+    if len(sv) > 0:
+        rtprimer_val = sv.iloc[0]
+        logging.info(f'rtprimer value = {rtprimer_val}')
 
-    df = df[df['rtprimer'] == rtprimer_val]
-    df.reset_index(inplace=True, drop=True)
+        df = df[df['rtprimer'] == rtprimer_val]
+        df.reset_index(inplace=True, drop=True)
+    else:
+        logging.warning(f'no ')
+    
     if drop_sampleinfo_columns:
         logging.debug('dropping ssi, rtprimer')
         df = df.drop(['ssi','rtprimer'], axis=1)   

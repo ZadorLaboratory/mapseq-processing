@@ -86,12 +86,12 @@ if __name__ == '__main__':
                     type=str, 
                     help='separate groups to collapse in [brain]')
 
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
+    parser.add_argument('-m','--max_distance', 
+                        metavar='max_distance',
                         required=False,
                         default=None,
                         type=int, 
-                        help='Max mismatch for collapse.')
+                        help='Max mismatch/edit distance for collapse.')
 
 
     parser.add_argument('-r','--max_recursion', 
@@ -216,7 +216,7 @@ if __name__ == '__main__':
                         column=args.column,
                         pcolumn=args.parent_column,
                         gcolumn = group_column,
-                        max_mismatch=args.max_mismatch,
+                        max_distance=args.max_distance,
                         max_recursion=args.max_recursion,
                         outdir=outdir,
                         force = args.force, 
@@ -227,14 +227,14 @@ if __name__ == '__main__':
     write_mapseq_df(df, outfile)
     logging.info('Done align_collapse.')
 
-#    logging.info(f'Making read_count frequency plots...')
-#    make_counts_plots(df, 
-#                      outdir=outdir, 
-#                      groupby='label', column='read_count', cp=cp )
-#    logging.info(f'Making read report...')    
-#    make_read_report_xlsx(df,
-#                      outdir=outdir,
-#                      step='collapsed',
-#                      cp=cp)    
-#    logging.info('Done.')
+    logging.info(f'Making read_count frequency plots...')
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby='label', column='read_count', cp=cp )
+    logging.info(f'Making read report...')    
+    make_read_report_xlsx(df,
+                      outdir=outdir,
+                      step='collapsed',
+                      cp=cp)    
+    logging.info('Done.')
     
