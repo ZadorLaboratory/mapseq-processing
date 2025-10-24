@@ -483,30 +483,6 @@ def guess_site(infile, sampdf):
 
 ############################################################
 #
-#              Generic Utils not moved to mapseq.utils
-#
-############################################################
-
-def get_fh(infile):
-    '''
-    Opens compressed/uncompressed file as appropriate...
-    Used by FASTQ handling 
-    '''
-    if infile.endswith('.gz'):
-        fh = gzip.open(infile, "rt")
-        logging.debug('handling gzipped file...')
-    else:
-        fh = open(infile, 'rt')
-    return fh    
-
-
-
-  
-
-
-
-############################################################
-#
 #                       Pipeline process phases
 #
 ############################################################

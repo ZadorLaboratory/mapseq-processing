@@ -32,7 +32,6 @@ from Bio.SeqRecord import SeqRecord
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
-
 FASTQ_SCORES = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
 def get_scoremap(qstring=FASTQ_SCORES):
@@ -357,6 +356,24 @@ def fix_columns_str(df, columns):
             logging.warning(traceback.format_exc(None))
     return df
 
+def get_fh(infile):
+    '''
+    Opens compressed/uncompressed file as appropriate...
+    Used by FASTQ handling 
+    '''
+    if infile.endswith('.gz'):
+        fh = gzip.open(infile, "rt")
+        logging.debug('handling gzipped file...')
+    else:
+        fh = open(infile, 'rt')
+    return fh    
+
+def get_default_config():
+    dc = os.path.expanduser('~/git/mapseq-processing/etc/utils.conf')
+    cp = ConfigParser()
+    cp.read(dc)
+    return cp
+
 
 def get_mainbase(filepath):
     '''
@@ -514,6 +531,94 @@ def read_fasta_to_df_bioconda(infile, seqlen=None):
         df = pd.DataFrame(slist, columns=['sequence','tail'] )
     logging.debug(f"handled {handled}  sequences. df=\n{df}")    
     return df
+
+def read_fastq_pairs(infilelist, noconcat=False, cp=None):
+    '''
+    Read pairs of fastqs, get DF
+    
+    
+    '''
+    if cp is None:
+        cp = get_utils_config()
+        
+    chunksize = int(cp.get('fastq','chunksize'))
+    source_regex = cp.get('fastq','source_regex')
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))
+    
+    df = None
+    pairnum = 1
+    chunknum = 1
+    old_len = 0
+
+    for (read1file, read2file) in infilelist:
+        source_label = parse_sourcefile(read1file, source_regex)
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label}')
+        start = dt.datetime.now()
+        fh1 = get_fh(read1file)
+        dfi1 = pd.read_csv(fh1, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize) 
+        fh2 = get_fh(read2file)
+        dfi2 = pd.read_csv(fh2, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize)
+        
+        for chunk1 in dfi1:
+            chunk2 = dfi2.get_chunk()
+            logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
+            if df is None:
+                logging.debug(f'making new read sequence DF...')
+                df = pd.DataFrame(columns=['sequence'])
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                if noconcat:
+                    # reads all get their own rows. 
+                    s1 = chunk1[0].str.slice(r1s, r1e)
+                    s2 = chunk2[0].str.slice(r2s, r2e) 
+                    df['sequence'] = pd.concat([s1,s2]).reset_index( drop=True)          
+                else:
+                    # concat R1 + R2 
+                    df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={df.dtypes}')           
+                df['source'] = source_label
+            else:
+                logging.debug(f'making additional read sequence DF...')
+                ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                if noconcat:
+                    # reads all get their own rows. 
+                    s1 = chunk1[0].str.slice(r1s, r1e)
+                    s2 = chunk2[0].str.slice(r2s, r2e) 
+                    ndf['sequence'] = pd.concat([s1,s2]).reset_index( drop=True)          
+                else:
+                    # concat R1 + R2 
+                    ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e)                              
+                logging.info(f'chunk df type={ndf.dtypes}')                
+                ndf['source'] = source_label                
+                df = pd.concat([df, ndf], copy=False, ignore_index=True)
+            logging.debug(f'handled chunk number {chunknum}')
+            chunknum += 1
+
+        logging.debug(f'handled pair number {pairnum}')
+        
+        # Measure file read speed.
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo( [read1file, read2file] , delta_seconds)
+        pair_len = len(df) - old_len
+        old_len = len(df)
+        pairnum += 1
+
+    logging.debug(f'dtypes =\n{df.dtypes}')
+    logging.info('Finished processing all input.')
+    return df          
+
 
 
 def read_fasta_to_df(infile, seqlen=None):
