@@ -1549,7 +1549,7 @@ def process_make_readtable_pd(df,
     sh.add_value('/readtable','n_full_sequences', str(len(df)) )
     
     # find and remove (at least) known template-switch rows from dataframe.
-    # template switch type is L1 (from libtab) but is a valid target (from SSI) 
+    # template switch type is L1/lone (from libtag) but is a valid target (from SSI) 
     tsdf = df[ ((df['type'] == 'lone') & ( df['site'].str.startswith('target'))) ]
     of = os.path.join(outdir, 'template_switch.tsv') 
     logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
@@ -1567,7 +1567,6 @@ def process_make_readtable_pd(df,
     
     n_final = len(df)
 
-    
     sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
     sh.add_value('/readtable', 'n_badssi', str(n_badssi) )
     sh.add_value('/readtable', 'n_badtype', str(n_badtype) )

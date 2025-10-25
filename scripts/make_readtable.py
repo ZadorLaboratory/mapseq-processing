@@ -190,6 +190,16 @@ if __name__ == '__main__':
     make_counts_plots(df, 
                       outdir=outdir, 
                       groupby='label', column='read_count', cp=cp )
+
+    logging.info(f'making single read_count frequency plot...')
+    
+    make_freqplot_single_sns(df, 
+                           title='read count requency',  
+                           outfile=os.path.join(outdir, 'frequency-plot.pdf'),
+                           column='read_count',
+                           scale='log10' )
+    logging.info('Done.')
+
     
     make_read_report_xlsx(df,
                           outdir=outdir,

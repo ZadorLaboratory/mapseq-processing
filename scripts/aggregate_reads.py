@@ -182,3 +182,11 @@ if __name__ == '__main__':
     write_mapseq_df(df, outfile)
     logging.info('Done aggregate_reads')
     
+    logging.info(f'making read_count frequency plot...')
+    make_freqplot_single_sns(df, 
+                           title='Frequency',  
+                           outfile=os.path.join(outdir, 'agg-frequency-plot.pdf'),
+                           column='read_count',
+                           scale='log10' )
+    logging.info('Done.')
+    logging.info('Done.')

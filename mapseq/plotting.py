@@ -60,14 +60,13 @@ def make_freqplot_combined_sns(df,
     '''
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
-    
-    groups=natsorted( list(df[groupby].unique()) )
 
     if scale is not None:
         title = f'{title} ({scale})'
-
-    # do nine per figure...
+    
+    groups=natsorted( list(df[groupby].unique()) )
     page_dims = (11.7, 8.27)
+
     with pdfpages(outfile) as pdfpages:
         #fig_n = math.ceil( math.sqrt(len(filelist)) )
         #fig, axes = plt.subplots(nrows=fig_n, ncols=fig_n, figsize=a4_dims,  layout='constrained')
@@ -89,20 +88,42 @@ def make_freqplot_combined_sns(df,
             for a in axes.flat:
                 axlist.append(a)
         logging.debug(f'created {len(groups)} figures to go on {num_figs} pages. ')
-           
+        
+ 
         for i, group in enumerate(groups):
             gdf = df[ df[groupby] == group ]                
             logging.debug(f'handling {group} length={len(gdf)}')
             ax = axlist[i]
             counts_axis_plot_sns(ax, gdf, column=column, title=f'{group} {column}', scale=scale)
-
+                
         for f in figlist:
             pdfpages.savefig(f)
     logging.info(f'saved plot PDF to {outfile}')
 
+def make_freqplot_single_sns(df, 
+                           title='Frequency',  
+                           outfile='frequency-plot.pdf',
+                           column='read_count',
+                           scale=None ):    
+    '''
+    single figure with one plot. 
+    scale = log10 | log2 | None  
+    '''
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
 
-
+    if scale is not None:
+        title = f'{title} ({scale})'
     
+    page_dims = (11.7, 8.27)
+    with pdfpages(outfile) as pdfpages:
+        fig, axes = plt.subplots(figsize=page_dims)
+        fig.suptitle(title)
+        counts_axis_plot_sns(axes, df, column=column, title=f'{column} freqplot', scale=scale)
+        pdfpages.savefig(fig)
+    logging.info(f'saved plot PDF to {outfile}')
+
+
 def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts frequency' ) :
     '''
     Creates individual axes for single plot within figure. 
@@ -197,7 +218,7 @@ def counts_freq(matlabfile, logscale = 'log10', logcol = 'counts' ):
 def make_simple_freqplot(df, 
                          column='read_count', 
                          title='freqplot', 
-                         outfile = './freqplot.pdf',
+                         outfile = 'freqplot.pdf',
                          xscale=None,
                          yscale='log10' ):
     '''
