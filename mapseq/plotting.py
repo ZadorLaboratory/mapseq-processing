@@ -115,7 +115,7 @@ def make_freqplot_single_sns(df,
     if scale is not None:
         title = f'{title} ({scale})'
     
-    page_dims = (11.7, 8.27)
+    page_dims = (8, 6)
     with pdfpages(outfile) as pdfpages:
         fig, axes = plt.subplots(figsize=page_dims)
         fig.suptitle(title)
@@ -137,15 +137,13 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     n = len(df)
     t = df[column].max()
     r = df['index'].max()
+    h = calc_freq_threshold(df, fraction=0.9, column = column)
     
     if scale is None:
-        h = calc_freq_threshold(df, fraction=0.9, column = column)
         sns.lineplot(ax=ax, x=df['index'], y=df[column] )
-        title = title
-
         lx = df['index'].max()
         ly = df[column].max()
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nestimated_threshold={h}", 
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nest_90pct_threshold={h}", 
                 fontsize=11, 
                 horizontalalignment='right',
                 verticalalignment='top',) #add text
@@ -154,17 +152,18 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     elif scale == 'log10':
         #  Avoid divide by 0 runtime warning...
         #  Switch to non-log-scaled X axis
-        #df['log10index'] = np.log10(df['index'] + 1)
         df['n_index'] = df['index'] + 1
-        #df.loc[row_indexer, col_indexer] = value
         df['log10counts'] = np.log10(df[column])
-        #sns.lineplot(ax=ax, x=df['log10index'], y=df['log10counts'] )
         sns.lineplot(ax=ax, x=df['n_index'], y=df['log10counts'] )
         #lx = 0.05 * np.log10(t) 
         #ly = 0.05 * np.log10(r)        
-        lx = 0.1
-        ly = 0.1
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\n", fontsize=11) #add text
+        #lx = 0.1
+        lx = df['index'].max() * 0.8
+        ly = df['log10counts'].max() * 0.8
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nest_90pct_threshold={h}", 
+                fontsize=11,
+                horizontalalignment='right',
+                verticalalignment='top',) #add text
         title = f'{title} log10().'
         logging.debug(f'made axis with log10 scale.')       
 

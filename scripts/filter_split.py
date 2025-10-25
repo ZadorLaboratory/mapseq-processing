@@ -176,21 +176,15 @@ if __name__ == '__main__':
                            column='sequence',
                            cp=cp)
     
-    #df = split_mapseq_fields(df, 
-    #                         column = 'sequence',
-    #                         drop = True,
-    #                         cp=cp)
-
-
     (dirpath, base, ext) = split_path(outfile)
-    of = os.path.join(dirpath, f'{base}.split.tsv')
-
+    
     # Use new generic field splitting.
     logging.info(f'Filtering fields. ') 
     df = split_fields(df, 
                         column = 'sequence',
                         drop = True,
                         cp=cp)
+    of = os.path.join(dirpath, f'split.tsv')
     write_mapseq_df(df, of)
 
     if 'rtag' in df.columns:

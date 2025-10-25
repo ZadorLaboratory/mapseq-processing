@@ -183,10 +183,10 @@ if __name__ == '__main__':
     logging.info('Done aggregate_reads')
     
     logging.info(f'making read_count frequency plot...')
+    project_id = cp.get('project','project_id')
     make_freqplot_single_sns(df, 
-                           title='Frequency',  
-                           outfile=os.path.join(outdir, 'agg-frequency-plot.pdf'),
+                           title='{project_id}: agg read count frequency',  
+                           outfile=os.path.join(outdir, f'{project_id}.agg-frequency-plot.pdf'),
                            column='read_count',
                            scale='log10' )
-    logging.info('Done.')
     logging.info('Done.')

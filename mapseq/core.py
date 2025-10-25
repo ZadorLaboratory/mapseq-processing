@@ -1415,8 +1415,6 @@ def process_make_readtable_pd(df,
     logging.info('filling in label by rtprimer...')
     df['label'] = df['rtprimer'].map(rtbcdict)
     df['label'] = df['label'].astype('category')
-    #logging.info('filling in label by SSI sequence...')
-    #df['label'] = df['ssi'].map(bcdict)
 
     # identify and remove unmatched SSI sequences? 
     logging.debug('removing unmatched SSI')
@@ -1446,22 +1444,6 @@ def process_make_readtable_pd(df,
     sdf = sdf[sdf['siteinfo'] != '']
     smap = dict(zip(sdf['rtprimer'], sdf['siteinfo']))
     df['site'] = df['rtprimer'].map(smap)
-
-    badsitedf = df[ df.isna().any(axis=1) ]
-    n_badsite = len(badsitedf)
-    if n_badsite > 1:
-        df.drop(badsitedf.index, inplace=True)
-        df.reset_index(inplace=True, drop=True)    
-    
-        of = os.path.join( outdir, 'bad_site.tsv')
-        badsitedf.reset_index(inplace=True, drop=True)
-        start = dt.datetime.now()
-        badsitedf.to_csv(of, sep='\t')
-        end = dt.datetime.now()
-        delta_seconds = (dt.datetime.now() - start).seconds
-        log_transferinfo(of, delta_seconds)
-        logging.info(f'Wrote bad_site DF len={len(badsitedf)} to {of}')
-    badsitedf = None   
 
     if use_libtag:
         # L1/L2 libtag
@@ -2619,7 +2601,7 @@ def make_vbctable_parameter_report_xlsx(df,
 
 ############################################################
 #
-#                       Assessment/QC/Validation
+#                       Assessment/QC/Validation/Simulation
 #
 ############################################################
 

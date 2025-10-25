@@ -194,8 +194,8 @@ if __name__ == '__main__':
     logging.info(f'making single read_count frequency plot...')
     
     make_freqplot_single_sns(df, 
-                           title='read count requency',  
-                           outfile=os.path.join(outdir, 'frequency-plot.pdf'),
+                           title='Overall read count frequency',  
+                           outfile=os.path.join(outdir, 'readtable-frequency-plot.pdf'),
                            column='read_count',
                            scale='log10' )
     logging.info('Done.')
