@@ -49,10 +49,10 @@ All the code is currently organized so it is run directly from the git directory
 * Create a working directory for your experiment, and copy in a metadata file and the fastq sequencing data files, and optionally the default configuration file. 
 
 ```
-mkdir \~/mapseq/M205 ; cd ~/mapseq/M205
+mkdir ~/mapseq/M205 ; cd ~/mapseq/M205
 mkdir fastq ; cp /some/path/<fastqfiles>  fastq/ 
 cp /some/path/EXP_sampleinfo.xlsx ./ 
-cp \~/git/mapseq-processing/etc/mapseq.conf ./
+cp ~/git/mapseq-processing/etc/mapseq.conf ./
 ```
 
 ## Experiment Metadata, Initial Configuration, Default Behavior
@@ -86,7 +86,8 @@ For most of the commands, specifying the output file (with subdirectory) should 
 
 ```
 ~/git/mapseq-processing/scripts/process_fastq_pairs.py 
-	-v  				# give verbose output.  
+	-v  				# give verbose output.
+	-c  M253.mapseq.conf          # customized configuration file.   
 	-o fastq.out/M253.reads.tsv 	# write to TSV file
 	fastq/M253_CR_S1_R*.fastq	# paired-end input FASTQs. 
 ```
@@ -101,6 +102,7 @@ For a standard ~400M read experiment, this takes about 45 minutes. (Or 15 minute
 ```
 ~/git/mapseq-processing/scripts/aggregate_reads.py 
 	-v  						# give verbose output.
+	-c  M253.mapseq.conf                         # customized configuration file.   
 	-t ~/scratch					# Local, fast, roomy place for DASK to put temp files.
 	-m 2						# Minimum reads to retain data.    
 	-o aggregated.out/M253.aggregated.tsv 	# write to TSV file
@@ -114,7 +116,8 @@ This step is isolated from others because it uses Dask, a Python framework to al
 
 ```
 ~/git/mapseq-processing/scripts/filter_split.py 
-	-v  					# give verbose output.  
+	-v  					# give verbose output. 
+	-c  M253.mapseq.conf                 # customized configuration file.    
 	-o filtered.out/M253.filtered.tsv 	# write to TSV file
 	aggregated.out/M253.aggregated.tsv	# aggregated full reads (with read_count). TSV or Parquet 
 ```
@@ -125,6 +128,7 @@ filter_split.py performs sequence-level QC, removing reads that are likely to be
 ```
 ~/git/mapseq-processing/scripts/make_readtable.py 
 	-v						# give verbose output
+	-c  M253.mapseq.conf                        # customized configuration file.   
 	-s M253_sampleinfo.xlsx 			# sample metadata
 	-o readtable.out/M253.readtable.tsv 		# output TSV 
 	filtered.out/M253.filtered.tsv		# filtered/split reads TSV (or Parquet)
@@ -142,6 +146,7 @@ Takes about 45 minutes for 400M reads on MacBook Pro M3
 ```
 ~/git/mapseq-processing/scripts/align_collapse.py
 	-v 					# give verbose output
+	-c  M253.mapseq.conf                 # customized configuration file.   
 	-m 3 					# maximum Hamming distance of 3 
 	-o collapse.out/M253.collapsed.tsv 	# output TSV 
 	readtable.out/M253.readtable.tsv	# Filtered and split data. TSV or Parquet 
@@ -160,6 +165,7 @@ For a standard ~400M read experiment, this takes about 70 minutes on a high-memo
 ```
 ~/git/mapseq-processing/scripts/make_vbctable.py 
 	-v					# give verbose output
+	-c  M253.mapseq.conf                 # customized configuration file.   
 	-o vbctable.out/M253.vbctable.tsv 	# output file for all VBCs 
 	collapsed.out/M253.collapsed.parquet 	# collapsed read table. 
 ```
@@ -175,6 +181,7 @@ This typically takes about 12 minutes. (3 minutes on Mac M3)
 ```
 ~/git/mapseq-processing/scripts/filter_vbctable.py 
 	-v						# give verbose output
+	-c  M253.mapseq.conf                        # customized configuration file.   
 	-o vbcfiltered.out/M253.vbcfiltered.tsv 	# output file for filtered VBCs 
 	vbctable.out/M253.vbctable.tsv 		# fully populated VBC table. 
 ```
@@ -194,8 +201,9 @@ All data in the main output file created by this step is then unconditionally in
 ### make_matrices.py
 ```
 ~/git/mapseq-processing/scripts/make_matrices.py 
-	-v 
-	-O matrices.out 
+	-v
+	-c  M253.mapseq.conf          # customized configuration file.    
+	-O matrices.out               # output directory. No single output file. 
 	vbcfiltered.out/M253.vbcfiltered.tsv
 ```
 

@@ -189,10 +189,19 @@ if __name__ == '__main__':
     logging.info(f'making read_count frequency plots...')
     make_counts_plots(df, 
                       outdir=outdir, 
-                      groupby='label', column='read_count', cp=cp )
+                      groupby='label', 
+                      column='read_count',
+                      min_count = 1, 
+                      cp=cp )
 
-    logging.info(f'making single read_count frequency plot...')
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby='label', 
+                      column='read_count',
+                      min_count = 2, 
+                      cp=cp )    
     
+    logging.info(f'making overall read_count frequency plot...')        
     make_freqplot_single_sns(df, 
                            title='Overall read count frequency',  
                            outfile=os.path.join(outdir, 'readtable-frequency-plot.pdf'),

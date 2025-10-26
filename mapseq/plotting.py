@@ -12,7 +12,13 @@ from natsort import natsorted
 
 logging.getLogger('matplotlib.font_manager').disabled = True
 
-def make_counts_plots(df, outdir=None, groupby='label', type=None, column='read_count', cp=None):
+def make_counts_plots(df, 
+                      outdir=None, 
+                      groupby='label', 
+                      type=None, 
+                      column='read_count',
+                      min_count=1,  
+                      cp=None):
     '''
     take standard aggregated, readtable or vbctable DFs and create 
     read_count or umi_count frequency plots for all real targets.  
@@ -23,6 +29,13 @@ def make_counts_plots(df, outdir=None, groupby='label', type=None, column='read_
     
     '''
     project_id = cp.get('project','project_id')
+    
+    min_count = int(min_count)
+    if min_count > 1:
+        logging.debug(f'min_count > 1, thresholding...')
+        df = df[df[column] >= min_count]
+        df.reset_index(inplace=True, drop=True)
+    
     before = len(df)
     df = df[df[groupby] != '']
     after = len(df)
@@ -40,7 +53,7 @@ def make_counts_plots(df, outdir=None, groupby='label', type=None, column='read_
     
     make_freqplot_combined_sns(df, 
                                title=f'{project_id}:{type} {column} frequency',  
-                               outfile=os.path.join(outdir, f'{project_id}_{type}_{column}_by{groupby}_frequency.pdf'),
+                               outfile=os.path.join(outdir, f'{project_id}_{type}_{column}_by{groupby}_freq.c{min_count}.pdf'),
                                groupby=groupby, 
                                column=column,
                                scale='log10' )

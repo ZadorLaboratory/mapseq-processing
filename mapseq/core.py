@@ -1552,7 +1552,6 @@ def process_make_readtable_pd(df,
     sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
     sh.add_value('/readtable', 'n_badssi', str(n_badssi) )
     sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
-    sh.add_value('/readtable', 'n_badsite', str(n_badsite) )
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     sh.add_value('/readtable', 'n_final', str(n_final) )     
     
@@ -1617,11 +1616,29 @@ def align_collapse(df,
     '''
     sh = get_default_stats()
     
+    collapse_lib = cp.get('collapse','library', fallback = 'networkx')
+    
     if gcolumn is not None:
         logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
         sh.add_value(f'/collapse','collapse_mode', 'grouped' )
+        sh.add_value(f'/collapse','collapse_library', collapse_lib )
         sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
-        df = align_collapse_pd_grouped( df, 
+        if collapse_lib == 'networkx':
+            logging.debug(f'networkx collapse...')
+            df = align_collapse_nx_grouped( df, 
+                                        column = column,
+                                        pcolumn = pcolumn,
+                                        gcolumn = gcolumn,
+                                        max_distance=max_distance,
+                                        max_recursion=max_recursion, 
+                                        outdir=outdir, 
+                                        datestr=datestr,
+                                        force=force,
+                                        min_reads = min_reads,
+                                        cp=cp )            
+        elif collapse_lib == 'custom':
+            logging.debug(f'custom collapse...')
+            df = align_collapse_pd_grouped( df, 
                                         column = column,
                                         pcolumn = pcolumn,
                                         gcolumn = gcolumn,
@@ -1635,6 +1652,7 @@ def align_collapse(df,
     else:
         logging.info(f'Global align_collapse.')
         sh.add_value(f'/collapse','collapse_mode', 'global' )
+        sh.add_value(f'/collapse','collapse_library', collapse_lib )
         sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
         df = align_collapse_pd( df = df,
                                 column = column,
