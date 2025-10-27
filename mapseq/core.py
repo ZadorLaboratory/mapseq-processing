@@ -1617,6 +1617,10 @@ def align_collapse(df,
     sh = get_default_stats()
     
     collapse_lib = cp.get('collapse','library', fallback = 'networkx')
+
+    if max_mismatch is None:
+        max_mismatch = cp.get('collapse','max_mismatch')
+    
     
     if gcolumn is not None:
         logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
@@ -1625,11 +1629,13 @@ def align_collapse(df,
         sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
         if collapse_lib == 'networkx':
             logging.debug(f'networkx collapse...')
+            if max_mismatch is None:
+                max_mismatch = cp.get('collapse','max_distance')
             df = align_collapse_nx_grouped( df, 
                                         column = column,
                                         pcolumn = pcolumn,
                                         gcolumn = gcolumn,
-                                        max_distance=max_distance,
+                                        max_distance=max_mismatch,
                                         max_recursion=max_recursion, 
                                         outdir=outdir, 
                                         datestr=datestr,
