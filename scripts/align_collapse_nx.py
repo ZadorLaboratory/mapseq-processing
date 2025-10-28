@@ -82,9 +82,9 @@ if __name__ == '__main__':
     parser.add_argument('-G','--group_column', 
                     metavar='group_column',
                     required=False,
-                    default='brain', 
+                    default=None, 
                     type=str, 
-                    help='separate groups to collapse in [brain]')
+                    help='separate groups to collapse in [None] (whole set)')
 
     parser.add_argument('-m','--max_distance', 
                         metavar='max_distance',
@@ -92,7 +92,6 @@ if __name__ == '__main__':
                         default=None,
                         type=int, 
                         help='Max mismatch/edit distance for collapse.')
-
 
     parser.add_argument('-r','--max_recursion', 
                         metavar='max_recursion',
@@ -227,14 +226,16 @@ if __name__ == '__main__':
     write_mapseq_df(df, outfile)
     logging.info('Done align_collapse.')
 
-    logging.info(f'Making read_count frequency plots...')
-    make_counts_plots(df, 
-                      outdir=outdir, 
-                      groupby='label', column='read_count', cp=cp )
-    logging.info(f'Making read report...')    
-    make_read_report_xlsx(df,
-                      outdir=outdir,
-                      step='collapsed',
-                      cp=cp)    
-    logging.info('Done.')
+#    logging.info(f'Making read_count frequency plots...')
+#    make_counts_plots(df, 
+#                      outdir=outdir, 
+#                      groupby=None, 
+#                      column='read_count', 
+#                      cp=cp )
+#    logging.info(f'Making read report...')    
+#    make_read_report_xlsx(df,
+#                      outdir=outdir,
+#                      step='collapsed',
+#                      cp=cp)    
+#    logging.info('Done.')
     

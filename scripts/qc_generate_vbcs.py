@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('-n','--n_sequences', 
                         metavar='n_sequences',
                         required=False,
-                        default=10,
+                        default=100,
                         type=int, 
                         help='Number of sequences to create. ')
 
@@ -65,31 +65,10 @@ if __name__ == '__main__':
                         type=int, 
                         help='Sequence length.')
 
-    parser.add_argument('-C','--n_cycles', 
-                        metavar='n_cycles',
-                        required=False,
-                        default=5,
-                        type=int, 
-                        help='Rounds of mutation. ')
-
-    parser.add_argument('-M','--n_copies', 
-                        metavar='n_copies',
-                        required=False,
-                        default=5,
-                        type=int, 
-                        help='Number of mutated copies to make per sequence/cycle ')
-
-    parser.add_argument('-m','--max_mismatch', 
-                        metavar='max_mismatch',
-                        required=False,
-                        default=3,
-                        type=int, 
-                        help='Max positions mutated per round.')
-
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=False,
-                    default=os.path.abspath('./component.info.tsv'), 
+                    default=os.path.abspath('./vbc_read.random.tsv'), 
                     type=str, 
                     help='E.g. component assessment tsv.') 
 
@@ -138,44 +117,9 @@ if __name__ == '__main__':
     (parent_list, parent_df) = generate_random( n_bases=args.n_bases, 
                                                 n_sequences = args.n_sequences)
     parent_df['parent_idx'] = parent_df.index
-    outf = os.path.join(outdir, 'parent_sequences.tsv')
-    logging.info(f'got {len(parent_df)} sequences. Writing to {outf} ')
-    parent_df.to_csv(outf, sep='\t')
-    
-    # generate/write mutated    
-    mutated_df = generate_mutated_df(parent_df, 
-                                     n_copies=args.n_copies, 
-                                     n_cycles=args.n_cycles, 
-                                     max_mismatch=args.max_mismatch, 
-                                     alphabet = 'AGCT')
-    
-    outf = os.path.join(outdir, 'mutated_sequences.tsv')
-    logging.info(f'got {len(mutated_df)} sequences. Writing to {outf} ')
-    mutated_df.to_csv(outf, sep='\t')
-    
-    cdf = align_collapse_pd(mutated_df, 
-                         max_mismatch=args.max_mismatch, 
-                         drop=False, 
-                         force=True, 
-                         column='sequence', 
-                         pcolumn='count',
-                         cp=cp)
-    
-    
-    outf = os.path.join(outdir, 'collapsed_sequences.tsv')
-    cdf.to_csv(outf, sep='\t')
-    
-    uniques_file = os.path.join(outdir, 'sequence.unique.tsv')    
-    components_file = os.path.join(outdir, 'components.txt')
-    edges_file = os.path.join(outdir, 'edgelist.txt')
-    
-    comp_df = check_components(uniques_file=uniques_file, 
-                               components_file=components_file,
-                               edges_file = edges_file,
-                               column='sequence', 
-                               cp=cp )    
-    
-    comp_df.to_csv(outfile, sep='\t')
-    logging.info(f'Done wrote {outfile} ')
+    logging.info(f'got {len(parent_df)} sequences. Writing to {args.outfile} ')
+    parent_df.to_csv(args.outfile , sep='\t')
+   
+
     
     

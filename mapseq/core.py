@@ -924,7 +924,10 @@ def aggregate_reads_pd(df,
                        min_reads=1):
     initlen = len(df)
     logging.debug(f'aggregating read counts DF len={len(df)} column={column}')
-    vcs = df.value_counts( column )
+    try:
+        vcs = df.value_counts( column )
+    except KeyError:
+        vcs = df.value_counts( column[0])
     ndf = pd.DataFrame( vcs )
     ndf.reset_index(inplace=True, drop=False)
     ndf.rename({'count':'read_count'}, inplace=True, axis=1)
@@ -2941,14 +2944,13 @@ def generate_random(n_sequences=1000, n_bases=30, alphabet='CAGT'):
         if i % LOG_INTERVAL == 0:
             logging.debug(f'created {i} sequences...')
     ss = pd.Series(sequence_list, dtype='string[pyarrow]')
-    df = pd.DataFrame()
-    df['sequence'] = ss
+    df = pd.DataFrame(ss, columns=['sequence'])
 
     vcs = df.value_counts( ['sequence'] )
-    df = pd.DataFrame( vcs )
-    df.reset_index(inplace=True, drop=False)
+    vcs = vcs[ vcs == 1 ]
+    df = vcs.reset_index()
+    df.columns = ['sequence','read_count']
     df = filter_homopolymers(df, column='sequence')
-    df['count'] = 1
     df['parent_idx'] = df.index
     seqlist = list(df['sequence'])
     return ( seqlist, df )

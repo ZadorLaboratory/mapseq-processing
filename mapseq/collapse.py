@@ -1323,7 +1323,7 @@ def align_collapse_nx_grouped(df,
                               outdir= None, 
                               datestr= None,
                               force= False,
-                              min_reads = None, 
+                              min_reads = 1, 
                               cp=None):
     '''
     Groups alignment and collapse by gcolumn value. [brain]
@@ -1384,27 +1384,40 @@ def align_collapse_nx_grouped(df,
     sh.add_value('/collapse','n_full_sequences', len(df) )
     sh.add_value(f'/collapse','api_max_distance', str(max_distance) )
 
-    # Get list of ids to group collapse by...
-    df[gcolumn] = df[gcolumn].astype('string')
-    gidlist = list( df[gcolumn].dropna().unique() )
-    gidlist = [ x for x in gidlist if len(x) > 0 ]
-    gidlist.sort()
-    logging.debug(f'handling group list: {gidlist}')
-
-    logging.info(f'pulling out no group for merging at end...')
-    nogroup_df = df[ df[gcolumn] == '' ]
-    sh.add_value('/collapse','n_no_group', len(nogroup_df) )
-
     gdflist = []
+    gidlist = None
+    nogroup_df = None
 
+    if gcolumn is None:
+        logging.info(f'gcolumn = None. Collapse all globally.')
+        gidlist = [ None ]
+    else:
+        df[gcolumn] = df[gcolumn].astype('string')
+        gidlist = list( df[gcolumn].dropna().unique() )
+        gidlist = [ x for x in gidlist if len(x) > 0 ]
+        gidlist.sort()
+        logging.debug(f'gcolumn={gcolumn} group list: {gidlist}')
+
+        logging.info(f'pulling out no group for merging at end...')
+        nogroup_df = df[ df[gcolumn] == '' ]
+        sh.add_value('/collapse','n_no_group', len(nogroup_df) )
+    
     for gid in gidlist:
-        logging.info(f"collapsing '{column}' by {gcolumn} = '{gid}' ")
+        if gid is None:
+            gdf = df.copy()
+            gdf.reset_index(inplace=True, drop=True)
+            initial_len = len(gdf)
+            gcolumn = 'all'
+            gid = 'all'                          
+        else:
+            logging.info(f"collapsing '{column}' by {gcolumn} = '{gid}' ")
+
+            gdf = df[df[gcolumn] == gid]
+            gdf.reset_index(inplace=True, drop=True)
+            initial_len = len(gdf)  
+        
         gdir = os.path.join( outdir, f'{gcolumn}.{gid}' )
         os.makedirs(gdir, exist_ok=True)
-        
-        gdf = df[df[gcolumn] == gid]
-        gdf.reset_index(inplace=True, drop=True)
-        initial_len = len(gdf)  
         logging.info(f'[{gcolumn}:{gid}] initial len={len(gdf)} subdir={gdir}')        
         
         # get reduced dataframe of unique head sequences
@@ -1412,7 +1425,7 @@ def align_collapse_nx_grouped(df,
         logging.debug('Getting unique DF with sum of counts...')
         vcdf = gdf[column].value_counts().reset_index()
         cdf = pd.merge( vcdf, gdf, on=column, how='left')
-        udf = cdf.groupby(column).agg( {'count':'first','read_count':'sum'}).reset_index()
+        udf = cdf.groupby(column).agg( {'count':'first', pcolumn:'sum'}).reset_index()
         udf.sort_values('count', ascending=False).reset_index(inplace=True, drop=True)
         logging.debug('Unique DF created...')
         
@@ -1506,8 +1519,10 @@ def align_collapse_nx_grouped(df,
         gdflist.append(newdf)
 
     # merge all brains into one dataframe...
-    logging.debug(f'sizes={[ len(x) for x in gdflist ]} adding nogroup len={len(nogroup_df)}')    
-    gdflist.append(nogroup_df)
+    logging.debug(f'sizes={[ len(x) for x in gdflist ]}' )
+    if nogroup_df is not None:
+        logging.debug(f'adding nogroup len={len(nogroup_df)}')
+        gdflist.append(nogroup_df)
     outdf = pd.concat(gdflist, ignore_index = True)
     outdf.reset_index(inplace=True, drop=True)
     logging.info(f'All groups. Final DF len={len(outdf)}')
