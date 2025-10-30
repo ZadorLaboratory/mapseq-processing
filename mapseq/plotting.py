@@ -2,6 +2,7 @@ import logging
 import os
 
 import datetime as dt
+import math
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -136,11 +137,89 @@ def make_freqplot_single_sns(df,
         pdfpages.savefig(fig)
     logging.info(f'saved plot PDF to {outfile}')
 
-
 def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts frequency' ) :
     '''
     Creates individual axes for single plot within figure. 
     scale = None | log10  | log2
+        # Set the y-axis to a logarithmic scale
+        plt.yscale('log')
+        
+        # Customize y-axis ticks (optional)
+        # For major ticks:
+        major_ticks = [1, 10, 100, 1000, 10000, 100000, 1000000]
+        plt.yticks(major_ticks)
+        
+        # For minor ticks:
+        ax = plt.gca() # Get current axes
+        locmin = mticker.LogLocator(base=10.0, subs=np.arange(0.1, 1, 0.1), numticks=10)
+        ax.yaxis.set_minor_locator(locmin)
+        ax.yaxis.set_minor_formatter(mticker.NullFormatter()) # Hide minor tick labels if desired
+        
+        plt.title('Seaborn Line Plot with Logarithmic Y-axis')
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis (Log Scale)')
+        plt.grid(True, which="both", ls="-") # Add grid for both major and minor ticks
+        plt.show()    
+    
+
+    '''
+    logging.debug(f'column={column} scale={scale} title={title}')
+    df.sort_values(by=[column], ascending=False, inplace=True)
+    df.reset_index(inplace=True, drop=True)
+    df.reset_index(inplace=True)
+    
+    s = df[column].sum()
+    n = len(df)
+    t = df[column].max()
+    r = df['index'].max()
+    h = calc_freq_threshold(df, fraction=0.85, column = column)
+
+    logging.debug(f'making lineplot...')
+    sns.lineplot(ax=ax, data=df, x=df['index'], y=df[column])
+    logging.debug(f'done. calc bounds...')
+
+    lx = df['index'].max()
+    ly = df[column].max()
+
+    ax.set_xlabel('Rank')
+
+    if scale == 'log10':
+        ax.set_yscale('log')
+        #major_ticks = [1, 10, 100, 1000, 10000, 100000, 1000000]
+        major_ticks = make_logticks(ly)
+        ax.set_yticks(major_ticks)
+        ax.set_ylabel(f'log10( {column} )')
+        title = f'{title} log10().'
+        #ly = math.log10(ly)       
+        logging.debug(f'made axis with log scale y-axis.')
+    else:
+        ax.set_ylabel(f'{column}')
+        logging.debug(f'made axis with no scaling.')
+    
+    ax.text(lx, ly, s=f"n={n}\ntop={t}\nsum={s}\nest_0.85_threshold={h}",
+            fontsize=11, 
+            horizontalalignment='right',
+            verticalalignment='top'            
+            )
+    ax.set_title(title, fontsize=10)
+    
+def make_logticks(max_value):
+    '''
+    #major_ticks = [1, 10, 100, 1000, 10000, 100000, 1000000]
+    '''
+    ticklist = []
+    i = 1
+    while i < max_value:
+        ticklist.append(i)
+        i *= 10
+    ticklist.append(i)
+    return ticklist
+
+def counts_axis_plot_sns_old(ax, df, scale=None, column='read_count', title='counts frequency' ) :
+    '''
+    Creates individual axes for single plot within figure. 
+    scale = None | log10  | log2
+
     '''
     df.sort_values(by=[column], ascending=False, inplace=True)
     df.reset_index(inplace=True, drop=True)
