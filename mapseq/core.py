@@ -271,10 +271,13 @@ def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
                 df[icol] = df[icol].astype('int64')                
             
         for ccol in CAT_COLS[fformat]:
-            dt = df[ccol].dtype
-            if dt != 'category':
-                logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
-                df[ccol] = df[ccol].astype('category')        
+            try:
+                dt = df[ccol].dtype
+                if dt != 'category':
+                    logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
+                    df[ccol] = df[ccol].astype('category')
+            except KeyError:
+                logging.warning(f'column {ccol} not found. Vital?')        
     else:
         logging.warning('unrecognized mapseq format. return original')
     logging.info(f'new dataframe dtypes=\n{df.dtypes}')
@@ -925,6 +928,7 @@ def aggregate_reads_pd(df,
     initlen = len(df)
     logging.debug(f'aggregating read counts DF len={len(df)} column={column}')
     try:
+        # some test files may only have 'sequence' column.
         vcs = df.value_counts( column )
     except KeyError:
         vcs = df.value_counts( column[0])

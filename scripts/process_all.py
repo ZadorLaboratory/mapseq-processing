@@ -106,7 +106,7 @@ def process_mapseq_all(config_file,
             instep = STEPLIST [ STEPLIST.index(step) - 1 ]
             inprog = STEPMAP[instep]
             insname = DIRMAP[inprog]
-            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.parquet')
+            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.tsv')
         
         log_file = os.path.join(outdir, f'{step}.log')
         cmd = [ os.path.join(dirpath, f'{sprog}.py'),
