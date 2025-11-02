@@ -3089,6 +3089,51 @@ def make_nx_df():
     
     comp_info_df = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
 
+def counts_axis_plot_sns_old(ax, df, scale=None, column='read_count', title='counts frequency' ) :
+    '''
+    Creates individual axes for single plot within figure. 
+    scale = None | log10  | log2
+
+    '''
+    df.sort_values(by=[column], ascending=False, inplace=True)
+    df.reset_index(inplace=True, drop=True)
+    df.reset_index(inplace=True)
+    
+    s = df[column].sum()
+    n = len(df)
+    t = df[column].max()
+    r = df['index'].max()
+    h = calc_freq_threshold(df, fraction=0.9, column = column)
+    
+    if scale is None:
+        sns.lineplot(ax=ax, x=df['index'], y=df[column] )
+        lx = df['index'].max()
+        ly = df[column].max()
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nest_90pct_threshold={h}", 
+                fontsize=11, 
+                horizontalalignment='right',
+                verticalalignment='top',) #add text
+        logging.debug(f'made axis without scale.') 
+
+    elif scale == 'log10':
+        #  Avoid divide by 0 runtime warning...
+        #  Switch to non-log-scaled X axis
+        df['n_index'] = df['index'] + 1
+        df['log10counts'] = np.log10(df[column])
+        sns.lineplot(ax=ax, x=df['n_index'], y=df['log10counts'] )
+        #lx = 0.05 * np.log10(t) 
+        #ly = 0.05 * np.log10(r)        
+        #lx = 0.1
+        lx = df['index'].max() * 0.8
+        ly = df['log10counts'].max() * 0.8
+        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nest_90pct_threshold={h}", 
+                fontsize=11,
+                horizontalalignment='right',
+                verticalalignment='top',) #add text
+        title = f'{title} log10().'
+        logging.debug(f'made axis with log10 scale.')       
+
+    ax.set_title(title, fontsize=10)
 
 
 

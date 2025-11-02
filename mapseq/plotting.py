@@ -18,7 +18,8 @@ def make_counts_plots(df,
                       groupby='label', 
                       type=None, 
                       column='read_count',
-                      min_count=1,  
+                      min_count=1,
+                      nranks=None,  
                       cp=None):
     '''
     take standard aggregated, readtable or vbctable DFs and create 
@@ -57,6 +58,7 @@ def make_counts_plots(df,
                                outfile=os.path.join(outdir, f'{project_id}_{type}_{column}_by{groupby}_freq.c{min_count}.pdf'),
                                groupby=groupby, 
                                column=column,
+                               nranks=nranks,
                                scale='log10' )
 
 
@@ -65,11 +67,13 @@ def make_freqplot_combined_sns(df,
                            outfile='frequency-plots.pdf',
                            groupby='label', 
                            column='read_count',
+                           nranks=None,
                            scale=None ):    
     '''
      makes combined figure with all plots.
       
     scale = log10 | log2 | None  
+    nranks    limit x-axis to this number of ranks (to clarify visual shoulder). 
       
     '''
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
@@ -108,7 +112,12 @@ def make_freqplot_combined_sns(df,
             gdf = df[ df[groupby] == group ]                
             logging.debug(f'handling {group} length={len(gdf)}')
             ax = axlist[i]
-            counts_axis_plot_sns(ax, gdf, column=column, title=f'{group} {column}', scale=scale)
+            counts_axis_plot_sns(ax, 
+                                 gdf, 
+                                 column=column, 
+                                 title=f'{group} {column}',
+                                 nranks=nranks,
+                                 scale=scale)
                 
         for f in figlist:
             pdfpages.savefig(f)
@@ -137,7 +146,7 @@ def make_freqplot_single_sns(df,
         pdfpages.savefig(fig)
     logging.info(f'saved plot PDF to {outfile}')
 
-def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts frequency' ) :
+def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts frequency', nranks=None ) :
     '''
     Creates individual axes for single plot within figure. 
     scale = None | log10  | log2
@@ -165,6 +174,12 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     '''
     logging.debug(f'column={column} scale={scale} title={title}')
     df.sort_values(by=[column], ascending=False, inplace=True)
+    # calculate before x-axis thresholding for visual clarity
+    h = calc_freq_threshold(df, fraction=0.85, column = column)
+    
+    if nranks is not None:
+        logging.debug(f'limiting x-axis tp {nranks} ranks.')
+        df = df.iloc[:nranks]    
     df.reset_index(inplace=True, drop=True)
     df.reset_index(inplace=True)
     
@@ -172,7 +187,6 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     n = len(df)
     t = df[column].max()
     r = df['index'].max()
-    h = calc_freq_threshold(df, fraction=0.85, column = column)
 
     logging.debug(f'making lineplot...')
     sns.lineplot(ax=ax, data=df, x=df['index'], y=df[column])
@@ -215,51 +229,6 @@ def make_logticks(max_value):
     ticklist.append(i)
     return ticklist
 
-def counts_axis_plot_sns_old(ax, df, scale=None, column='read_count', title='counts frequency' ) :
-    '''
-    Creates individual axes for single plot within figure. 
-    scale = None | log10  | log2
-
-    '''
-    df.sort_values(by=[column], ascending=False, inplace=True)
-    df.reset_index(inplace=True, drop=True)
-    df.reset_index(inplace=True)
-    
-    s = df[column].sum()
-    n = len(df)
-    t = df[column].max()
-    r = df['index'].max()
-    h = calc_freq_threshold(df, fraction=0.9, column = column)
-    
-    if scale is None:
-        sns.lineplot(ax=ax, x=df['index'], y=df[column] )
-        lx = df['index'].max()
-        ly = df[column].max()
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nest_90pct_threshold={h}", 
-                fontsize=11, 
-                horizontalalignment='right',
-                verticalalignment='top',) #add text
-        logging.debug(f'made axis without scale.') 
-
-    elif scale == 'log10':
-        #  Avoid divide by 0 runtime warning...
-        #  Switch to non-log-scaled X axis
-        df['n_index'] = df['index'] + 1
-        df['log10counts'] = np.log10(df[column])
-        sns.lineplot(ax=ax, x=df['n_index'], y=df['log10counts'] )
-        #lx = 0.05 * np.log10(t) 
-        #ly = 0.05 * np.log10(r)        
-        #lx = 0.1
-        lx = df['index'].max() * 0.8
-        ly = df['log10counts'].max() * 0.8
-        ax.text(lx, ly, f"n={n}\ntop={t}\nsum={s}\nest_90pct_threshold={h}", 
-                fontsize=11,
-                horizontalalignment='right',
-                verticalalignment='top',) #add text
-        title = f'{title} log10().'
-        logging.debug(f'made axis with log10 scale.')       
-
-    ax.set_title(title, fontsize=10)
 
 
 def calc_freq_threshold(df, fraction=0.9, column = 'read_count'):

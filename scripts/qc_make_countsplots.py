@@ -2,7 +2,6 @@
 #
 # Make shoulder plots from READTABLE OR AGGREGATED
 #
-#
 import argparse
 import logging
 import os
@@ -76,6 +75,13 @@ if __name__ == '__main__':
                         type=str, 
                         help='Aggregate by [ label | site ]')
 
+    parser.add_argument('-n','--nranks', 
+                        metavar='nranks',
+                        required=False,
+                        default=None,
+                        type=int, 
+                        help='Limit x-axis ranks.')
+
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
                     required=False,
@@ -141,21 +147,15 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr)
 
-    #logging.debug(f'loading sample DF...')
-    #sampdf = load_sample_info(args.sampleinfo, cp=cp)
-    #logging.debug(f'\n{sampdf}')
-    #sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
-
-    logging.info(f'loading {args.infile}') 
-    #if args.format == 'aggregated':
-    #    df = load_mapseq_df( args.infile, fformat='aggregated', use_dask=False)
-    #    logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
-    #    df = set_siteinfo(df, sampdf, cp=cp)
-    #    logging.debug(f'set siteinfo on dataframe: {df}')
-    
+    logging.info(f'loading {args.infile}')    
     df = load_mapseq_df( args.infile, fformat=args.format, use_dask=False)   
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    make_counts_plots(df, outdir=outdir, groupby=args.groupby, column=args.column, cp=cp )
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby=args.groupby, 
+                      column=args.column,
+                      nranks=args.nranks,  
+                      cp=cp )
     
     make_read_report_xlsx(df,
                       outdir=outdir,
