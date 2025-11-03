@@ -180,27 +180,27 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
 
     '''
     logging.debug(f'column={column} scale={scale} title={title}')
-    df.sort_values(by=[column], ascending=False, inplace=True)
+    pdf = df.sort_values(by=[column], ascending=False)
     # calculate before x-axis thresholding for visual clarity
-    h = calc_freq_threshold(df, fraction=0.85, column = column)
-    nranks_initial = len(df)
+    h = calc_freq_threshold(pdf, fraction=0.85, column = column)
+    nranks_initial = len(pdf)
     if nranks is not None:
         logging.debug(f'limiting x-axis tp {nranks} ranks.')
-        df = df.iloc[:nranks]    
-    df.reset_index(inplace=True, drop=True)
-    df.reset_index(inplace=True)
+        df = pdf.iloc[:nranks]    
+    pdf.reset_index(inplace=True, drop=True)
+    pdf.reset_index(inplace=True)
     
-    s = df[column].sum()
+    s = pdf[column].sum()
     n = len(df)
-    t = df[column].max()
-    r = df['index'].max()
+    t = pdf[column].max()
+    r = pdf['index'].max()
 
     logging.debug(f'making lineplot...')
-    sns.lineplot(ax=ax, data=df, x=df['index'], y=df[column])
+    sns.lineplot(ax=ax, data=pdf, x=pdf['index'], y=pdf[column])
     logging.debug(f'done. calc bounds...')
 
-    lx = df['index'].max()
-    ly = df[column].max()
+    lx = pdf['index'].max()
+    ly = pdf[column].max()
 
     ax.set_xlabel('Rank')
 
