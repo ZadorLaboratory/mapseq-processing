@@ -52,10 +52,15 @@ def make_counts_plots(df,
         logging.debug(f'removed {removed} rows ( {before} - {after}) with type != {type}')
     else:
         type = 'all'    
+        
+    if nranks is None:
+        ranks = 'all'
+
+    outfile=os.path.join(outdir, f'{project_id}.{type}.{column}.by{groupby}.c{min_count}.r{ranks}.pdf')
     
     make_freqplot_combined_sns(df, 
                                title=f'{project_id}:{type} {column} frequency',  
-                               outfile=os.path.join(outdir, f'{project_id}_{type}_{column}_by{groupby}_freq.c{min_count}.pdf'),
+                               outfile = outfile,
                                groupby=groupby, 
                                column=column,
                                nranks=nranks,
@@ -176,7 +181,7 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     df.sort_values(by=[column], ascending=False, inplace=True)
     # calculate before x-axis thresholding for visual clarity
     h = calc_freq_threshold(df, fraction=0.85, column = column)
-    
+    nranks_initial = len(df)
     if nranks is not None:
         logging.debug(f'limiting x-axis tp {nranks} ranks.')
         df = df.iloc[:nranks]    
@@ -203,7 +208,7 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
         major_ticks = make_logticks(ly)
         ax.set_yticks(major_ticks)
         ax.set_ylabel(f'log10( {column} )')
-        title = f'{title} log10().'
+        title = f'{title} log10()'
         #ly = math.log10(ly)       
         logging.debug(f'made axis with log scale y-axis.')
     else:
@@ -215,6 +220,10 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
             horizontalalignment='right',
             verticalalignment='top'            
             )
+
+    if nranks is not None:
+        title = f'{title} nranks=[{nranks}/{nranks_initial}]'        
+    
     ax.set_title(title, fontsize=10)
     
 def make_logticks(max_value):
