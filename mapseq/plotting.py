@@ -55,6 +55,8 @@ def make_counts_plots(df,
         
     if nranks is None:
         ranks = 'all'
+    else:
+        ranks = nranks
 
     outfile=os.path.join(outdir, f'{project_id}.{type}.{column}.by{groupby}.c{min_count}.r{ranks}.pdf')
     
