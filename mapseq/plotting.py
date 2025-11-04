@@ -153,7 +153,12 @@ def make_freqplot_single_sns(df,
         pdfpages.savefig(fig)
     logging.info(f'saved plot PDF to {outfile}')
 
-def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts frequency', nranks=None ) :
+def counts_axis_plot_sns(ax, 
+                         df, 
+                         scale=None, 
+                         column='read_count', 
+                         title='counts frequency', 
+                         nranks=None ) :
     '''
     Creates individual axes for single plot within figure. 
     scale = None | log10  | log2
@@ -185,8 +190,8 @@ def counts_axis_plot_sns(ax, df, scale=None, column='read_count', title='counts 
     h = calc_freq_threshold(pdf, fraction=0.85, column = column)
     nranks_initial = len(pdf)
     if nranks is not None:
-        logging.debug(f'limiting x-axis tp {nranks} ranks.')
-        df = pdf.iloc[:nranks]    
+        logging.debug(f'limiting x-axis to {nranks} ranks.')
+        pdf = pdf.iloc[:nranks]    
     pdf.reset_index(inplace=True, drop=True)
     pdf.reset_index(inplace=True)
     

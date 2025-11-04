@@ -2,7 +2,7 @@
 #
 # retrieve all relevant inputs for completing project locally. 
 #
-DIRLIST="reads.out aggregated.out filtered.out readtable.out collapsed.out vbctable.out"
+DIRLIST="reads.out aggregated.out filtered.out readtable.out collapsed.out vbctable.out plots.out"
 USERHOST="hover@bamdev2.cshl.edu"
 PROJECTROOT="/grid/zador/home/hover/project/mapseq"
 SEQTECH="novaseq"
@@ -26,12 +26,13 @@ for DIR in $DIRLIST ; do
  scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/$DIR/*.xlsx ./$DIR/
  scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/$DIR/*.pdf ./$DIR/
  scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/$DIR/*.compsize.tsv ./$DIR/
+ scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/$DIR/brain*/*component_info.tsv ./$DIR/
 done
 
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/readtable.out/sampleinfo.tsv ./readtable.out/
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/vbctable.out/*.vbctable.* ./vbctable.out/
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/*.mapseq.conf ./
-scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/*.ampleinfo.xlsx ./
+scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/*.sampleinfo.xlsx ./
 
 scp -r $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/vbcfiltered.out ./
 scp -r $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/matrices.out ./

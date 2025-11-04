@@ -1505,7 +1505,7 @@ def align_collapse_nx_grouped(df,
         logging.debug(f'got component info DF len={len(cidf)}')
 
         # write component assessment info. 
-        of = os.path.join( gdir , f'component_info.tsv')
+        of = os.path.join( gdir , f'{gid}.component_info.tsv')
         cidf.to_csv( of, sep='\t')
         
         # collapse sequences to max_degree_seq
