@@ -2388,7 +2388,7 @@ def make_read_report_xlsx(df,
     if outdir is None:
         outdir = os.path.abspath('./')
     project_id = cp.get('project','project_id')
-        
+    
     outfile = os.path.join(outdir, f'{project_id}.{step}.readreport.xlsx')    
     
     logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
@@ -2421,6 +2421,15 @@ def make_read_report_xlsx(df,
         rdf.to_excel(writer, sheet_name='Real Unique VBC')
         rcdf.to_excel(writer, sheet_name='Read Count Sum')
 
+    of = os.path.join(outdir, f'{project_id}.{step}.uvbc.tsv')
+    vdf.to_csv(of, sep='\t')
+    of = os.path.join(outdir, f'{project_id}.{step}.spike.tsv')
+    sdf.to_csv(of, sep='\t')
+    of = os.path.join(outdir, f'{project_id}.{step}.real.tsv')
+    rdf.to_csv(of, sep='\t')
+    of = os.path.join(outdir, f'{project_id}.{step}.rcount.tsv')
+    rcdf.to_csv(of, sep='\t')
+    
     logging.info(f'Wrote XLSX report: {outfile} ')
 
 
@@ -2624,6 +2633,8 @@ def make_vbctable_parameter_report_xlsx(df,
 
     with pd.ExcelWriter(outfile) as writer:
         outdf.to_excel(writer, sheet_name='Unique VBCs by Parameters')
+        of = os.path.join(outdir, f'{project_id}.vbc_parameters.tsv')
+        outdf.to_csv(of, sep='\t')
     logging.info(f'Wrote XLSX report: {outfile} ')
 
     return outdf
