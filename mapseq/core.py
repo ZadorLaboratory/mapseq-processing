@@ -53,9 +53,9 @@ STR_COLS = {
     'reads'      : ['sequence'],
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
-    'readtable'  : ['vbc_read', 'umi' ],
+    'readtable'  : ['vbc_read', 'libtag', 'umi' ],
     #'collapsed'  : ['vbc_read','spikeseq', 'libtag', 'umi',  'ssi'],
-    'collapsed'  : ['vbc_read', 'umi'],
+    'collapsed'  : ['vbc_read', 'libtag', 'umi' ],
     'vbctable'   : ['vbc_read'],      
     }
 
@@ -1399,7 +1399,12 @@ def process_make_readtable_pd(df,
     spikeseq = cp.get('readtable','spikeseq')
     realregex = cp.get('readtable', 'realregex' )
     loneregex = cp.get('readtable', 'loneregex' )
+
+    # establish logic for using libtag, if defined. 
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
+    filter_by_libtag = cp.getboolean('readtable','filter_by_libtag', fallback=True)
+    if not use_libtag:
+        filter_by_libtag = False
     
     if bcfile is None:
         bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
@@ -1465,6 +1470,12 @@ def process_make_readtable_pd(df,
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
         smap = df['spikeseq'] == spikeseq
         df.loc[smap, 'type'] = 'spike'
+
+        # calculate and save libtag abundance.
+        of = os.path.join( outdir, 'libtag_counts.tsv') 
+        lcdf = df['libtag'].value_counts().reset_index()
+        lcdf.to_csv(of, sep='\t')
+        logging.info(f'Saved libtag counts to {of}')
         
     else:
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
@@ -1478,21 +1489,24 @@ def process_make_readtable_pd(df,
     # identify bad type rows.
     # must not be spikein, and libtag must not match L1 or L2 
     # i.e. neither all purines or all pyrimidenes
-    logging.debug('Identifying bad type rows.')  
-    badtypedf = df[ df.isna().any(axis=1) ]
-    n_badtype = len(badtypedf)
-    df.drop(badtypedf.index, inplace=True)
-    df.reset_index(inplace=True, drop=True)    
+    if filter_by_libtag:
+        logging.debug('Identifying bad type rows.')  
+        badtypedf = df[ df.isna().any(axis=1) ]
+        n_badtype = len(badtypedf)
+        df.drop(badtypedf.index, inplace=True)
+        df.reset_index(inplace=True, drop=True)    
 
-    of = os.path.join( outdir, 'bad_type.tsv')
-    badtypedf.reset_index(inplace=True, drop=True)
-    badtypedf.to_csv(of, sep='\t')
-    logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
-    badtypedf = None   
+        of = os.path.join( outdir, 'bad_type.tsv')
+        badtypedf.reset_index(inplace=True, drop=True)
+        badtypedf.to_csv(of, sep='\t')
+        logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
+        badtypedf = None   
     
-    logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
-    df.drop(['spikeseq','libtag'], inplace=True, axis=1)
-
+    #logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
+    logging.debug('Dropping redundant spikeseq field.')
+    #df.drop(['spikeseq','libtag'], inplace=True, axis=1)
+    df.drop(['spikeseq'], inplace=True, axis=1)
+    
     # NOT REQUIRED VALUES, so replace NaNs 
     # set brain
     bdf = sampdf[['rtprimer','brain']]
@@ -1539,10 +1553,12 @@ def process_make_readtable_pd(df,
     
     # find and remove (at least) known template-switch rows from dataframe.
     # template switch type is L1/lone (from libtag) but is a valid target (from SSI) 
+    # Note, if experiment has no L1s, it shouldn't do anything. 
     tsdf = df[ ((df['type'] == 'lone') & ( df['site'].str.startswith('target'))) ]
     of = os.path.join(outdir, 'template_switch.tsv') 
-    logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
-    tsdf.to_csv(of, sep='\t')
+    if len(tsdf) > 0:
+        logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
+        tsdf.to_csv(of, sep='\t')
     n_tswitch = len(tsdf)
     
     # remove known template switch from readtable
