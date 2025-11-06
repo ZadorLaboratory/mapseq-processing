@@ -866,19 +866,32 @@ def make_nxgraph_seqlist( seq_list, max_mismatch = 3 ):
     return G
 
 
-def make_component_df_nx(components, parent_graph):
+def make_component_df_nx(components, parent_graph, outdir=None):
     '''
-    Gather component info from native NX objects. , save to component DF
+    Gather component info from native NX objects. Save to component info DF
     
     '''
-    #n_comps = len(components)
-    comps_handled = 0
     COMP_INTERVAL = 10
+    # write out intermediate results if outdir is not None
+    # interval determined by total number of elements on all components. 
+    TOTAL_ELEMENTS =  len(flatten_list(components))
+    WRITE_INTERVAL = int( TOTAL_ELEMENTS / 10 )
     #   component info for DF:  cmp_idx, cmp_size, cmp_diam, cmp_max_deg 
     COMPINFO_COLUMNS = [ 'cmp_idx', 'size', 'diam', 'max_deg', 'max_deg_seq', 'max_count', 'max_count_seq']
-    
+
+    comps_handled = 0
+    elements_handled = 0
+    elements_floor = WRITE_INTERVAL
+    intermediates_handled = 0
     comp_info_list = []
+    intermediate_list = []        
+
     logging.debug(f'enumerating components...')
+    if outdir is not None:
+        logging.debug(f'will write out every {WRITE_INTERVAL} elements.')
+    else:
+        logging.debug('no intermediate output saves.')
+    
     for i, comp in enumerate( components ):
         comp = list(comp)
         if comps_handled % COMP_INTERVAL == 0:
@@ -899,10 +912,31 @@ def make_component_df_nx(components, parent_graph):
         c_max_count = ndata['count']
         clist = [ i, c_size, c_diam, c_max_deg, c_max_deg_seq, c_max_count, c_max_count_seq ]
         comp_info_list.append(clist)
+        intermediate_list.append(clist)
         comps_handled += 1
         if comps_handled % COMP_INTERVAL == 0:
             logging.debug(f'[{i}] Done. Handled {comps_handled} components...') 
-    
+        elements_handled += len(comp)
+        if outdir is not None:
+            if elements_handled > elements_floor:
+                of = os.path.join(outdir, f'{intermediates_handled}.compinfo.partial.tsv')
+                logging.debug(f'writing output to {of} ...')
+                icidf = pd.DataFrame(intermediate_list, columns=COMPINFO_COLUMNS)
+                icidf.sort_values(by='size', inplace=True, ascending=False)
+                icidf.reset_index(inplace=True, drop=True)                
+                icidf.to_csv(of, sep='\t')
+                intermediate_list = []
+                intermediates_handled += 1
+                elements_floor = elements_handled + WRITE_INTERVAL
+    if outdir is not None:
+        intermediates_handled += 1
+        of = os.path.join(outdir, f'{intermediates_handled}.compinfo.partial.tsv')
+        logging.debug(f'writing output to {of} ...')
+        icidf = pd.DataFrame(intermediate_list, columns=COMPINFO_COLUMNS)
+        icidf.sort_values(by='size', inplace=True, ascending=False)
+        icidf.reset_index(inplace=True, drop=True)                
+        icidf.to_csv(of, sep='\t')        
+
     logging.info(f'handled {comps_handled} total components.')
     cidf = pd.DataFrame(comp_info_list, columns=COMPINFO_COLUMNS)
     cidf.sort_values(by='size', inplace=True, ascending=False)
@@ -1501,7 +1535,7 @@ def align_collapse_nx_grouped(df,
         logging.debug(f'all comp indexes len={len(idxlist)}')
 
         # Gather component information. 
-        cidf = make_component_df_nx(complist, G)
+        cidf = make_component_df_nx(complist, G, outdir=gdir)
         logging.debug(f'got component info DF len={len(cidf)}')
 
         # write component assessment info. 

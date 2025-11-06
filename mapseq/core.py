@@ -259,10 +259,13 @@ def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
             tt = 'string[python]'
             
         for scol in STR_COLS[fformat]:
-            dt = df[scol].dtype 
-            if dt != tt:
-                logging.debug(f'converting col={scol} from {dt} to {tt} ...')
-                df[scol] = df[scol].astype(tt) 
+            try:
+                dt = df[scol].dtype 
+                if dt != tt:
+                    logging.debug(f'converting col={scol} from {dt} to {tt} ...')
+                    df[scol] = df[scol].astype(tt) 
+            except KeyError:
+                logging.warning(f'column {scol} not found. Vital for {fformat}')
             
         for icol in INT_COLS[fformat]:
             dt = df[icol].dtype
@@ -277,7 +280,7 @@ def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
                     logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
                     df[ccol] = df[ccol].astype('category')
             except KeyError:
-                logging.warning(f'column {ccol} not found. Vital?')        
+                logging.warning(f'column {ccol} not found. Vital for {fformat}')        
     else:
         logging.warning('unrecognized mapseq format. return original')
     logging.info(f'new dataframe dtypes=\n{df.dtypes}')
@@ -1384,9 +1387,10 @@ def process_make_readtable_pd(df,
     -- aggregate and sum read counts 
     -- remove redudant info (SSI, libtag, spikeseg)
 
-    '''
-        
+    '''        
     logging.info(f'inbound df len={len(df)} columns={list( df.columns )}')
+    sh = get_default_stats()
+    
     n_initial = len(df)
     if outdir is None:
         outdir = os.path.abspath('./')
@@ -1501,6 +1505,7 @@ def process_make_readtable_pd(df,
         badtypedf.to_csv(of, sep='\t')
         logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
         badtypedf = None   
+        sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
     
     #logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
     logging.debug('Dropping redundant spikeseq field.')
@@ -1547,8 +1552,7 @@ def process_make_readtable_pd(df,
     df.fillna({'ourtube': ''}, inplace=True)
     tdf = None
     
-    # calc/ collect stats
-    sh = get_default_stats()    
+    
     sh.add_value('/readtable','n_full_sequences', str(len(df)) )
     
     # find and remove (at least) known template-switch rows from dataframe.
@@ -1574,7 +1578,7 @@ def process_make_readtable_pd(df,
 
     sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
     sh.add_value('/readtable', 'n_badssi', str(n_badssi) )
-    sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+
     sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     sh.add_value('/readtable', 'n_final', str(n_final) )     
     
