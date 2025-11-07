@@ -1462,6 +1462,7 @@ def process_make_readtable_pd(df,
     df['site'] = df['rtprimer'].map(smap)
 
     if use_libtag:
+        logging.info(f'Using libtag to determine type.')
         # L1/L2 libtag
         logging.info('identifying L2 (reals) by libtag...')
         rmap = df['libtag'].str.match(realregex)
@@ -1480,8 +1481,27 @@ def process_make_readtable_pd(df,
         lcdf = df['libtag'].value_counts().reset_index()
         lcdf.to_csv(of, sep='\t')
         logging.info(f'Saved libtag counts to {of}')
-        
+
+        # remove bad libtags. 
+        # must not be spikein, and libtag must not match L1 or L2 
+        if filter_by_libtag:
+            logging.debug('Filtering by bad libtag/type')  
+            badtypedf = df[ df.isna().any(axis=1) ]
+            n_badtype = len(badtypedf)
+            df.drop(badtypedf.index, inplace=True)
+            df.reset_index(inplace=True, drop=True)    
+    
+            of = os.path.join( outdir, 'bad_type.tsv')
+            badtypedf.reset_index(inplace=True, drop=True)
+            badtypedf.to_csv(of, sep='\t')
+            logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
+            badtypedf = None   
+            sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+        else:
+            logging.info('No filtering by libtag.')
+
     else:
+        logging.info('Ignoring libtag. Just using spike sequence. ')
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
         smap = df['spikeseq'] == spikeseq
         df.loc[smap, 'type'] = 'spike'
@@ -1489,25 +1509,6 @@ def process_make_readtable_pd(df,
         logging.info('ignoring L1/L2 libtag. All non-spikes are real.')        
         nsmap = df['type'] != 'spike'
         df.loc[nsmap, 'type'] = 'real'
-
-    # identify bad type rows.
-    # must not be spikein, and libtag must not match L1 or L2 
-    # i.e. neither all purines or all pyrimidenes
-    if filter_by_libtag:
-        logging.debug('Identifying bad type rows.')  
-        badtypedf = df[ df.isna().any(axis=1) ]
-        n_badtype = len(badtypedf)
-        df.drop(badtypedf.index, inplace=True)
-        df.reset_index(inplace=True, drop=True)    
-
-        of = os.path.join( outdir, 'bad_type.tsv')
-        badtypedf.reset_index(inplace=True, drop=True)
-        badtypedf.to_csv(of, sep='\t')
-        logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
-        badtypedf = None   
-        sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
-    else:
-        logging.info('No filtering by libtag.')
     
     #logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
     logging.debug('Dropping redundant spikeseq field.')
