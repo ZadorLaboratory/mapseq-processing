@@ -868,7 +868,9 @@ def make_nxgraph_seqlist( seq_list, max_mismatch = 3 ):
 
 def make_component_df_nx(components, parent_graph, outdir=None):
     '''
-    Gather component info from native NX objects. Save to component info DF
+    Gather component info from native NX objects. Save to component info DF.
+    Optionally write-out intermediate results since this can be a 
+    very long-running operation. 
     
     '''
     COMP_INTERVAL = 10
@@ -928,6 +930,7 @@ def make_component_df_nx(components, parent_graph, outdir=None):
                 intermediate_list = []
                 intermediates_handled += 1
                 elements_floor = elements_handled + WRITE_INTERVAL
+                
     if outdir is not None:
         intermediates_handled += 1
         of = os.path.join(outdir, f'{intermediates_handled}.compinfo.partial.tsv')

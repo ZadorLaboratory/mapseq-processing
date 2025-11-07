@@ -1506,6 +1506,8 @@ def process_make_readtable_pd(df,
         logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
         badtypedf = None   
         sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+    else:
+        logging.info('No filtering by libtag.')
     
     #logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
     logging.debug('Dropping redundant spikeseq field.')
