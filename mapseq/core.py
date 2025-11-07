@@ -1407,7 +1407,7 @@ def process_make_readtable_pd(df,
     # establish logic for using libtag, if defined. 
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
     filter_by_libtag = cp.getboolean('readtable','filter_by_libtag', fallback=True)
-    use_lone = cp.getboolen('readtable','use_lone', fallback=True)
+    use_lone = cp.getboolean('readtable','use_lone', fallback=True)
     
     if not use_libtag:
         filter_by_libtag = False
