@@ -1407,6 +1407,8 @@ def process_make_readtable_pd(df,
     # establish logic for using libtag, if defined. 
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
     filter_by_libtag = cp.getboolean('readtable','filter_by_libtag', fallback=True)
+    use_lone = cp.getboolen('readtable','use_lone', fallback=True)
+    
     if not use_libtag:
         filter_by_libtag = False
     
@@ -1462,15 +1464,16 @@ def process_make_readtable_pd(df,
     df['site'] = df['rtprimer'].map(smap)
 
     if use_libtag:
-        logging.info(f'Using libtag to determine type.')
+        logging.info(f'use_libtag = True. Using libtag to determine L1/L2 type.')
         # L1/L2 libtag
         logging.info('identifying L2 (reals) by libtag...')
         rmap = df['libtag'].str.match(realregex)
         df.loc[rmap, 'type'] = 'real'
-        
-        logging.info('identifying L1s by libtag...')
-        lmap = df['libtag'].str.match(loneregex)
-        df.loc[lmap, 'type'] = 'lone'
+
+        if use_lone:        
+            logging.info('identifying L1s by libtag...')
+            lmap = df['libtag'].str.match(loneregex)
+            df.loc[lmap, 'type'] = 'lone'
         
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
         smap = df['spikeseq'] == spikeseq
@@ -1498,14 +1501,16 @@ def process_make_readtable_pd(df,
             badtypedf = None   
             sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
         else:
-            logging.info('No filtering by libtag.')
-
+            logging.info('No filtering by libtag. Setting unidentified to real.')
+            namap = df['type'].isna()
+            df.loc[namap, 'type'] = 'real'            
+            
     else:
-        logging.info('Ignoring libtag. Just using spike sequence. ')
+        logging.info('use_libtag = False. Ignoring libtag. Just using spike sequence. ')
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
         smap = df['spikeseq'] == spikeseq
         df.loc[smap, 'type'] = 'spike'
-        
+
         logging.info('ignoring L1/L2 libtag. All non-spikes are real.')        
         nsmap = df['type'] != 'spike'
         df.loc[nsmap, 'type'] = 'real'
