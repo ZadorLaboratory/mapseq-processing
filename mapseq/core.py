@@ -280,7 +280,7 @@ def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
                     logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
                     df[ccol] = df[ccol].astype('category')
             except KeyError:
-                logging.warning(f'column {ccol} not found. Vital for {fformat}')        
+                logging.warning(f'column {ccol} not found. Vital for {fformat}?')        
     else:
         logging.warning('unrecognized mapseq format. return original')
     logging.info(f'new dataframe dtypes=\n{df.dtypes}')
@@ -1399,10 +1399,10 @@ def process_make_readtable_pd(df,
     
     if cp is None:
         cp = get_default_config()
-    
+
     spikeseq = cp.get('readtable','spikeseq')
     realregex = cp.get('readtable', 'realregex' )
-    loneregex = cp.get('readtable', 'loneregex' )
+    loneregex = cp.get('readtable', 'loneregex' )    
 
     # establish logic for using libtag, if defined. 
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
@@ -1500,6 +1500,22 @@ def process_make_readtable_pd(df,
             logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
             badtypedf = None   
             sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+
+            # find and remove (at least) known template-switch rows from dataframe.
+            # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)  
+            nonlone = df[ df['site'] != 'target-lone' ]
+            tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
+            of = os.path.join(outdir, 'template_switch.tsv') 
+            if len(tsdf) > 0:
+                logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
+                tsdf.to_csv(of, sep='\t')
+            n_tswitch = len(tsdf)
+            
+            # remove known template switch from readtable
+            df.drop(tsdf.index, inplace=True)
+            df.reset_index(drop=True, inplace=True)
+            sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )        
+        
         else:
             logging.info('No filtering by libtag. Setting unidentified to real.')
             namap = df['type'].isna()
@@ -1559,24 +1575,9 @@ def process_make_readtable_pd(df,
         logging.debug('ourtube not categorical?')
     df.fillna({'ourtube': ''}, inplace=True)
     tdf = None
-    
-    
+        
     sh.add_value('/readtable','n_full_sequences', str(len(df)) )
     
-    # find and remove (at least) known template-switch rows from dataframe.
-    # template switch type is L1/lone (from libtag) but is a valid target (from SSI) 
-    # Note, if experiment has no L1s, it shouldn't do anything. 
-    tsdf = df[ ((df['type'] == 'lone') & ( df['site'].str.startswith('target'))) ]
-    of = os.path.join(outdir, 'template_switch.tsv') 
-    if len(tsdf) > 0:
-        logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
-        tsdf.to_csv(of, sep='\t')
-    n_tswitch = len(tsdf)
-    
-    # remove known template switch from readtable
-    df.drop(tsdf.index, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-
     # perform optional per-sample read thresholding.
     if int( sampdf['min_reads'].max()) > 1:
         df = threshold_by_sample(df, sampdf)
@@ -1586,8 +1587,6 @@ def process_make_readtable_pd(df,
 
     sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
     sh.add_value('/readtable', 'n_badssi', str(n_badssi) )
-
-    sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
     sh.add_value('/readtable', 'n_final', str(n_final) )     
     
     df = fix_mapseq_df_types(df, fformat='readtable')
@@ -1785,7 +1784,6 @@ def process_make_vbctable_pd(df,
     lones = udf[ (udf['site'] == 'target-lone') & (udf['type'] == 'lone') ]
     udf = udf[ udf['site'] != 'target-lone' ]
 
-    
     # pull out remaining VBCs with matching SSIs that we did not expect to have L1 libtags. 
     anomalies = udf[ udf['type'] == 'lone' ]
     udf = udf[ udf['type'] != 'lone' ]
