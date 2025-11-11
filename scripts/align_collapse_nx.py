@@ -7,7 +7,7 @@ import sys
 from configparser import ConfigParser
 
 import pandas as pd
-import pyarrow as pa
+import pyarrow as pa 
 import pyarrow.parquet as pq
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")

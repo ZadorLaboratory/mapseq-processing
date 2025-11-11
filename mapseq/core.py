@@ -1658,9 +1658,18 @@ def align_collapse(df,
     
     if gcolumn is not None:
         logging.info(f'Grouped align_collapse. Group column = {gcolumn}')
+        sh.add_value(f'/collapse','n_initial', str(len(df)) )
         sh.add_value(f'/collapse','collapse_mode', 'grouped' )
         sh.add_value(f'/collapse','collapse_library', collapse_lib )
         sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
+        
+        logging.info(f'Grouped align_collapse. Saving rows with no group.')
+        nogroupdf = df[ df[gcolumn] == '' ]
+        sh.add_value(f'/collapse','n_nogroup', str(len(nogroupdf)) )
+        
+        df = df.drop(nogroupdf.index)
+        sh.add_value(f'/collapse','n_withgroup', str(len(df)) )
+        
         if collapse_lib == 'networkx':
             logging.debug(f'networkx collapse...')
             if max_mismatch is None:
@@ -1689,6 +1698,11 @@ def align_collapse(df,
                                         force=force,
                                         min_reads = min_reads,
                                         cp=cp )
+        logging.info(f'merging back saved nogroup rows. ')
+        df = pd.concat( [ df , nogroupdf ], ignore_index=True )
+        df.reset_index(inplace=True, drop=True)
+        sh.add_value(f'/collapse','n_remerged', str(len(df)) )
+    
     else:
         logging.info(f'Global align_collapse.')
         sh.add_value(f'/collapse','collapse_mode', 'global' )
