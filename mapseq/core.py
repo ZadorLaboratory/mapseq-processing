@@ -2459,7 +2459,7 @@ def make_read_report_xlsx(df,
     
     logging.info(f'creating unique VBC/read XLSX report: {outfile} ')
     
-    vdf = df.groupby(by=['label','type'],observed=False).agg( {'vbc_read':'nunique','umi':'nunique'} )
+    vdf = df.groupby(by=['label','type'],observed=True).agg( {'vbc_read':'nunique','umi':'nunique'} )
     vdf.reset_index(inplace=True, drop=False)
     vdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( vdf['label'])))
     vdf.reset_index(inplace=True, drop=True)
