@@ -1664,10 +1664,11 @@ def align_collapse(df,
         sh.add_value(f'/collapse','cli_max_mismatch', str(max_mismatch) )
         
         logging.info(f'Grouped align_collapse. Saving rows with no group.')
-        nogroupdf = df[ df[gcolumn] == '' ]
-        sh.add_value(f'/collapse','n_nogroup', str(len(nogroupdf)) )
+        ngdf = df[ ( df[gcolumn].isna() ) | ( df[gcolumn] == '' )  ]
+        sh.add_value(f'/collapse','n_nogroup', str(len(ngdf)) )
         
-        df = df.drop(nogroupdf.index)
+        df = df.drop(ngdf.index)
+        df.reset_index(inplace=True, drop=True)
         sh.add_value(f'/collapse','n_withgroup', str(len(df)) )
         
         if collapse_lib == 'networkx':
@@ -1699,7 +1700,7 @@ def align_collapse(df,
                                         min_reads = min_reads,
                                         cp=cp )
         logging.info(f'merging back saved nogroup rows. ')
-        df = pd.concat( [ df , nogroupdf ], ignore_index=True )
+        df = pd.concat( [ df , ngdf ], ignore_index=True )
         df.reset_index(inplace=True, drop=True)
         sh.add_value(f'/collapse','n_remerged', str(len(df)) )
     
