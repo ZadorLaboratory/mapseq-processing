@@ -178,9 +178,10 @@ def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
         else:
             logging.debug(f'loading via Pandas ftype=parquet use_dask=False use_arrow={use_arrow}')
             df = pd.read_parquet(infile)
-            df = fix_mapseq_df_types(df, 
-                                     fformat=fformat, 
-                                     use_arrow=use_arrow) 
+    logging.debug(f'fixing dataframe types')
+    df = fix_mapseq_df_types(df, 
+                             fformat=fformat, 
+                             use_arrow=use_arrow) 
     
     end = dt.datetime.now()
     delta_seconds = (dt.datetime.now() - start).seconds    
@@ -2593,7 +2594,7 @@ def make_vbctable_qctables(df,
     combinations = list(itertools.product(*alist))
     
     try: 
-        xlout = os.path.join(outdir, f'{project_id}.controls.xlsx')
+        xlout = os.path.join(outdir, f'{project_id}.vbctable.umireport.xlsx')
         logging.debug(f'writing to {xlout}')
         with pd.ExcelWriter( xlout) as writer:
             for tup in combinations:
