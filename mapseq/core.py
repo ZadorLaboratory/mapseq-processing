@@ -2617,7 +2617,7 @@ def make_vbctable_qctables(df,
                     sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) )
                     # If it is a real control, add to control report. 
                     for s in CONTROL_SITES:
-                        if ( ( s in fname) and ('real' in fname)):
+                        if s in fname:
                             logging.debug(f"writing control '{fname}' len={len(ndf)} to {xlout}")
                             ndf.to_excel(writer, sheet_name=fname)
                         else:
