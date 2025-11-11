@@ -22,13 +22,6 @@ from natsort import natsorted, index_natsorted, order_by_index
 
 import scipy
 
-from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
-
 import dask
 import dask.dataframe as dd
 from dask.dataframe import from_pandas
@@ -42,7 +35,6 @@ from mapseq.plotting import *
 from mapseq.collapse import *
 
 
-
 #
 # STANDARD FORMATS AND DATATYPES
 #
@@ -54,7 +46,6 @@ STR_COLS = {
     'aggregated' : ['sequence'],
     'filtered'   : ['vbc_read', 'spikeseq', 'libtag', 'umi',  'ssi'],
     'readtable'  : ['vbc_read', 'libtag', 'umi' ],
-    #'collapsed'  : ['vbc_read','spikeseq', 'libtag', 'umi',  'ssi'],
     'collapsed'  : ['vbc_read', 'libtag', 'umi' ],
     'vbctable'   : ['vbc_read'],      
     }
@@ -63,7 +54,6 @@ INT_COLS = {
     'reads'      : [],
     'aggregated' : ['read_count'],
     'filtered'   : ['read_count'],
-    'collapsed'   : ['read_count'],
     'readtable'  : ['read_count'],
     'vbctable'   : ['read_count','umi_count'],
     }
@@ -72,7 +62,6 @@ CAT_COLS = {
     'reads'      : ['source'],
     'aggregated' : ['source'],
     'filtered'   : ['source'],
-    'collapsed'   : ['source'],
     'readtable'  : ['label','site','type','brain','region','source','ourtube','rtprimer'],
     'vbctable'   : ['label','site','type','brain','region','ourtube'],        
     }
@@ -100,16 +89,18 @@ FMT_DTYPES = {      'read_count'    : 'int64',
     }
 
 #                 Sample Information metadata site labels
+# LABEL                        SOURCE                MEANING
+# EXPERIMENTAL
+# target                    user-provided        treated sample
+# target-negative           user-provided        treated but expected to be low
+#       (Both handled exactly the same and included in matrices) 
+# injection                 user-provided         treated sample
 #
-# TARGET
-# target-negative            user-defined    treated but expected to be low
-
 # CONTROLS
-# target-negative-control    user-provided   untreated sample
-# target-wt-control          core added      untreated biological sample
-# target-water-control       core added      empty sample
-
-# injection-water-control    core added      empty sample
+# target-negative-control   user-provided       untreated sample
+# target-wt-control         core added          untreated biological sample
+# target-water-control      core added          empty sample
+# injection-water-control   core added          empty sample
 
 CONTROL_SITES=['target-negative-control', 
                'target-wt-control',
@@ -126,16 +117,14 @@ def get_default_config():
     cp = ConfigParser()
     cp.read(dc)
     return cp
-
     
 def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
     '''
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     Uses dtypes above FMT_DTYPES
     
-    Fix NaNs 
-    
-    
+    Fixes NaNs in categoricals. 
+
     '''    
     logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
     if fformat is None:
@@ -190,7 +179,6 @@ def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
     return df       
 
 
-
 def write_mapseq_df(df, outfile, outformats=['tsv','parquet'] ):
     '''
     Wrapper to time writeout performance. 
@@ -221,35 +209,9 @@ def write_mapseq_df(df, outfile, outformats=['tsv','parquet'] ):
         end = dt.datetime.now()
         delta_seconds = (dt.datetime.now() - start).seconds
         log_transferinfo(of, delta_seconds)
-        logging.info(f'Done writing {of}') 
-    
+        logging.info(f'Done writing {of}')     
     logging.info(f'Done writing DF to desired format(s).')
 
-def fix_mapseq_dtypes(df):
-    '''
-    Simplified dtype setting. 
-    Use FMT_DTYPES dict and astype()
-    Filter keys to avoid exceptions. 
-    '''
-    cnames = df.columns
-    USE_DTYPES = {}
-    for k in FMT_DTYPES.keys():
-        if k in cnames:
-            USE_DTYPES[k] = FMT_DTYPES[k]
-    logging.debug(f'USE_DTYPES={USE_DTYPES}')        
-    return df.astype(USE_DTYPES)
-
-def fix_category_nans(df):
-    '''
-    Add empty string '' as valid category for any category column. 
-    '''
-    for c in df.columns:
-        if isinstance( df[c].dtype, pd.CategoricalDtype ):
-            try:
-                df[c] = df[c].cat.add_categories([''])
-            except ValueError as ve:
-                logging.debug(f'Already has category: {ve}')
-    return df
     
 def fix_mapseq_df_types(df, 
                         fformat='reads', 
@@ -258,6 +220,7 @@ def fix_mapseq_df_types(df,
     confirm that columns are proper types. 
     use string[pyarrow] for strings, else string
     
+    Fix NaNs. 
     
     '''
     logging.info(f'old dataframe dtypes=\n{df.dtypes}')
@@ -339,6 +302,7 @@ def load_mapseq_matrix_df( infile, use_dask = False ):
     
     logging.debug(f'naive: dtypes=\n{df.dtypes}')    
     return df    
+
 
 
 #
@@ -462,57 +426,7 @@ def get_rtlist(sampledf):
     return nrtlist
 
 
-def guess_site(infile, sampdf):
-    '''
-    will look at filename and try to guess rt primer number, then 
-    look for siteinfo in sampledf
-    
-    NOTE: assumes BC<rtprimer>.fasta or SSI<rtprimer>.fasta and <rtprimer> identifiers
-    consist of digits. 
-    
-    '''
-    logging.info(f'guessing site/brain/region for FASTA file {infile}')
-    filepath = os.path.abspath(infile)    
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)   
-    head = base.split('.')[0]
-    rtprimer_num = ''.join(i for i in head if i.isdigit())
-    rtprimer_num = str(rtprimer_num)
-    logging.debug(f'base={base} head={head} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
-    logging.debug(f'sampdf.dtypes = {sampdf.dtypes}')
-    df = sampdf[sampdf['rtprimer'] == rtprimer_num]
-    df.reset_index(inplace=True, drop=True)
-    logging.debug(f'rtprimer specific df = \n{df}')
-    site = None
-    brain = None
-    region = None
-    if len(df)> 0:
-        try:
-            site = str(df['siteinfo'][0])
-            logging.debug(f'got site={site} successfully')
-        except Exception as e:
-            logging.warning(f'unable to get siteinfo for {infile}')
-            site = 'target'  # default to target. 
-        
-        try:        
-            brain = str(df['brain'][0])
-            logging.debug(f'got brain={brain} successfully')
-        except Exception as e:
-            logging.warning(f'unable to get brain info for {infile}')
-            brain = '0'
-            
-        try:        
-            region = str(df['region'][0])
-            logging.debug(f'got region={region} successfully')
-        except Exception as e:
-            logging.warning(f'unable to get region info for {infile}')
-            region = str(rtprimer_num) # default to SSI label      
-            
-        logging.debug(f'got site={site} brain={brain} region={region} for rtprimer={rtprimer_num}') 
 
-    logging.debug(f'got site={site} for rtprimer guessed from {infile}')
-    return (rtprimer_num, site, brain, region )
 
 
 ############################################################
@@ -651,6 +565,7 @@ def process_fastq_grouped(   infilelist,
     parse infiles by pairs. 
     get extra field(s)
     optionally filter by extra fields values. 
+    Useful for Novaseq raw data, with 1 sample per FASTQ pair. 
         
     '''
     r1s = int(cp.get('fastq','r1start'))
@@ -1041,123 +956,16 @@ def aggregate_reads_dd(seqdf,
 
 def sequence_value_counts(x):
     '''
-    Fuction to be handed to Dask client for scalable calculation. 
+    Function to be handed to Dask client for scalable calculation. 
     
     '''
     return x['sequence'].value_counts()
 
 
-def aggregate_reads_dd_clientXXX(df, 
-                              column='sequence', 
-                              outdir=None, 
-                              min_reads=1, 
-                              chunksize=50000000, 
-                              dask_temp='./temp'):
-    '''
-    
-    WARNING dask 
-    
-    ASSUMES INPUT IS DASK DATAFRAME
-    retain other columns and keep first value
-
-    Suggestions for partitions. 
-    https://stackoverflow.com/questions/44657631/strategy-for-partitioning-dask-dataframes-efficiently
-
-    Limiting resource usage (CPU, memory)
-    https://stackoverflow.com/questions/59866151/limit-dask-cpu-and-memory-usage-single-node
-    
-    '''
-    if dask_temp is not None:
-        logging.info(f'setting dask temp to {os.path.expanduser(dask_temp)} ')
-        dask.config.set(temporary_directory=os.path.abspath( os.path.expanduser(dask_temp)))
-    else:
-        logging.info(f'no dask_temp specified. letting dask use its default')
-
-
-    client = Client( memory_limit='16GB', 
-                     processes=True,
-                     n_workers=8, 
-                     threads_per_worker=2)
-       
-    before_len = len(df)
-    logging.debug(f'collapsing with read counts for col={column} len={before_len}')
-    sent = client.submit(sequence_value_counts, df)
-    ndf = sent.result().compute()
-    client.close()
-    
-    ndf.reset_index(inplace=True, drop=True)
-    ndf.rename({'count':'read_count'}, inplace=True, axis=1)
-    logging.info(f'computed counts. new DF len={len(ndf)}')
-    
-    # get back all other columns from original set. e.g. 'source'
-    logging.info(f'merging to recover other columns from original DF')
-    ndf = dd.from_pandas(ndf)
-    #ndf = pd.merge(ndf, seqdf.drop_duplicates(subset=column,keep='first'),on=column, how='left')  
-    result = ndf.merge(seqdf.drop_duplicates(subset=column,keep='first'), on=column, how='left')  
-    ndf = result.compute()
-    logging.info(f'got merged DF=\n{ndf}')
-  
-    if min_reads > 1:
-        logging.info(f'Dropping reads with less than {min_reads} read_count.')
-        logging.debug(f'Length before read_count threshold={len(ndf)}')
-        ndf = ndf[ndf['read_count'] >= min_reads]
-        ndf.reset_index(inplace=True, drop=True)
-        logging.info(f'Length after read_count threshold={len(ndf)}')    
-    else:
-        logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
-    logging.info(f'final output DF len={len(ndf)}')    
-    return ndf
-
 
 #
 #    SPLIT MAPSEQ COLUMNS, FILTER             
 #
-
-def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
-    '''
-    Used by filter_split
-    
-    spike_st=24
-    spike_end = 32
-    libtag_st=30
-    libtag_end=32
-    umi_st = 32
-    umi_end = 44
-    ssi_st = 44
-    ssi_end = 52
-    
-    '''    
-    logging.info(f'pulling out MAPseq fields...')
-    if cp is None:
-        cp = get_default_config()
-        
-    vbc_st = int(cp.get('mapseq', 'vbc_st'))
-    vbc_end = int(cp.get('mapseq', 'vbc_end'))        
-    spike_st=int(cp.get('mapseq', 'spike_st'))
-    spike_end = int(cp.get('mapseq', 'spike_end'))
-    libtag_st= int(cp.get('mapseq', 'libtag_st'))
-    libtag_end= int(cp.get('mapseq', 'libtag_end'))
-    umi_st = int(cp.get('mapseq', 'umi_st'))
-    umi_end = int(cp.get('mapseq', 'umi_end'))
-    ssi_st = int(cp.get('mapseq', 'ssi_st'))
-    ssi_end = int(cp.get('mapseq', 'ssi_end'))
-    
-    df['vbc_read'] = df[column].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
-    df['spikeseq'] = df[column].str.slice(spike_st,spike_end).astype('string[pyarrow]')
-    df['libtag'] = df[column].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
-    df['umi'] = df[column].str.slice(umi_st,umi_end).astype('string[pyarrow]')
-    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
-    sh = get_default_stats()
-    
-    if drop:
-        logging.info(f'dropping {column} column to slim.')
-        df.drop( column, axis=1, inplace=True)
-    else:
-        logging.info(f'drop is false. keeping {column} column.')
-    logging.info(f'df done. len={len(df)} returning...')
-    # changes in-place, but return as well. 
-    return df
-
 
 def split_fields(df, column='sequence', drop=False, cp=None):
     '''
@@ -1294,6 +1102,40 @@ def filter_reads_pd(df,
     return df
 
 
+def filter_homopolymers(df, max_repeats=7, column='sequence', remove=True):
+    '''
+    find/remove Ns
+    Find and remove homopolymer runs
+    
+    '''    
+    # Find Ns
+    df['nb_valid'] = ~df[column].str.contains('N')
+    num_has_n = str( len(df) - df['nb_valid'].sum() )
+    
+    # Find homopolymer runs
+    df['nr_valid'] = True
+    for nt in ['A','C','G','T']:
+        rnt =  nt * (max_repeats + 1)
+        logging.info(f'checking for {rnt}')
+        rmap = ~df[column].str.contains(rnt)
+        n_bad = len(df) - rmap.sum()
+        logging.info(f'found {n_bad} max_repeat sequences for {nt}') 
+        df['nr_valid'] = df['nr_valid'] & rmap
+        
+    logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
+    num_has_repeats = str( len(df) - df['nr_valid'].sum() )
+    
+    if remove:
+        validmap = df['nr_valid'] & df['nb_valid']
+        df = df[validmap]
+        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
+        df.reset_index(drop=True, inplace=True)
+        logging.info(f'remove=True, new len={len(df)}')
+    logging.debug(f'types = {df.dtypes}')
+    return df
+
+
+
 def filter_fields(df,
                     drop=None,
                     cp=None):
@@ -1386,14 +1228,6 @@ def filter_fields(df,
     sh.add_value('/field_filter','percent_good', spct  )
 
     return df
-
-
-
-#
-#    ALIGN, COLLAPSE BY VBC             
-#
-
-
 
 #
 #            READTABLE,  READ FREQUENCY PLOTS
@@ -1559,7 +1393,6 @@ def process_make_readtable_pd(df,
         nsmap = df['type'] != 'spike'
         df.loc[nsmap, 'type'] = 'real'
     
-    #logging.debug('Dropping redundant sequence fields (spikeseq, libtag).')
     logging.debug('Dropping redundant spikeseq field.')
     #df.drop(['spikeseq','libtag'], inplace=True, axis=1)
     df.drop(['spikeseq'], inplace=True, axis=1)
@@ -1643,12 +1476,9 @@ def threshold_by_sample(df, sampdf):
     return outdf
 
 
-
-
 #
+#    ALIGN, COLLAPSE BY VBC             
 #
-#
-
 def align_collapse(df,
                       column='vbc_read',
                       pcolumn='read_count',
@@ -1766,7 +1596,6 @@ def align_collapse(df,
 #
 #            VBCTABLE
 #
-
 def process_make_vbctable_pd(df,
                           outdir=None,
                           inj_min_reads = 2,
@@ -1819,10 +1648,7 @@ def process_make_vbctable_pd(df,
                     'site'      : 'first',
                     'ourtube'   : 'first',    
                 }
-
-    #if gcolumn != 'vbc_read':
-    #    agg_params['vbc_read' ] = 'first'
-    
+   
     udf = thdf.groupby([ gcolumn, 'label', 'type'], observed=True ).agg( agg_params ).reset_index()
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
@@ -2048,7 +1874,7 @@ def process_filter_vbctable(df,
 
 def filter_targets_min_umi_any(targets, min_umi ):
     '''
-    retain all VBC rows for which any target label umi_count exceeds target_min_umi
+    retain all VBC rows for which *any* target label umi_count exceeds target_min_umi
     remove all others. 
     '''
     logging.debug(f'inbound targets len={len(targets)} min_umi={min_umi}')
@@ -2159,7 +1985,6 @@ def calc_min_umi_threshold(df, site='target-negative', cp=None):
     logging.debug(f'getting UMI threshold type={site}')
     countlist = []
     min_threshold = 0
-    #df['umi_count'] = df['umi_count'].astype(int)
     tndf = df[ df['site'] == site]
     lablist = list(tndf['label'].dropna().unique())
     for label in lablist:
@@ -2176,7 +2001,6 @@ def calc_min_umi_threshold(df, site='target-negative', cp=None):
 #
 #    MATRICES
 #
-
 def process_make_matrices(df,
                           sampdf=None, 
                           outdir=None,
@@ -2439,6 +2263,7 @@ def normalize_weight_grouped(df, weightdf, columns=None, sampdf=None):
     return outdf
 
 
+
 #
 #         REPORTS / QC
 #
@@ -2514,7 +2339,6 @@ def make_rtag_counts(df,
     '''
     Save summary of rtag/rrtag value counts. 
     '''
-    
     if cp is None:
         cp = get_default_config()
     
@@ -2559,8 +2383,7 @@ def make_vbctable_qctables(df,
 0 AAAAAAACAGCTAAAGAATCCTTGTTCACC  BC207  lone          3          25               target-water-control
 1 AAAAAAACATTCACGCGTATGGCCTGAGGG  BC207  lone          1          20               target-water-control
 2 AAAAAAACCGGCCTTGTACTTGGTTCTCTT  BC203  real         13         509     6                       target
-
-    
+  
     '''
     if cp is None:
         cp = get_default_config()
@@ -2574,8 +2397,7 @@ def make_vbctable_qctables(df,
     
     project_id = cp.get('project','project_id')
     sh = get_default_stats()
-    #sh.add_value('/vbctable','n_vbcs', len(udf) )    
-        
+       
     # for all sites, for all types, create
     # <site>.<type>.tsv  ->  label  umi_count read_count 
     #
@@ -2622,7 +2444,6 @@ def make_vbctable_qctables(df,
                             ndf.to_excel(writer, sheet_name=fname)
                         else:
                             pass
-                            #logging.debug(f"'{fname}' tuple not {s} and 'real'.")                    
                 else:
                     logging.info(f'no entries for {fname}')
             logging.debug(f'done with all tuples in {combinations}')
@@ -2630,15 +2451,14 @@ def make_vbctable_qctables(df,
         logging.warning(f'exception = {ex}')    
 
 
-        
 def make_vbctable_parameter_report_xlsx(df, 
                                    outdir=None, 
                                    cp=None, 
                                    params=None
                                    ):
     '''
-        Create single XLSX with table of number of VBCs per SSI at the various thrsholds
-        for injection, target UMI counts. 
+        Create single XLSX with table of number of VBCs per SSI at the various 
+        thresholds for injection, target UMI counts. 
             For reference:
             VBCs per brain at different inj UMI thresholds:
             
@@ -2651,9 +2471,10 @@ def make_vbctable_parameter_report_xlsx(df,
             B21   3175    3629
             B22   3986    4673
             B23   1322    1547
-            B24   3570    3954         
+            B24   3570    3954
+            
+    PARAMS are  <inj_min_umi> , <target_min_umi>         
     '''
-    
     DEFAULT_PARAMS = [ (5,  3), 
                        (10, 3),
                        (10, 5),
@@ -2718,11 +2539,9 @@ def make_vbctable_parameter_report_xlsx(df,
 
 ############################################################
 #
-#                       Assessment/QC/Validation/Simulation
+#        Assessment/QC/Validation/Simulation
 #
 ############################################################
-
-
 def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     '''
     make matrix of SSI vs. FASTQ  
@@ -2810,14 +2629,12 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
                           'dom_ssi':  str(s_dom)} )
     byfiledf = pd.DataFrame(byfile)
             
-    # Write out results
     outfile = os.path.join(outdir, f'{project_id}.read_sources.xlsx')
     with pd.ExcelWriter(outfile) as writer:
         sldf.to_excel(writer, sheet_name='Source SSI matrix')
         byssidf.to_excel(writer,sheet_name='Dominant by SSI' )
         byfiledf.to_excel(writer,sheet_name='Dominant by file' )
     return sldf
-
 
 
 class RandomSet():
@@ -2866,12 +2683,15 @@ class RandomSet():
         return str(self.data)
 
 
-
 def generate_mutation_cycle( sequence_list,
                              n_copies=5,
                              max_mismatch=3,
                              alphabet='CAGT'
                              ):
+    '''
+    Simulation of virus replication cycle. 
+    
+    '''
     logging.debug(f'mutation_cycle: input: {len(sequence_list)} sequences. max_mismatch={max_mismatch}')
     output_list = sequence_list.copy()
     sequences_handled = 0
@@ -3047,35 +2867,4 @@ def generate_random(n_sequences=1000, n_bases=30, alphabet='CAGT'):
 
 
 
-def filter_homopolymers(df, max_repeats=7, column='sequence', remove=True):
-    '''
-    find/remove Ns
-    Find and remove homopolymer runs
-    
-    '''    
-    # Find Ns
-    df['nb_valid'] = ~df[column].str.contains('N')
-    num_has_n = str( len(df) - df['nb_valid'].sum() )
-    
-    # Find homopolymer runs
-    df['nr_valid'] = True
-    for nt in ['A','C','G','T']:
-        rnt =  nt * (max_repeats + 1)
-        logging.info(f'checking for {rnt}')
-        rmap = ~df[column].str.contains(rnt)
-        n_bad = len(df) - rmap.sum()
-        logging.info(f'found {n_bad} max_repeat sequences for {nt}') 
-        df['nr_valid'] = df['nr_valid'] & rmap
-        
-    logging.debug(f"found {len(df) - df['nr_valid'].sum() }/{len(df)} bad sequences.")
-    num_has_repeats = str( len(df) - df['nr_valid'].sum() )
-    
-    if remove:
-        validmap = df['nr_valid'] & df['nb_valid']
-        df = df[validmap]
-        df.drop(['nb_valid','nr_valid'], inplace=True, axis=1)
-        df.reset_index(drop=True, inplace=True)
-        logging.info(f'remove=True, new len={len(df)}')
-    logging.debug(f'types = {df.dtypes}')
-    return df
 

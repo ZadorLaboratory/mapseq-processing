@@ -1,4 +1,130 @@
 
+def guess_site(infile, sampdf):
+    '''
+    will look at filename and try to guess rt primer number, then 
+    look for siteinfo in sampledf
+    
+    NOTE: assumes BC<rtprimer>.fasta or SSI<rtprimer>.fasta and <rtprimer> identifiers
+    consist of digits. 
+    
+    '''
+    logging.info(f'guessing site/brain/region for FASTA file {infile}')
+    filepath = os.path.abspath(infile)    
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    (base, ext) = os.path.splitext(filename)   
+    head = base.split('.')[0]
+    rtprimer_num = ''.join(i for i in head if i.isdigit())
+    rtprimer_num = str(rtprimer_num)
+    logging.debug(f'base={base} head={head} guessing rtprimer={rtprimer_num} sampdf=\n{sampdf}')
+    logging.debug(f'sampdf.dtypes = {sampdf.dtypes}')
+    df = sampdf[sampdf['rtprimer'] == rtprimer_num]
+    df.reset_index(inplace=True, drop=True)
+    logging.debug(f'rtprimer specific df = \n{df}')
+    site = None
+    brain = None
+    region = None
+    if len(df)> 0:
+        try:
+            site = str(df['siteinfo'][0])
+            logging.debug(f'got site={site} successfully')
+        except Exception as e:
+            logging.warning(f'unable to get siteinfo for {infile}')
+            site = 'target'  # default to target. 
+        
+        try:        
+            brain = str(df['brain'][0])
+            logging.debug(f'got brain={brain} successfully')
+        except Exception as e:
+            logging.warning(f'unable to get brain info for {infile}')
+            brain = '0'
+            
+        try:        
+            region = str(df['region'][0])
+            logging.debug(f'got region={region} successfully')
+        except Exception as e:
+            logging.warning(f'unable to get region info for {infile}')
+            region = str(rtprimer_num) # default to SSI label      
+            
+        logging.debug(f'got site={site} brain={brain} region={region} for rtprimer={rtprimer_num}') 
+
+    logging.debug(f'got site={site} for rtprimer guessed from {infile}')
+    return (rtprimer_num, site, brain, region )
+
+
+def fix_mapseq_dtypes(df):
+    '''
+    Simplified dtype setting. 
+    Use FMT_DTYPES dict and astype()
+    Filter keys to avoid exceptions. 
+    '''
+    cnames = df.columns
+    USE_DTYPES = {}
+    for k in FMT_DTYPES.keys():
+        if k in cnames:
+            USE_DTYPES[k] = FMT_DTYPES[k]
+    logging.debug(f'USE_DTYPES={USE_DTYPES}')        
+    return df.astype(USE_DTYPES)
+
+
+def fix_category_nans(df):
+    '''
+    Add empty string '' as valid category for any category column. 
+    '''
+    for c in df.columns:
+        if isinstance( df[c].dtype, pd.CategoricalDtype ):
+            try:
+                df[c] = df[c].cat.add_categories([''])
+            except ValueError as ve:
+                logging.debug(f'Already has category: {ve}')
+    return df
+
+
+def split_mapseq_fields(df, column='sequence', drop=False, cp=None):
+    '''
+    Used by filter_split
+    
+    spike_st=24
+    spike_end = 32
+    libtag_st=30
+    libtag_end=32
+    umi_st = 32
+    umi_end = 44
+    ssi_st = 44
+    ssi_end = 52
+    
+    '''    
+    logging.info(f'pulling out MAPseq fields...')
+    if cp is None:
+        cp = get_default_config()
+        
+    vbc_st = int(cp.get('mapseq', 'vbc_st'))
+    vbc_end = int(cp.get('mapseq', 'vbc_end'))        
+    spike_st=int(cp.get('mapseq', 'spike_st'))
+    spike_end = int(cp.get('mapseq', 'spike_end'))
+    libtag_st= int(cp.get('mapseq', 'libtag_st'))
+    libtag_end= int(cp.get('mapseq', 'libtag_end'))
+    umi_st = int(cp.get('mapseq', 'umi_st'))
+    umi_end = int(cp.get('mapseq', 'umi_end'))
+    ssi_st = int(cp.get('mapseq', 'ssi_st'))
+    ssi_end = int(cp.get('mapseq', 'ssi_end'))
+    
+    df['vbc_read'] = df[column].str.slice(vbc_st,vbc_end).astype('string[pyarrow]')    
+    df['spikeseq'] = df[column].str.slice(spike_st,spike_end).astype('string[pyarrow]')
+    df['libtag'] = df[column].str.slice(libtag_st,libtag_end).astype('string[pyarrow]')    
+    df['umi'] = df[column].str.slice(umi_st,umi_end).astype('string[pyarrow]')
+    df['ssi'] = df[column].str.slice(ssi_st,ssi_end).astype('string[pyarrow]')
+    sh = get_default_stats()
+    
+    if drop:
+        logging.info(f'dropping {column} column to slim.')
+        df.drop( column, axis=1, inplace=True)
+    else:
+        logging.info(f'drop is false. keeping {column} column.')
+    logging.info(f'df done. len={len(df)} returning...')
+    # changes in-place, but return as well. 
+    return df
+
 
 #
 #  Biopython based code
