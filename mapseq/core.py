@@ -288,12 +288,15 @@ def fix_mapseq_df_types(df,
                 if dt != 'category':
                     logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
                     df[ccol] = df[ccol].astype('category')
-                    df[ccol] = df[ccol].cat.add_categories([''])
+                    try:
+                        df[ccol] = df[ccol].cat.add_categories([''])
+                    except ValueError:
+                        logging.debug(f"category ''  already exists." )                
                 else:
                     try:
                         df[ccol] = df[ccol].cat.add_categories([''])
                     except ValueError:
-                        pass
+                        logging.debug(f"category ''  already exists." )
                 #df[ccol].fillna('', inplace=True)                        
                 df.fillna( {ccol: ''}, inplace=True)
             except KeyError:
