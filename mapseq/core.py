@@ -133,6 +133,9 @@ def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
     Abstracted loading code for all MAPseq pipeline dataframe formats. 
     Uses dtypes above FMT_DTYPES
     
+    Fix NaNs 
+    
+    
     '''    
     logging.info(f"loading {infile} format='{fformat}' use_dask={use_dask} use_arrow={use_arrow}")
     if fformat is None:
@@ -175,7 +178,9 @@ def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
         else:
             logging.debug(f'loading via Pandas ftype=parquet use_dask=False use_arrow={use_arrow}')
             df = pd.read_parquet(infile)
-            df = fix_mapseq_df_types(df, fformat=fformat, use_arrow=use_arrow) 
+            df = fix_mapseq_df_types(df, 
+                                     fformat=fformat, 
+                                     use_arrow=use_arrow) 
     
     end = dt.datetime.now()
     delta_seconds = (dt.datetime.now() - start).seconds    
@@ -245,10 +250,14 @@ def fix_category_nans(df):
                 logging.debug(f'Already has category: {ve}')
     return df
     
-def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
+def fix_mapseq_df_types(df, 
+                        fformat='reads', 
+                        use_arrow=True):
     '''
     confirm that columns are proper types. 
     use string[pyarrow] for strings, else string
+    
+    
     '''
     logging.info(f'old dataframe dtypes=\n{df.dtypes}')
     
@@ -279,11 +288,21 @@ def fix_mapseq_df_types(df, fformat='reads', use_arrow=True):
                 if dt != 'category':
                     logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
                     df[ccol] = df[ccol].astype('category')
+                    df[ccol] = df[ccol].cat.add_categories([''])
+                    df[ccol].fillna('')
             except KeyError:
                 logging.warning(f'column {ccol} not found. Vital for {fformat}?')        
+            
+    
     else:
         logging.warning('unrecognized mapseq format. return original')
     logging.info(f'new dataframe dtypes=\n{df.dtypes}')
+    has_nan = df.isna().any().any()
+    if has_nan:
+        logging.warning(f'Dataframe has NaN values, columns={df.isna().any()}')
+    else:
+        logging.info(f'No NaN values in dataframe.')
+    
     return df
 
 
@@ -1700,6 +1719,7 @@ def align_collapse(df,
                                         min_reads = min_reads,
                                         cp=cp )
         logging.info(f'merging back saved nogroup rows. ')
+        ngdf[f'{column}_col'] = ngdf[column]
         df = pd.concat( [ df , ngdf ], ignore_index=True )
         df.reset_index(inplace=True, drop=True)
         sh.add_value(f'/collapse','n_remerged', str(len(df)) )
