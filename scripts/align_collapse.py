@@ -227,11 +227,20 @@ if __name__ == '__main__':
     write_mapseq_df(df, outfile)
     logging.info('Done align_collapse.')
 
-    logging.info(f'Making read_count frequency plots...')
+    logging.info(f'making read_count frequency plots...')
     make_counts_plots(df, 
                       outdir=outdir, 
-                      groupby='label', column='read_count', cp=cp )
-    logging.info(f'Making read report...')    
+                      groupby='label', 
+                      column='read_count',
+                      min_count = 1, 
+                      cp=cp )
+
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby='label', 
+                      column='read_count',
+                      min_count = 2, 
+                      cp=cp )    
     make_read_report_xlsx(df,
                       outdir=outdir,
                       step='collapsed',

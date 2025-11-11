@@ -1654,7 +1654,8 @@ def align_collapse(df,
                       outdir=None, 
                       datestr=None,
                       force=False,
-                      min_reads = None, 
+                      min_reads = None,
+                      drop_pcolumn = True, 
                       cp=None):
     '''
     Entry point for CLI align_collapse. 
@@ -1749,7 +1750,11 @@ def align_collapse(df,
         df = fix_mapseq_df_types(df, fformat='readtable')
     except KeyError:
         logging.warning(f'cannot fix types. May not be readtable format. ')
-    
+
+    logging.info('Renaming collapsed column(s)')
+    df.rename(columns={f'{column}' : f'{column}_orig'}, inplace=True)
+    df.rename(columns={f'{column}_col' : f'{column}'}, inplace=True)
+
     logging.info(f'Returning DF len={len(df)} dtypes={df.dtypes}')
     return df
                             
