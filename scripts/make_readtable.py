@@ -191,7 +191,8 @@ if __name__ == '__main__':
                       outdir=outdir, 
                       groupby='label', 
                       column='read_count',
-                      min_count = 1, 
+                      min_count = 1,
+                      nranks=1000000, 
                       cp=cp )
 
     make_counts_plots(df, 
@@ -199,7 +200,28 @@ if __name__ == '__main__':
                       groupby='label', 
                       column='read_count',
                       min_count = 2, 
+                      nranks=1000000,
                       cp=cp )    
+
+    logging.info(f'making read_count frequency plots...')
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby='label', 
+                      column='read_count',
+                      min_count = 1,
+                      nranks=None, 
+                      cp=cp )
+
+    make_counts_plots(df, 
+                      outdir=outdir, 
+                      groupby='label', 
+                      column='read_count',
+                      min_count = 2,
+                      nranks=None, 
+                      cp=cp )    
+
+
+
     
     logging.info(f'making overall read_count frequency plot...')        
     make_freqplot_single_sns(df, 
