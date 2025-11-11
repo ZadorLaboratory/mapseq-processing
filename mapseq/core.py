@@ -289,11 +289,16 @@ def fix_mapseq_df_types(df,
                     logging.debug(f"converting col={ccol} from {dt} to 'category' ...")
                     df[ccol] = df[ccol].astype('category')
                     df[ccol] = df[ccol].cat.add_categories([''])
-                    df[ccol].fillna('')
+                else:
+                    try:
+                        df[ccol] = df[ccol].cat.add_categories([''])
+                    except ValueError:
+                        pass
+                #df[ccol].fillna('', inplace=True)                        
+                df.fillna( {ccol: ''}, inplace=True)
             except KeyError:
                 logging.warning(f'column {ccol} not found. Vital for {fformat}?')        
             
-    
     else:
         logging.warning('unrecognized mapseq format. return original')
     logging.info(f'new dataframe dtypes=\n{df.dtypes}')
