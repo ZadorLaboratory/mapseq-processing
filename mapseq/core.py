@@ -1365,7 +1365,7 @@ def process_make_readtable_pd(df,
 
             # find and remove (at least) known template-switch rows from dataframe.
             # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)  
-            nonlone = df[ df['site'] != 'target-lone' ]
+            nonlone = df[ ~df['site'].str.startswith('target-lone') ]
             tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
             of = os.path.join(outdir, 'template_switch.tsv') 
             if len(tsdf) > 0:
