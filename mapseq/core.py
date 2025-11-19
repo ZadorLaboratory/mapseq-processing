@@ -1600,7 +1600,8 @@ def process_make_vbctable_pd(df,
                           outdir=None,
                           inj_min_reads = 2,
                           target_min_reads = 2,
-                          gcolumn = 'vbc_read', 
+                          gcolumn = 'vbc_read',
+                          sampdf= None, 
                           cp = None):
     '''   
     
@@ -1629,13 +1630,23 @@ def process_make_vbctable_pd(df,
     logging.info(f'DF after removing nomatch/NaN: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
     
+    # perform optional per-sample read thresholding.
+    if sampdf is not None:
+        logging.debug('sampleinfo DF provided....')
+        if int( sampdf['min_reads'].max()) > 1:
+            logging.info('performing per-sample read count thresholding...')
+            ndf = threshold_by_sample(ndf, sampdf)
+            ndf.reset_index(drop=True, inplace=True)
+    else:
+        logging.debug('sampleinfo DF not provided.')
+    
     # threshold by read counts, by siteinfo, before starting...
     logging.info(f'thresholding by read count. inj={inj_min_reads} target={target_min_reads} len={len(ndf)}') 
     tdf = ndf[ndf['site'].str.startswith('target')]
     tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
     idf = ndf[ndf['site'].str.startswith('injection')]
-    idf = idf[idf['read_count'] >= int(inj_min_reads)]    
-   
+    idf = idf[idf['read_count'] >= int(inj_min_reads)]
+    
     thdf = pd.concat([tdf, idf])
     thdf.reset_index(drop=True, inplace=True)
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')

@@ -38,7 +38,21 @@ if __name__ == '__main__':
                         required=False,
                         default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
                         type=str, 
-                        help='out file.')    
+                        help='out file.')
+
+    parser.add_argument('-s','--sampleinfo', 
+                        metavar='sampleinfo',
+                        required=False,
+                        default=None,
+                        type=str, 
+                        help='XLS or TSV sampleinfo file.')    
+
+    parser.add_argument('-S','--samplesheet', 
+                        metavar='samplesheet',
+                        required=False,
+                        default='Sample information',
+                        type=str, 
+                        help='XLS sheet tab name.')
 
     parser.add_argument('-i','--inj_min_reads', 
                         required=False,
@@ -148,6 +162,13 @@ if __name__ == '__main__':
         logStream = logging.FileHandler(filename=args.logfile)
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
+
+    sampdf = None
+    if args.sampleinfo is not None:
+        logging.debug(f'loading sample DF...')
+        sampdf = load_sample_info(args.sampleinfo, args.samplesheet, cp)
+        logging.debug(f'\n{sampdf}')
+        sampdf.to_csv(f'{outdir}/sampleinfo.tsv', sep='\t')
     
     if args.inj_min_reads is None:
         inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
@@ -174,7 +195,8 @@ if __name__ == '__main__':
     df = process_make_vbctable_pd(df,
                                outdir=outdir,
                                inj_min_reads = inj_min_reads,
-                               target_min_reads = target_min_reads, 
+                               target_min_reads = target_min_reads,
+                               sampdf = sampdf, 
                                cp=cp)
 
     logging.debug(f'Got vbctable DF len={len(df)}')

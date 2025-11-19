@@ -31,6 +31,9 @@ done
 
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/readtable.out/sampleinfo.tsv ./readtable.out/
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/vbctable.out/*.vbctable.* ./vbctable.out/
+scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/vbctable.out/target*.tsv ./vbctable.out/
+scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/vbctable.out/injection*.tsv ./vbctable.out/
+scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/vbctable.out/*.controls.tsv ./vbctable.out/
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/*.mapseq.conf ./
 scp $USERHOST:$PROJECTROOT/$SEQTECH/$PROJECT/*.sampleinfo.xlsx ./
 
