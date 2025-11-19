@@ -1633,6 +1633,7 @@ def process_make_vbctable_pd(df,
     # perform optional per-sample read thresholding.
     if sampdf is not None:
         logging.debug('sampleinfo DF provided....')
+        sampdf['min_reads'] = sampdf['min_reads'].astype(int)
         if int( sampdf['min_reads'].max()) > 1:
             logging.info('performing per-sample read count thresholding...')
             ndf = threshold_by_sample(ndf, sampdf)
