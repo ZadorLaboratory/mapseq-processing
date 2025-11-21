@@ -192,12 +192,12 @@ if __name__ == '__main__':
     
     # Make final VBC/UMI based table (each row is a neuron)
     logging.debug(f'args={args}')
-    df = process_make_vbctable_pd(df,
-                               outdir=outdir,
-                               inj_min_reads = inj_min_reads,
-                               target_min_reads = target_min_reads,
-                               sampdf = sampdf, 
-                               cp=cp)
+    df = process_make_vbctable_pd( df,
+                                   outdir=outdir,
+                                   inj_min_reads = inj_min_reads,
+                                   target_min_reads = target_min_reads,
+                                   sampdf = sampdf, 
+                                   cp=cp)
 
     logging.debug(f'Got vbctable DF len={len(df)}')
     write_mapseq_df(df, outfile)  

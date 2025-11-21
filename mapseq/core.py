@@ -1622,7 +1622,10 @@ def process_make_vbctable_pd(df,
     '''
     if cp is None:
         cp = get_default_config()
+
     project_id = cp.get('project','project_id')
+    use_lone = cp.getboolean('readtable','use_lone')
+    filter_by_libag = cp.getboolean('readtable','filter_by_libtag')
     
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     log_objectinfo(df, 'input-df')
@@ -1635,7 +1638,7 @@ def process_make_vbctable_pd(df,
     logging.info(f'DF after removing nomatch/NaN: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
 
-    # create spike-in QC tables before and after thresholding. 
+    # create spike-in QC tables before thresholding. 
     of = os.path.join( outdir, f'{project_id}.spikeqc.prethresh.xlsx' ) 
     make_spikein_qctable( ndf,
                           outfile = of,
@@ -1658,16 +1661,15 @@ def process_make_vbctable_pd(df,
     tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
     idf = ndf[ndf['site'].str.startswith('injection')]
     idf = idf[idf['read_count'] >= int(inj_min_reads)]
-
-    # create spike-in QC tables before and after thresholding. 
-    of = os.path.join( outdir, f'{project_id}.spikeqc.postthresh.xlsx' ) 
-    make_spikein_qctable( ndf,
-                          outfile = of,
-                          cp = cp )
-
-    
     thdf = pd.concat([tdf, idf])
     thdf.reset_index(drop=True, inplace=True)
+
+    # create spike-in QC tables after thresholding. 
+    of = os.path.join( outdir, f'{project_id}.spikeqc.postthresh.xlsx' ) 
+    make_spikein_qctable( thdf,
+                          outfile = of,
+                          cp = cp )
+    
     logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
     
@@ -1682,22 +1684,6 @@ def process_make_vbctable_pd(df,
     udf = thdf.groupby([ gcolumn, 'label', 'type'], observed=True ).agg( agg_params ).reset_index()
     udf.rename( {'umi':'umi_count'}, axis=1, inplace=True)
     logging.info(f'DF after umi/label collapse: {len(udf)}')
-
-    # remove internal controls that end user needn't see
-    # remove L1s
-    # pull out L1 VBCs expected to have L1 libtag. 
-    lones = udf[ (udf['site'] == 'target-lone') & (udf['type'] == 'lone') ]
-    udf = udf[ udf['site'] != 'target-lone' ]
-
-    # pull out remaining VBCs with matching SSIs that we did not expect to have L1 libtags. 
-    anomalies = udf[ udf['type'] == 'lone' ]
-    udf = udf[ udf['type'] != 'lone' ]
-    anomalies.reset_index(inplace=True, drop=True)  
-    anomalies.to_csv(f'{outdir}/{project_id}.anomalies.tsv', sep='\t')
-
-    # output L1s and anomalies. 
-    lones.reset_index(inplace=True, drop=True)
-    lones.to_csv(f'{outdir}/{project_id}.lones.tsv', sep='\t')
 
     # output controls by SSI/site, save to TSV
     controls = udf[ udf['site'].isin( CONTROL_SITES ) ]
@@ -2408,9 +2394,9 @@ def make_rtag_counts(df,
         logging.warning(traceback.format_exc(None))
 
 def make_spikein_qctable(df,
-                        outfile = None, 
-                        cp=None
-                        ):
+                         outfile = None, 
+                         cp=None
+                         ):
     '''
     gather QC info about readtable data.
          
@@ -2437,14 +2423,15 @@ def make_spikein_qctable(df,
     with pd.ExcelWriter( xlout) as writer:
         srdf = df[df['type'] == 'spike']
         srdf['vbcumi'] = srdf['vbc_read'] + srdf['umi']
-        sinfo = srdf.groupby(['label'], observed=True).agg( {'vbc_read':'nunique','umi':'nunique', 'vbcumi':'nunique'}).reset_index()
+        sinfo = srdf.groupby(['label'], observed=True).agg( {'vbc_read':'nunique',
+                                                             'umi':'nunique', 
+                                                             'vbcumi':'nunique'}).reset_index()
         sinfo = sinfo.rename(columns={ 'vbc_read':  'uniq_vbc_read',
                                         'umi'    :  'uniq_umi',
                                         'vbcumi' :  'total_umi' })
         # Fix label order
         sinfo.sort_values(by='label', inplace=True, key=lambda x: np.argsort( index_natsorted( sinfo['label'])))
         sinfo.reset_index(inplace=True, drop=True)
-        
         sinfo.to_excel(writer)
     logging.info(f'wrote out to {xlout}')        
 
