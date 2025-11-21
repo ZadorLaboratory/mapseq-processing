@@ -34,7 +34,6 @@ from mapseq.stats import *
 from mapseq.plotting import *
 from mapseq.collapse import *
 
-
 #
 # STANDARD FORMATS AND DATATYPES
 #
@@ -102,11 +101,17 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 # target-water-control      core added          empty sample
 # injection-water-control   core added          empty sample
 
-CONTROL_SITES=['target-negative-control', 
-               'target-wt-control',
+#CONTROL_SITES=['target-negative-control', 
+#               'target-wt-control',
+#               'target-water-control',
+#               'injection-water-control',
+#               'injection-wt-control']
+
+CONTROL_SITES=['target-wt-control',
                'target-water-control',
                'injection-water-control',
                'injection-wt-control']
+
 
 #
 #             MAPSEQ UTILITY 
@@ -1629,7 +1634,13 @@ def process_make_vbctable_pd(df,
     ndf.dropna(inplace=True, axis=0, ignore_index=True)
     logging.info(f'DF after removing nomatch/NaN: {len(ndf)}')
     log_objectinfo(ndf, 'new-df')
-    
+
+    # create spike-in QC tables before and after thresholding. 
+    of = os.path.join( outdir, f'{project_id}.spikeqc.prethresh.xlsx' ) 
+    make_spikein_qctable( ndf,
+                          outfile = of,
+                          cp = cp ) 
+
     # perform optional per-sample read thresholding.
     if sampdf is not None:
         logging.debug('sampleinfo DF provided....')
@@ -1647,6 +1658,13 @@ def process_make_vbctable_pd(df,
     tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
     idf = ndf[ndf['site'].str.startswith('injection')]
     idf = idf[idf['read_count'] >= int(inj_min_reads)]
+
+    # create spike-in QC tables before and after thresholding. 
+    of = os.path.join( outdir, f'{project_id}.spikeqc.postthresh.xlsx' ) 
+    make_spikein_qctable( ndf,
+                          outfile = of,
+                          cp = cp )
+
     
     thdf = pd.concat([tdf, idf])
     thdf.reset_index(drop=True, inplace=True)
@@ -1720,6 +1738,7 @@ def process_filter_vbctable(df,
     '''
     if cp is None:
         cp = get_default_config()
+
     if outdir is None:
         outdir = os.path.abspath('./')
         
@@ -1730,6 +1749,7 @@ def process_filter_vbctable(df,
     if target_min_umi_absolute is None:
         target_min_umi_absolute = int(cp.get('vbcfilter','target_min_umi_absolute'))
 
+    project_id = cp.get('project','project_id')
     require_injection = cp.getboolean('vbcfilter','require_injection')
     include_injection = cp.getboolean('vbcfilter','include_injection')
     include_controls = cp.getboolean('vbcfilter','include_controls')
@@ -1744,6 +1764,14 @@ def process_filter_vbctable(df,
     
     sh = get_default_stats()
 
+    # optionally keep/remove for inclusion in each brain matrix.
+    controls = df[ df['site'].isin( CONTROL_SITES ) ]
+
+    # save for reference
+    if len(controls) > 0:
+        controls.reset_index(inplace=True, drop=True)
+        controls.to_csv(f'{outdir}/{project_id}.controls.tsv', sep='\t')
+
     norm_dict = {}
 
     bdflist = []
@@ -1752,10 +1780,18 @@ def process_filter_vbctable(df,
         valid = True
         ndf = None 
         logging.debug(f'handling brain_id={brain_id}')
-        bdf = df[df['brain'] == brain_id]
+        bdf = df[df['brain'] == brain_id ]
+        
+        if include_controls:
+            logging.info(f'include_controls=True, adding controls to brain.')
+            logging.debug(f'before merging: len(controls) = {len(controls)} len(bdf)={len(bdf)}')
+            bcdf = controls.copy()
+            bcdf['brain'] = brain_id
+            bdf = pd.concat( [bdf, bcdf], ignore_index = True)
+            logging.debug(f'after merging: len(bdf) = {len(bdf)}') 
         bdf.reset_index(inplace=True, drop=True)
         initial_len = len(bdf)  
-        logging.info(f'[{brain_id}] initial len={len(bdf)}')
+        logging.info(f'[{brain_id}] full initial len={len(bdf)}')
         
         # defaults for using controls/target-negatives
         max_negative = 1
@@ -1764,18 +1800,7 @@ def process_filter_vbctable(df,
         logging.debug(f'[{brain_id}]: inj_min_umi={inj_min_umi} target_min_umi={target_min_umi}')
         logging.debug(f'[{brain_id}]:use_target_negative={use_target_negative} use_target_water_control={use_target_water_control}')
         sh = get_default_stats() 
-    
-        # select all controls by SSI/site, save to TSV
-        # should not have brain, so shouldn't be any...
-        controls = bdf[ bdf['site'].isin( CONTROL_SITES ) ]
-        if len(controls) > 0:
-            controls.reset_index(inplace=True, drop=True)
-            controls.to_csv(f'{outdir}/{brain_id}.removed_controls.tsv', sep='\t')
-        
-        # optionally keep/remove for inclusion in each brain matrix. 
-        if not include_controls:
-            bdf = bdf[ bdf['site'].isin( CONTROL_SITES ) == False]
-    
+
         # remove spikes and save them 
         # Spikes to NOT get thresholded by UMI, or restricted by injection/target presence 
         spikes = bdf[ bdf['type'] == 'spike']
@@ -2027,6 +2052,7 @@ def process_make_matrices(df,
     -- per brain, pivot real VBCs (value=umi counts)
     -- create real, real normalized by spike-in, and scaled normalized.   
     -- use label_column to pivot on, making it the y-axis, x-axis is vbc sequence.  
+    -- calculate and export spike-in counts. 
     
     '''
     if cp is None:
@@ -2381,6 +2407,47 @@ def make_rtag_counts(df,
         logging.warning(f'DF does not have rtag column?')
         logging.warning(traceback.format_exc(None))
 
+def make_spikein_qctable(df,
+                        outfile = None, 
+                        cp=None
+                        ):
+    '''
+    gather QC info about readtable data.
+         
+    ''' 
+    logging.debug(f'QC table.')
+    if cp is None:
+        cp = get_default_config()
+
+    project_id = cp.get('project','project_id')
+        
+    if outfile is None:
+        outdir = os.path.abspath('./')
+        outfile = os.path.join( outdir, f'{project_id}.spike.qctable.xlsx')
+        logging.debug(f'outdir not provided, set to {outdir}')
+    else:
+        dirpath, base, ext = split_path( os.path.abspath(outfile))
+        outdir = dirpath
+        logging.debug(f'outdir = {outdir} ')
+            
+    sh = get_default_stats()
+    xlout = outfile
+    
+    logging.debug(f'writing to {xlout}')
+    with pd.ExcelWriter( xlout) as writer:
+        srdf = df[df['type'] == 'spike']
+        srdf['vbcumi'] = srdf['vbc_read'] + srdf['umi']
+        sinfo = srdf.groupby(['label'], observed=True).agg( {'vbc_read':'nunique','umi':'nunique', 'vbcumi':'nunique'}).reset_index()
+        sinfo = sinfo.rename(columns={ 'vbc_read':  'uniq_vbc_read',
+                                        'umi'    :  'uniq_umi',
+                                        'vbcumi' :  'total_umi' })
+        # Fix label order
+        sinfo.sort_values(by='label', inplace=True, key=lambda x: np.argsort( index_natsorted( sinfo['label'])))
+        sinfo.reset_index(inplace=True, drop=True)
+        
+        sinfo.to_excel(writer)
+    logging.info(f'wrote out to {xlout}')        
+
 
 def make_vbctable_qctables(df, 
                            outdir=None, 
@@ -2458,6 +2525,7 @@ def make_vbctable_qctables(df,
                             pass
                 else:
                     logging.info(f'no entries for {fname}')
+             
             logging.debug(f'done with all tuples in {combinations}')
     except Exception as ex:
         logging.warning(f'exception = {ex}')    

@@ -213,10 +213,7 @@ if __name__ == '__main__':
 
     logging.info(f'Making frequency plots.')
     make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
-    #make_counts_plots(df, outdir=outdir, type='real', column='umi_count', cp=cp )
-    #make_counts_plots(df, outdir=outdir, type='spike', column='umi_count', cp=cp )
     
- 
     logging.info('Done make_vbctable.')
     
     
