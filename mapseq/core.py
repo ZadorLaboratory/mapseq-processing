@@ -396,13 +396,20 @@ def load_sample_info(file_name,
         rmap = sdf['si_ratio'] == ''
         sdf.loc[rmap, 'si_ratio'] = 1.0
         
-        
     elif file_name.endswith('.tsv'):
         sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
         sdf = sdf.astype('str', copy=False)    
     else:
         logging.error(f'file {file_name} neither .xlsx or .tsv')
         sdf = None
+
+    # fix datatypes for important columns
+    sdf['min_reads'] = sdf['min_reads'].astype(int)
+    sdf['si_ratio'] = sdf['si_ratio'].astype(float)
+    
+    
+
+
         
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
@@ -1330,30 +1337,53 @@ def process_make_readtable_pd(df,
     smap = dict(zip(sdf['rtprimer'], sdf['siteinfo']))
     df['site'] = df['rtprimer'].map(smap)
 
+
     if use_libtag:
-        logging.info(f'use_libtag = True. Using libtag to determine L1/L2 type.')
-        # L1/L2 libtag
-        logging.info('identifying L2 (reals) by libtag...')
-        rmap = df['libtag'].str.match(realregex)
-        df.loc[rmap, 'type'] = 'real'
-
-        if use_lone:        
-            logging.info('identifying L1s by libtag...')
-            lmap = df['libtag'].str.match(loneregex)
-            df.loc[lmap, 'type'] = 'lone'
-        
-        logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
-        smap = df['spikeseq'] == spikeseq
-        df.loc[smap, 'type'] = 'spike'
-
         # calculate and save libtag abundance.
         of = os.path.join( outdir, 'libtag_counts.tsv') 
         lcdf = df['libtag'].value_counts().reset_index()
         lcdf.to_csv(of, sep='\t')
         logging.info(f'Saved libtag counts to {of}')
+        
+        logging.info(f'use_libtag = True. Using libtag to determine L2 type.')
+        logging.info('identifying L2 (reals) by libtag...')
+        rmap = df['libtag'].str.match(realregex)
+        df.loc[rmap, 'type'] = 'real'
 
-        # remove bad libtags. 
-        # must not be spikein, and libtag must not match L1 or L2 
+        # must be set after identifying reals. all spikes are reals, but
+        # not all reals are spikes. 
+        logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
+        smap = df['spikeseq'] == spikeseq
+        df.loc[smap, 'type'] = 'spike'
+
+        if use_lone:        
+            logging.info('identifying L1s by libtag...')
+            lmap = df['libtag'].str.match(loneregex)
+            df.loc[lmap, 'type'] = 'lone'
+            if filter_by_libtag:
+                # find and remove (at least) known template-switch rows from dataframe.
+                # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)  
+                nonlone = df[ ~df['site'].str.startswith('target-lone') ]
+                tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
+                of = os.path.join(outdir, f'{project_id}.template_switch.tsv') 
+                if len(tsdf) > 0:
+                    logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
+                    tsdf.to_csv(of, sep='\t')
+                n_tswitch = len(tsdf)
+                
+                # remove known template switch from readtable
+                df.drop(tsdf.index, inplace=True)
+                df.reset_index(drop=True, inplace=True)
+                sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
+                
+                # remove and save lones.
+                lones = df[ df['type'] == 'lone']
+                df = df [df['type']  != 'lone']
+                of = os.path.join(outdir, f'{project_id}.removed_lones.tsv') 
+                lones.to_csv(of, sep='\t')
+                n_lones = len(lones) 
+                sh.add_value('/readtable', 'n_lones', str(n_lones) )
+
         if filter_by_libtag:
             logging.debug('Filtering by bad libtag/type')  
             badtypedf = df[ df.isna().any(axis=1) ]
@@ -1368,21 +1398,6 @@ def process_make_readtable_pd(df,
             badtypedf = None   
             sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
 
-            # find and remove (at least) known template-switch rows from dataframe.
-            # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)  
-            nonlone = df[ ~df['site'].str.startswith('target-lone') ]
-            tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
-            of = os.path.join(outdir, 'template_switch.tsv') 
-            if len(tsdf) > 0:
-                logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
-                tsdf.to_csv(of, sep='\t')
-            n_tswitch = len(tsdf)
-            
-            # remove known template switch from readtable
-            df.drop(tsdf.index, inplace=True)
-            df.reset_index(drop=True, inplace=True)
-            sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )        
-        
         else:
             logging.info('No filtering by libtag. Setting unidentified to real.')
             namap = df['type'].isna()
@@ -1397,7 +1412,7 @@ def process_make_readtable_pd(df,
         logging.info('ignoring L1/L2 libtag. All non-spikes are real.')        
         nsmap = df['type'] != 'spike'
         df.loc[nsmap, 'type'] = 'real'
-    
+
     logging.debug('Dropping redundant spikeseq field.')
     #df.drop(['spikeseq','libtag'], inplace=True, axis=1)
     df.drop(['spikeseq'], inplace=True, axis=1)
