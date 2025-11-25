@@ -116,17 +116,16 @@ def run_bowtie(config, infile, outfile, tool='bowtie'):
         max_mismatch = config.get('collapse', 'max_mismatch', fallback=3)
         cmd = ['bowtie',
                '-v', max_mismatch,
-               '-p', threads, # # threads
-               '-f',      # -f query input files are (multi-)FASTA .fa/.mfa
+               '-p', threads,   # threads
+               '-f',            # -f query input files are (multi-)FASTA .fa/.mfa
                '--best',
-               '-a',      # -a/--all report all alignments; very slow, MAPQ not meaningful
+               '-a',            # -a/--all report all alignments; very slow, MAPQ not meaningful
                idxpfx,
                infile,
                outfile
                ]
     elif tool == 'bowtie2':
         cmd = ['bowtie2',
-               #'-N', '3',
                '-p', threads,   # # threads
                '-f',       # -f query input files are (multi-)FASTA .fa/.mfa
                '--all',   # -a/--all report all alignments; very slow, MAPQ not meaningful
