@@ -105,8 +105,8 @@ def make_freqplot_combined_sns(df,
         
         figlist = []
         axlist = []
-        for i in range(0,num_figs):
-            fig,axes = plt.subplots(nrows=3, ncols=3, figsize=page_dims,  layout='constrained')
+        for i in range(0, num_figs):
+            fig, axes = plt.subplots(nrows=3, ncols=3, figsize=page_dims,  layout='constrained')
             fig.suptitle(title)
             figlist.append(fig)
             # numpy.flatirator doesn't handle indexing

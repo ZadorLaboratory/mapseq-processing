@@ -1274,6 +1274,7 @@ def process_make_readtable_pd(df,
     if cp is None:
         cp = get_default_config()
 
+    project_id = cp.get('project','project_id')
     spikeseq = cp.get('readtable','spikeseq')
     realregex = cp.get('readtable', 'realregex' )
     loneregex = cp.get('readtable', 'loneregex' )    

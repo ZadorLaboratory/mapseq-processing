@@ -18,8 +18,6 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from Bio import SeqIO
-
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
