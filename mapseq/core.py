@@ -122,6 +122,7 @@ def get_default_config():
     cp = ConfigParser()
     cp.read(dc)
     return cp
+
     
 def load_mapseq_df( infile, fformat=None, use_dask=False, use_arrow=True):
     '''

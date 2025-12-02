@@ -30,7 +30,8 @@ COLNAME_MAP = {
 SAMPLE_SHEET = 'Sample Setup'
 AMP_SHEET = 'Amplification Data'
 
-OUT_COLUMNS = [ 'well_id','low','high']
+OUT_COLUMNS = [ 'well_id','low','high','mean','error']
+GROUP_COLUMNS = [ 'group_id','well_id','mean']
 
 def load_amp_sheet(infile, cp=None):
     amp_sheet = AMP_SHEET
@@ -49,6 +50,49 @@ def load_amp_sheet(infile, cp=None):
     df['rn_delta'] = df['rn_delta'].astype(float)
     return df
 
+def make_groups_df(df, cp=None):
+    '''
+    @arg df    cycle df. columns=[ 'well_id','low','high','mean','error']
+    
+    '''
+    if cp is None:
+        cp = get_default_config()
+    
+    group_span = cp.getint('qpcr','group_span', fallback=3)
+    
+    n_init = len(df)
+    df = df[df['error'] != True ]
+    df.reset_index(inplace=True, drop=True)
+    n_noerror = len(df)
+    n_error = n_init - n_noerror
+    if n_error > 0:
+        logging.info(f'removed {n_error} entries.')
+    
+    sdf = df.sort_values(by='mean')
+    sdf = sdf[['well_id','mean']]
+    slist = sdf.values.tolist()
+    # Assign groups. 
+    group_id = 1
+    floor = None
+    
+    # LOL for output df. 
+    grouped_list = []
+    
+    for well_id, mean in slist:
+        print(f'{well_id} {mean}')
+        if floor is None:
+            floor = mean
+            grouped_list.append( [f'group{group_id}', well_id, mean ])
+        elif mean <= (floor + group_span):
+            grouped_list.append( [ f'group{group_id}', well_id, mean])
+        else:
+            floor = mean
+            group_id += 1
+            grouped_list.append( [f'group{group_id}', well_id, mean ])
+    
+    gdf = pd.DataFrame(grouped_list, columns=GROUP_COLUMNS)    
+    return gdf
+
 
 def qpcr_check_wells(infile, outfile, cp = None):
     '''
@@ -57,8 +101,13 @@ def qpcr_check_wells(infile, outfile, cp = None):
     for each well, determine which cycle numbers correspond
     to 0.1 -> 2.0 (or plateau) for rn_delta. 
     
+    Rn = Reporter
+    
     '''
     logging.info(f'QPCR check wells. infile={infile} outfile={outfile}')
+
+    if cp is None:
+        cp = get_default_config()
 
     from matplotlib.backends.backend_pdf import PdfPages as pdfpages
     from matplotlib.ticker import FixedLocator, MaxNLocator
@@ -80,7 +129,7 @@ def qpcr_check_wells(infile, outfile, cp = None):
     low_offset = cp.getint('qpcr','cycle_low_offset', fallback = 1)
     high_offset = cp.getint('qpcr','cycle_high_offset', fallback = 0)
 
-    plotfile = f'{outdir}/{project_id}.kneedplots.pdf'
+    plotfile = f'{outdir}/{project_id}.qpcrwells.pdf'
     os.makedirs(outdir, exist_ok=True)
 
     page_dims = (11.7, 8.27)
@@ -139,8 +188,7 @@ def qpcr_check_wells(infile, outfile, cp = None):
     
             ceiling = kneedle.knee
             ceiling = ceiling + high_offset
-            
-            outdflist.append( [ well_id, floor, ceiling])
+            meanval = (( ceiling + floor ) / 2 )
             
             #Build plot
             sns.lineplot(ax=axlist[i], x=x, y=y)
@@ -159,6 +207,8 @@ def qpcr_check_wells(infile, outfile, cp = None):
                 error_alert = True
             if ceiling == max_x + high_offset:
                 error_alert = True
+            # Add other checks here.
+            
             
             if error_alert:
                 xpos = max_x / 2
@@ -172,15 +222,24 @@ def qpcr_check_wells(infile, outfile, cp = None):
             )
             logging.info(f'well_id={well_id} range=[{min_x},{max_x}] floor={floor} ceiling={ceiling} ')
 
+            outdflist.append( [ well_id, floor, ceiling, meanval, error_alert])
+
+
         for f in figlist:
             pdfpages.savefig(f)
     logging.info(f'Made cycle plot in {plotfile}')
     
-    outdf = pd.DataFrame(outdflist, columns=OUT_COLUMNS)
-    logging.debug(f'outdf = \n{outdf}')
+    cycle_df = pd.DataFrame(outdflist, columns=OUT_COLUMNS)
+    logging.debug(f'cycle_df = \n{cycle_df}')
+
+    group_df = make_groups_df(cycle_df)
+    
+
+    logging.info(f'writing out XLSX report: {outfile}')
     with pd.ExcelWriter(outfile) as writer:
-        outdf.to_excel(writer, sheet_name='Estimated Cycle Range')
-    return outdf
+        cycle_df.to_excel(writer, sheet_name='Estimated Cycle Range')
+        group_df.to_excel(writer, sheet_name='Cycle Groups')
+    return cycle_df
 
 
 if __name__ == '__main__':
