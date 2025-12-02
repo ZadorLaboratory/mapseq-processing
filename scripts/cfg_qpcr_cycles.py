@@ -91,6 +91,12 @@ def make_groups_df(df, cp=None):
             grouped_list.append( [f'group{group_id}', well_id, mean ])
     
     gdf = pd.DataFrame(grouped_list, columns=GROUP_COLUMNS)    
+    
+    gmdf = gdf.groupby('group_id').agg( {'mean':'mean'})
+    gmdf['cycles_rec'] = gmdf['mean'].apply(np.ceil)
+    gmdf['cycles_rec'] = gmdf['cycles_rec'].astype(int)
+    gmdf.drop(['mean'], axis=1, inplace=True)
+    gdf = pd.merge(gdf, gmdf, on='group_id')
     return gdf
 
 
@@ -234,11 +240,15 @@ def qpcr_check_wells(infile, outfile, cp = None):
 
     group_df = make_groups_df(cycle_df)
     
+    mdf = pd.merge( cycle_df, group_df, on='well_id',how='outer')
+    mdf.drop(['mean_y'], axis=1, inplace=True)
+    mdf.rename({'mean_x':'mean'}, inplace=True, axis=1)
+    mdf.sort_values(by=['group_id','mean'], inplace=True)
 
     logging.info(f'writing out XLSX report: {outfile}')
     with pd.ExcelWriter(outfile) as writer:
-        cycle_df.to_excel(writer, sheet_name='Estimated Cycle Range')
-        group_df.to_excel(writer, sheet_name='Cycle Groups')
+        mdf.to_excel(writer, sheet_name='Estimated Cycle Range')
+        #group_df.to_excel(writer, sheet_name='Cycle Groups')
     return cycle_df
 
 
