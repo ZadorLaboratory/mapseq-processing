@@ -1,24 +1,19 @@
-#!/usr/bin/env python
-import argparse
+
 import logging
 import os
 import sys
 
-from configparser import ConfigParser
-
 import pandas as pd
 import pyarrow as pa
+import seaborn as sns
 import kneed
 import matplotlib
- 
-
-gitpath=os.path.expanduser("~/git/mapseq-processing")
-sys.path.append(gitpath)
+import matplotlib.pyplot as plt
 
 from mapseq.core import *
-from mapseq.utils import *
+ 
 
-COLNAME_MAP = {
+QPCR_COLNAME_MAP = {
      'Well'          :  'well',
      'Well Position' :  'well_pos',
      'Cycle'         :  'cycle',
@@ -27,14 +22,16 @@ COLNAME_MAP = {
      'Delta Rn'      :  'rn_delta'
     }
 
-SAMPLE_SHEET = 'Sample Setup'
-AMP_SHEET = 'Amplification Data'
+QPCR_SAMPLE_SHEET = 'Sample Setup'
+QPCR_AMP_SHEET = 'Amplification Data'
 
-OUT_COLUMNS = [ 'well_id','low','high','mean','error']
-GROUP_COLUMNS = [ 'group_id','well_id','mean']
+QPCR_OUT_COLUMNS = [ 'well_id','low','high','mean','error']
+QPCR_GROUP_COLUMNS = [ 'group_id','well_id','mean']
+
+
 
 def load_amp_sheet(infile, cp=None):
-    amp_sheet = AMP_SHEET
+    amp_sheet = QPCR_AMP_SHEET
     edf = pd.read_excel(infile, 
                         sheet_name = amp_sheet, 
                         header=None, 
@@ -44,8 +41,9 @@ def load_amp_sheet(infile, cp=None):
     columns = list( df.iloc[0,:] )
     df = df.iloc[1:,:]
     df.columns = columns
-    df = df.rename(columns = COLNAME_MAP)
+    df = df.rename(columns = QPCR_COLNAME_MAP)
     df.reset_index(inplace=True, drop=True)
+    df['cycle'] = df['cycle'].astype(int)
     df['rn'] = df['rn'].astype(float)
     df['rn_delta'] = df['rn_delta'].astype(float)
     return df
@@ -90,7 +88,7 @@ def make_groups_df(df, cp=None):
             group_id += 1
             grouped_list.append( [f'group{group_id}', well_id, mean ])
     
-    gdf = pd.DataFrame(grouped_list, columns=GROUP_COLUMNS)    
+    gdf = pd.DataFrame(grouped_list, columns=QPCR_GROUP_COLUMNS)    
     
     gmdf = gdf.groupby('group_id').agg( {'mean':'mean'})
     gmdf['cycles_rec'] = gmdf['mean'].apply(np.ceil)
@@ -100,7 +98,36 @@ def make_groups_df(df, cp=None):
     return gdf
 
 
-def qpcr_check_wells(infile, outfile, cp = None):
+def pad_cycles(df, column='cycle', prepend=3):
+    '''
+    make additional rows below lowest value of column, but 
+    with all other values the same. 
+    
+    '''
+    min_cval = df[column].min()
+    logging.debug(f'minimum {column} value = {min_cval}')
+    mdf = df[df['cycle'] == min_cval ]
+    mrow = mdf.iloc[0].to_dict()
+    newrows = []
+    
+    for i in range(1, prepend):
+        logging.debug(f'handling prepending i={i}')
+        nrow = mrow.copy()
+        nrow[column] = min_cval - i
+        newrows.append(nrow)
+    ndf = pd.DataFrame(newrows)
+    logging.debug(f'made padding DF:\n{ndf}')
+    df = pd.concat( [df, ndf], copy=False, ignore_index=True )
+    df.sort_values(by=column, inplace=True)
+    logging.debug(f'new padded DF:\{df}')
+    return df
+
+
+def qpcr_check_wells(infile, 
+                     outfile,
+                     sensitivity, 
+                     polynomial, 
+                     cp = None):
     '''
     parse qpcr report XLS, assess optimal cycles, output report XLSX.
     
@@ -127,19 +154,25 @@ def qpcr_check_wells(infile, outfile, cp = None):
     head = base.split('.')[0]
     outdir = dirname    
 
-    df = load_amp_sheet(infile, cp)
+    df = load_amp_sheet(infile, cp)    
     wells = list( df['well_pos'].unique() )
 
     # Get params
     project_id = cp.get('project','project_id')
+    if sensitivity is None:
+        sensitivity = cp.getfloat('qpcr','kneed_sensitivity', fallback=2.0)
+    if polynomial is None:
+        polynomial = cp.getint('qpcr','kneed_polynomial', fallback=2)
+    
     low_offset = cp.getint('qpcr','cycle_low_offset', fallback = 1)
     high_offset = cp.getint('qpcr','cycle_high_offset', fallback = 0)
+
 
     plotfile = f'{outdir}/{project_id}.qpcrwells.pdf'
     os.makedirs(outdir, exist_ok=True)
 
     page_dims = (11.7, 8.27)
-    title = f'{project_id}: cycle estimation.'
+    title = f'{project_id}: cycle estimation.\nS={sensitivity} poly={polynomial}'
     
     outdflist = []
         
@@ -169,31 +202,41 @@ def qpcr_check_wells(infile, outfile, cp = None):
         for i, well_id in enumerate(wells):
             logging.debug(f'handling well_id = {well_id} idx={i}')
             wdf =  df[df['well_pos'] == well_id ]
+            wdf = pad_cycles(wdf)
             x = list( wdf['cycle'].astype(int) )
-            y = list( wdf['rn_delta'].astype(float) )
+            y = list( wdf['rn'].astype(float) )
             min_x = min(x)
             max_x = max(x)
             min_y = min(y)
             max_y = max(y)
-    
+            logging.debug(f'[{well_id}] Calling kneed. S={sensitivity} poly={polynomial} x_range=[{min_x},{max_x}] y_range=[{min_y},{max_y}]')
             kneedle = kneed.KneeLocator(x, y, 
-                                  S=2.0, 
+                                  S=sensitivity, 
                                   curve="convex", 
                                   online=True, 
                                   direction="increasing", 
-                                  polynomial_degree=2)
+                                  polynomial_degree=polynomial)
             floor = kneedle.knee
-            floor = floor + low_offset
+            logging.debug(f'[{well_id}]: floor={floor}')
+            if floor is None:
+                floor = min_x
+            else:
+                floor = floor + low_offset
                
             kneedle = kneed.KneeLocator(x, y, 
-                                  S=2.0, 
+                                  S=sensitivity, 
                                   curve="concave", 
                                   online=True, 
                                   direction="increasing", 
-                                  polynomial_degree=2)
+                                  polynomial_degree=polynomial)
     
             ceiling = kneedle.knee
-            ceiling = ceiling + high_offset
+            logging.debug(f'[{well_id}]: floor={ceiling}')
+            if ceiling is None:
+                ceiling = max_x
+            else:
+                ceiling = ceiling + high_offset
+
             meanval = (( ceiling + floor ) / 2 )
             
             #Build plot
@@ -235,7 +278,7 @@ def qpcr_check_wells(infile, outfile, cp = None):
             pdfpages.savefig(f)
     logging.info(f'Made cycle plot in {plotfile}')
     
-    cycle_df = pd.DataFrame(outdflist, columns=OUT_COLUMNS)
+    cycle_df = pd.DataFrame(outdflist, columns=QPCR_OUT_COLUMNS)
     logging.debug(f'cycle_df = \n{cycle_df}')
 
     group_df = make_groups_df(cycle_df)
@@ -251,80 +294,3 @@ def qpcr_check_wells(infile, outfile, cp = None):
         #group_df.to_excel(writer, sheet_name='Cycle Groups')
     return cycle_df
 
-
-if __name__ == '__main__':
-    FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'
-    logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.WARN)
-    
-    parser = argparse.ArgumentParser()
-      
-    parser.add_argument('-d', '--debug', 
-                        action="store_true", 
-                        dest='debug', 
-                        help='debug logging')
-
-    parser.add_argument('-v', '--verbose', 
-                        action="store_true", 
-                        dest='verbose', 
-                        help='verbose logging')
-    
-    parser.add_argument('-c','--config', 
-                        metavar='config',
-                        required=False,
-                        default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
-                        type=str, 
-                        help='out file.')    
-
-    parser.add_argument('-S','--samplesheet', 
-                        metavar='samplesheet',
-                        required=False,
-                        default='Sample information',
-                        type=str, 
-                        help='XLS sheet tab name.')
-
-    parser.add_argument('-o','--outfile', 
-                    metavar='outfile',
-                    required=True,
-                    default=None, 
-                    type=str, 
-                    help='Single XLSX report filename.') 
-   
-    parser.add_argument('infile',
-                        metavar='infile',
-                        type=str,
-                        help='Single QPCR .XLS file.')
-        
-    args= parser.parse_args()
-    
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)   
-
-    cp = ConfigParser()
-    o = cp.read(args.config)
-    if len(o) < 1:
-        logging.error(f'No valid configuration. {args.config}')
-        sys.exit(1)
-       
-    cdict = format_config(cp)
-    logging.debug(f'Running with config. {args.config}: {cdict}')
-    logging.debug(f'infiles={args.infile}')
-          
-    # set outdir / outfile
-    outfile = os.path.abspath(args.outfile)
-    filepath = os.path.abspath(outfile)    
-    dirname = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-    (base, ext) = os.path.splitext(filename)   
-    head = base.split('.')[0]
-    outdir = dirname 
-    os.makedirs(outdir, exist_ok=True)
-    logging.info(f'handling {args.infile} to {outfile}')    
-    logging.debug(f'infile = {args.infile}')
-    logging.info(f'loading {args.infile}') 
-
-    qpcr_check_wells(args.infile, outfile, cp = cp)
-    
-    logging.info(f'Made QPCR report in {outfile}...')
