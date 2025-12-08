@@ -1,4 +1,3 @@
-
 import logging
 import os
 import sys
@@ -98,9 +97,11 @@ def make_groups_df(df, cp=None):
     return gdf
 
 
-def pad_cycles(df, column='cycle', prepend=3):
+def pad_cycles(df, 
+               column='cycle', 
+               prepend=2):
     '''
-    make additional rows below lowest value of column, but 
+    make additional rows below lowest value of <column>, but 
     with all other values the same. 
     
     '''
@@ -110,7 +111,7 @@ def pad_cycles(df, column='cycle', prepend=3):
     mrow = mdf.iloc[0].to_dict()
     newrows = []
     
-    for i in range(1, prepend):
+    for i in range(1, prepend + 1):
         logging.debug(f'handling prepending i={i}')
         nrow = mrow.copy()
         nrow[column] = min_cval - i
@@ -119,12 +120,14 @@ def pad_cycles(df, column='cycle', prepend=3):
     logging.debug(f'made padding DF:\n{ndf}')
     df = pd.concat( [df, ndf], copy=False, ignore_index=True )
     df.sort_values(by=column, inplace=True)
-    logging.debug(f'new padded DF:\{df}')
+    df.reset_index(inplace=True, drop=True)
+    logging.debug(f'new padded, sorted DF:\n{df}')
     return df
 
 
 def qpcr_check_wells(infile, 
                      outfile,
+                     column,
                      sensitivity, 
                      polynomial, 
                      cp = None):
@@ -163,16 +166,18 @@ def qpcr_check_wells(infile,
         sensitivity = cp.getfloat('qpcr','kneed_sensitivity', fallback=2.0)
     if polynomial is None:
         polynomial = cp.getint('qpcr','kneed_polynomial', fallback=2)
+    if column is None:
+        column = cp.get('qpcr','column', fallback='rn')
     
     low_offset = cp.getint('qpcr','cycle_low_offset', fallback = 1)
     high_offset = cp.getint('qpcr','cycle_high_offset', fallback = 0)
 
 
-    plotfile = f'{outdir}/{project_id}.qpcrwells.pdf'
+    plotfile = f'{outdir}/{project_id}.qpcrwells.{column}.pdf'
     os.makedirs(outdir, exist_ok=True)
 
     page_dims = (11.7, 8.27)
-    title = f'{project_id}: cycle estimation.\nS={sensitivity} poly={polynomial}'
+    title = f'{project_id}: cycle estimation\ncolumn={column}\nS={sensitivity} poly={polynomial} '
     
     outdflist = []
         
@@ -204,7 +209,7 @@ def qpcr_check_wells(infile,
             wdf =  df[df['well_pos'] == well_id ]
             wdf = pad_cycles(wdf)
             x = list( wdf['cycle'].astype(int) )
-            y = list( wdf['rn'].astype(float) )
+            y = list( wdf[column].astype(float) )
             min_x = min(x)
             max_x = max(x)
             min_y = min(y)
@@ -243,9 +248,10 @@ def qpcr_check_wells(infile,
             sns.lineplot(ax=axlist[i], x=x, y=y)
             axlist[i].axvline(floor)
             axlist[i].axvline(ceiling)
-            axlist[i].set_ylabel(f'Rn')
-            axlist[i].set_xlabel(f'Cycle')
+            axlist[i].set_ylabel(f'{column}')
+            axlist[i].set_xlabel(f'cycle')
             axlist[i].xaxis.set_minor_locator(FixedLocator(range(min_x, max_x)))             
+            axlist[i].set_xticks(np.arange(0, max_x +1, 5))
             axlist[i].set_title(f'{well_id}: low={floor} high={ceiling} ')        
 
             logging.debug(f'checking for errors. well_id = {well_id}')
@@ -293,4 +299,71 @@ def qpcr_check_wells(infile,
         mdf.to_excel(writer, sheet_name='Estimated Cycle Range')
         #group_df.to_excel(writer, sheet_name='Cycle Groups')
     return cycle_df
+
+
+def calib_viruslib_blacklist(df, column='vbc_read', max_umi_list=[ 1 , 2, 3, 4, 5 , 10, 20, 50 ], samplesize=100000):
+    '''
+    virus library readtable input, with umi and vbc_read. 
+    ONLY real VBC reads (assumes no spikes in input).
+    calculate VBC diversity. 
+    test sampling without replacement to determine umi_count threshold for reasonable values. 
+        
+    '''
+    DUPES_OUT_COLUMNS=['run_id', 'max_umi', 'n_vbcs', 'n_dupes', 'samplesize', 'p_dupes']
+    df = df[[ column ,'umi','read_count']]
+    
+    
+    outlol = []
+        
+    for max_umi in max_umi_list:
+        logging.debug(f'handling max_umi = { max_umi }')
+        test_df = df.copy()
+        
+        # unique VBC + UMI DF to be sampled from. 
+        agg_params = {  'read_count'       : 'sum' }
+        udf = test_df.groupby([ column ,'umi' ], observed=True ).agg( agg_params ).reset_index()
+    
+        # UMI counts DF to identify multi-UMI VBCs. 
+        agg_params = { 'umi': 'nunique' , 'read_count' : 'sum' }
+        cdf = udf.groupby( [column], observed=True).agg( agg_params).reset_index()
+        cdf.rename({'umi': 'umi_count'}, inplace=True, axis=1 )
+        cdf.sort_values(by='umi_count', inplace=True, ascending=False)
+        cdf.reset_index(inplace=True, drop=True)
+    
+        bkdf = cdf[ cdf['umi_count'] > max_umi]
+        logging.debug(f'for max_umi={max_umi} blacklist len={len(bkdf)}')
+        
+        kdf = cdf[cdf['umi_count'] <= max_umi].reset_index(drop=True)
+        kdf = kdf[['vbc_read']]
+    
+        # only keep vbc_reads that pass max_umi constraint...
+        mdf = pd.merge( test_df, kdf, on='vbc_read', how='right')
+        logging.debug(f'{len(mdf)} VBCs of {len(test_df)} ({ (len(mdf) / len(test_df) * 100)} %) pass max_umi={max_umi} constraint.')
+        
+        # Recalculate on new thresholded DF  
+        # unique VBC + UMI DF to be sampled from. 
+        agg_params = {  'read_count'       : 'sum' }
+        udf = mdf.groupby([ column ,'umi' ], observed=True ).agg( agg_params ).reset_index()    
+        
+        
+        # Do multiple samples to evaluate...
+        for i in range(0,10):
+            sdf = udf.sample(samplesize)
+            vcdf = sdf[column].value_counts().reset_index()
+            logging.debug(f'[{i}] topdupes=\n{vcdf.head()}')
+            n_vbcs = len(udf)
+            n_dupes = (vcdf['count'] > 1 ).sum()
+            p_dupes = n_dupes / samplesize
+            outlol.append( [ i , max_umi, n_vbcs, n_dupes, samplesize, p_dupes ] )
+            logging.debug(f'[{i}] {n_dupes} / {samplesize} = {p_dupes}')
+    
+    outdf = pd.DataFrame(outlol, columns=DUPES_OUT_COLUMNS)
+    return outdf 
+        
+        
+
+
+    
+
+    
 

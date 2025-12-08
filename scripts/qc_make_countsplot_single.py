@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#
+# Make shoulder plot from arbitrary table. 
+#
 import argparse
 import logging
 import os
@@ -6,11 +9,18 @@ import sys
 
 from configparser import ConfigParser
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
 
+from mapseq.core import *
+from mapseq.barcode import *
 from mapseq.utils import *
-from mapseq.calibration import * 
+from mapseq.stats import *
+from mapseq.plotting import *
 
 
 if __name__ == '__main__':
@@ -37,46 +47,53 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-S','--samplesheet', 
-                        metavar='samplesheet',
-                        required=False,
-                        default='Sample information',
-                        type=str, 
-                        help='XLS sheet tab name.')
-
-    parser.add_argument('-k','--kneed_sensitivity', 
-                        metavar='kneed_sensitivity',
-                        required=False,
-                        default=None,
-                        type=float, 
-                        help='Kneed S value.')
-
     parser.add_argument('-C','--column', 
                         metavar='column',
                         required=False,
-                        default='rn',
-                        type=str,
-                        choices=['rn', 'rn_delta'], 
-                        help='Column to use as y-axis. [rn] | rn_delta')
+                        default='read_count',
+                        type=str, 
+                        help='Column to plot [ read_count | umi_count ]')
 
-    parser.add_argument('-p','--kneed_polynomial', 
-                        metavar='kneed_polynomial',
+    parser.add_argument('-S','--scale', 
+                        metavar='scale',
+                        required=False,
+                        default=None,
+                        type=str, 
+                        help='Axes scaling. log10 | None')
+
+    parser.add_argument('-n','--nranks', 
+                        metavar='nranks',
                         required=False,
                         default=None,
                         type=int, 
-                        help='Kneed polynomival value.')
+                        help='Limit x-axis ranks.')
+
+    parser.add_argument('-p','--proportion', 
+                        metavar='proportion',
+                        required=False,
+                        default=0.85,
+                        type=float, 
+                        help='Threshold for proportion of data.')
 
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=True,
                     default=None, 
                     type=str, 
-                    help='Single XLSX report filename.') 
+                    help='Single XLSX report filename.')
+
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
+
    
     parser.add_argument('infile',
                         metavar='infile',
                         type=str,
-                        help='Single QPCR .XLS file.')
+                        help='Single TSV or Parquet MAPseq readtable with relevant column(s) ')
         
     args= parser.parse_args()
     
@@ -86,10 +103,7 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.INFO)   
 
     cp = ConfigParser()
-    o = cp.read(args.config)
-    if len(o) < 1:
-        logging.error(f'No valid configuration. {args.config}')
-        sys.exit(1)
+    cp.read(args.config)
        
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
@@ -108,11 +122,27 @@ if __name__ == '__main__':
     logging.debug(f'infile = {args.infile}')
     logging.info(f'loading {args.infile}') 
 
-    qpcr_check_wells(args.infile, 
-                     outfile,
-                     column=args.column,  
-                     sensitivity=args.kneed_sensitivity, 
-                     polynomial=args.kneed_polynomial,
-                     cp = cp)
+    os.makedirs(outdir, exist_ok=True)
+
+    logging.info(f'handling {args.infile} to outdir {outdir}')    
+    logging.debug(f'infile = {args.infile}')
     
-    logging.info(f'Made QPCR report in {outfile}...')
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+
+    logging.info(f'loading {args.infile}')    
+    df = load_mapseq_df( args.infile)   
+    logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+    make_freqplot_single_sns(df, 
+                           title=f'{args.column} frequency',  
+                           outfile=args.outfile,
+                           column=args.column,
+                           scale=args.scale,
+                           proportion=args.proportion )
+    logging.info(f'Plot written to {args.outfile}')
+   

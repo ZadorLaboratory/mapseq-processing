@@ -57,7 +57,7 @@ DIRMAP = { 'process_fastq_pairs': 'reads',
 
 def qc_process_downsampled_all( config_file, 
                                 sampleinfo_file, 
-                                infiles , 
+                                infiles, 
                                 outdir=None, 
                                 force=False,
                                 halt=None ):

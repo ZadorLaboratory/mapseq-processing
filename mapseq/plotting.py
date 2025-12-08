@@ -134,7 +134,8 @@ def make_freqplot_single_sns(df,
                            title='Frequency',  
                            outfile='frequency-plot.pdf',
                            column='read_count',
-                           scale=None ):    
+                           scale=None,
+                           proportion=0.85 ):    
     '''
     single figure with one plot. 
     scale = log10 | log2 | None  
@@ -149,7 +150,7 @@ def make_freqplot_single_sns(df,
     with pdfpages(outfile) as pdfpages:
         fig, axes = plt.subplots(figsize=page_dims)
         fig.suptitle(title)
-        counts_axis_plot_sns(axes, df, column=column, title=f'{column} freqplot', scale=scale)
+        counts_axis_plot_sns(axes, df, column=column, title=f'{column} freqplot', scale=scale, proportion=proportion)
         pdfpages.savefig(fig)
     logging.info(f'saved plot PDF to {outfile}')
 
@@ -158,7 +159,8 @@ def counts_axis_plot_sns(ax,
                          scale=None, 
                          column='read_count', 
                          title='counts frequency', 
-                         nranks=None ) :
+                         nranks=None,
+                         proportion=0.85 ) :
     '''
     Creates individual axes for single plot within figure. 
     scale = None | log10  | log2
@@ -187,7 +189,7 @@ def counts_axis_plot_sns(ax,
     logging.debug(f'column={column} scale={scale} title={title}')
     pdf = df.sort_values(by=[column], ascending=False)
     # calculate before x-axis thresholding for visual clarity
-    h = calc_freq_threshold(pdf, fraction=0.85, column = column)
+    h = calc_freq_threshold(pdf, fraction=proportion, column = column)
     nranks_initial = len(pdf)
     if nranks is not None:
         logging.debug(f'limiting x-axis to {nranks} ranks.')
@@ -222,7 +224,7 @@ def counts_axis_plot_sns(ax,
         ax.set_ylabel(f'{column}')
         logging.debug(f'made axis with no scaling.')
     
-    ax.text(lx, ly, s=f"n={n}\ntop={t}\nsum={s}\nest_0.85_threshold={h}",
+    ax.text(lx, ly, s=f"n={n}\ntop={t}\nsum={s}\nest_{proportion}_threshold={h}",
             fontsize=11, 
             horizontalalignment='right',
             verticalalignment='top'            
