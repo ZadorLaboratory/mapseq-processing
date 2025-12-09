@@ -208,6 +208,13 @@ if __name__ == '__main__':
                         type=str, 
                         help=f'Stage name to stop after: {STEPLIST}')
 
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
+
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
@@ -231,6 +238,14 @@ if __name__ == '__main__':
     cdict = format_config(cp)
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
+
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
 
     # set outdir / outfile
     outdir = os.path.abspath('./')
