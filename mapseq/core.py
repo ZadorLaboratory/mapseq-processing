@@ -1284,6 +1284,7 @@ def process_make_readtable_pd(df,
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
     filter_by_libtag = cp.getboolean('readtable','filter_by_libtag', fallback=True)
     use_lone = cp.getboolean('readtable','use_lone', fallback=True)
+    remove_lones = cp.getboolean('readtable','remove_lones', fallback=False)
     
     if not use_libtag:
         filter_by_libtag = False
@@ -1380,8 +1381,9 @@ def process_make_readtable_pd(df,
                 
                 # remove and save lones.
                 lones = df[ df['type'] == 'lone']
-                df = df [df['type']  != 'lone']
-                of = os.path.join(outdir, f'{project_id}.removed_lones.tsv') 
+                if remove_lones:
+                    df = df [df['type']  != 'lone']
+                of = os.path.join(outdir, f'{project_id}.valid_lones.tsv') 
                 lones.to_csv(of, sep='\t')
                 n_lones = len(lones) 
                 sh.add_value('/readtable', 'n_lones', str(n_lones) )
