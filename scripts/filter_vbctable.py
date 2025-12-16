@@ -169,4 +169,9 @@ if __name__ == '__main__':
                                cp=cp)
     write_mapseq_df(df, outfile)
     logging.info('Done filter_vbctable') 
+
+    logging.info(f'Making controls report.')
+    make_controls_umireport_xlsx(df, outdir=outdir, cp=cp, cols=['site','type'], step='vbcfiltered' )
+
+
    

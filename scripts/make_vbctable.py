@@ -202,8 +202,8 @@ if __name__ == '__main__':
     logging.debug(f'Got vbctable DF len={len(df)}')
     write_mapseq_df(df, outfile)  
 
-    logging.info(f'Making qctables')
-    make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
+    logging.info(f'Making controls report.')
+    make_controls_umireport_xlsx(df, outdir=outdir, cp=cp, cols=['site','type'], step='vbctable' )
 
     logging.info('Making UMI parameter report.')
     make_vbctable_parameter_report_xlsx(df, 

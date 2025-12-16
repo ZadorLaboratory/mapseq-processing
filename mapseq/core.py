@@ -110,7 +110,8 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 CONTROL_SITES=['target-wt-control',
                'target-water-control',
                'injection-water-control',
-               'injection-wt-control']
+               'injection-wt-control',
+               'target-lone-control']
 
 
 #
@@ -1246,10 +1247,10 @@ def filter_fields(df,
 #            READTABLE,  READ FREQUENCY PLOTS
 #
 def process_make_readtable_pd(df,
-                          sampdf,
-                          bcfile=None, 
-                          outdir=None, 
-                          cp = None):
+                              sampdf,
+                              bcfile=None, 
+                              outdir=None, 
+                              cp = None):
     '''
     take split/aligned read file and produce a produce 
     fully tagged and read-oriented data table, with 
@@ -2455,12 +2456,14 @@ def make_spikein_qctable(df,
     logging.info(f'wrote out to {xlout}')        
 
 
-def make_vbctable_qctables(df, 
+def make_controls_umireport_xlsx(df, 
                            outdir=None, 
                            cp=None, 
                            cols=['site','type'], 
                            vals = ['vbc_read','label','umi_count','read_count'], 
-                           sort_by='umi_count' ):
+                           sort_by='umi_count',
+                           step='vbctable',
+                            ):
     '''
     write subsetted data from vbctable dataframe for QC checks. 
 
@@ -2501,7 +2504,7 @@ def make_vbctable_qctables(df,
     combinations = list(itertools.product(*alist))
     
     try: 
-        xlout = os.path.join(outdir, f'{project_id}.vbctable.umireport.xlsx')
+        xlout = os.path.join(outdir, f'{project_id}.{step}.controls.umireport.xlsx')
         logging.debug(f'writing to {xlout}')
         with pd.ExcelWriter( xlout) as writer:
             for tup in combinations:
@@ -2538,10 +2541,10 @@ def make_vbctable_qctables(df,
 
 
 def make_vbctable_parameter_report_xlsx(df, 
-                                   outdir=None, 
-                                   cp=None, 
-                                   params=None
-                                   ):
+                                        outdir=None, 
+                                        cp=None, 
+                                        params=None
+                                        ):
     '''
         Create single XLSX with table of number of VBCs per SSI at the various 
         thresholds for injection, target UMI counts. 
@@ -2588,7 +2591,7 @@ def make_vbctable_parameter_report_xlsx(df,
     # Explicitly set include_injection for prosective matrix measurement. 
     # 
     testcp = copy.deepcopy(cp)
-    testcp.set('vbcfilter','include_injection', 'True')
+    testcp.set('vbcfilter', 'include_injection', 'True')
     
     for i, (inj_min_umi, target_min_umi) in enumerate(params):
         logging.debug(f'inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
@@ -2600,6 +2603,7 @@ def make_vbctable_parameter_report_xlsx(df,
                                       outdir = outdir, 
                                       cp=testcp)
         fdf = fdf[fdf['type'] == 'real']
+        # deal with duplicated controls originally without a brain ID. 
         xdf = fdf.groupby('label').agg({'vbc_read':'nunique'})
         xdf.reset_index(inplace=True, drop=False)
         xdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( xdf['label'])))
