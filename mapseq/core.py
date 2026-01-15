@@ -1285,7 +1285,10 @@ def process_make_readtable_pd(df,
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
     filter_by_libtag = cp.getboolean('readtable','filter_by_libtag', fallback=True)
     use_lone = cp.getboolean('readtable','use_lone', fallback=True)
-    remove_lones = cp.getboolean('readtable','remove_lones', fallback=False)
+    
+    # optionally keep/remove L1s
+    # include_lone
+    include_lone = cp.getboolean('vbcfilter','include_lone', fallback=False )
     
     if not use_libtag:
         filter_by_libtag = False
@@ -1382,7 +1385,7 @@ def process_make_readtable_pd(df,
                 
                 # remove and save lones.
                 lones = df[ df['type'] == 'lone']
-                if remove_lones:
+                if not include_lone:
                     df = df [df['type']  != 'lone']
                 of = os.path.join(outdir, f'{project_id}.valid_lones.tsv') 
                 lones.to_csv(of, sep='\t')
@@ -1774,9 +1777,10 @@ def process_filter_vbctable(df,
     # optionally keep/remove for inclusion in each brain matrix.
     controls = df[ df['site'].isin( CONTROL_SITES ) ]
 
-    # optionally keep/remove L1s
-    # include_lone
+    # optionally keep/remove L1s if not removed prior to now. 
+    # include_lone = cp.getboolean('vbcfilter','include_lone', fallback=False )
     if not include_lone:
+        logging.info('include_lone is False. Removing L1s...')
         controls = controls[ controls['site' != 'target-lone-control']]
 
     # save for reference
