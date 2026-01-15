@@ -1759,6 +1759,7 @@ def process_filter_vbctable(df,
     require_injection = cp.getboolean('vbcfilter','require_injection')
     include_injection = cp.getboolean('vbcfilter','include_injection')
     include_controls = cp.getboolean('vbcfilter','include_controls')
+    include_lone = cp.getboolean('vbcfilter','include_lone', fallback=False )
     use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
     use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control')
 
@@ -1772,6 +1773,11 @@ def process_filter_vbctable(df,
 
     # optionally keep/remove for inclusion in each brain matrix.
     controls = df[ df['site'].isin( CONTROL_SITES ) ]
+
+    # optionally keep/remove L1s
+    # include_lone
+    if not include_lone:
+        controls = controls[ controls['site' != 'target-lone-control']]
 
     # save for reference
     if len(controls) > 0:
