@@ -517,9 +517,7 @@ def get_barcode_dict(bcfile, labels=None):
 def get_rtbc_dict(bcfile, labels=None):
     '''
     get dict from rtprimers to bclabels. 
-    
-    '''
-    '''
+
     read barcode file, parse into dict. 
     optionally include only labels in provided list. 
     '''

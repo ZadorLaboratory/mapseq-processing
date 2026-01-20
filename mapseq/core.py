@@ -315,7 +315,6 @@ def load_mapseq_matrix_df( infile, use_dask = False ):
 #
 #          SAMPLEINFO/METADATA UTILITY
 #
-
 def load_sample_info(file_name, 
                      sheet_name='Sample information', 
                      cp=None):
@@ -389,6 +388,7 @@ def load_sample_info(file_name,
                     sdf[scol] = 1.0
                 elif scol == 'min_reads':
                     sdf[scol] = 1
+                    sdf = set_min_reads(sdf, cp=cp)
         logging.info(f'loaded DF from Excel {file_name}')
 
         # Fix missing values with defaults. 
@@ -409,12 +409,25 @@ def load_sample_info(file_name,
     sdf['min_reads'] = sdf['min_reads'].astype(int)
     sdf['si_ratio'] = sdf['si_ratio'].astype(float)
     
-    
-
-
-        
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
+
+
+def set_min_reads(df, cp):
+    '''
+    apply target/injection min_reads from config if not provided
+    explicitly in sampleinfo. 
+    '''
+    inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
+    target_min_reads = int(cp.get('vbctable','target_min_reads'))
+
+    df['min_reads'] = 1
+    tmask = df['siteinfo'].str.startswith('target')
+    imask = df['siteinfo'].str.startswith('injection')
+    df.loc[tmask,'min_reads'] = target_min_reads
+    df.loc[imask, 'min_reads'] = injection_min_reads
+    return df
+
 
 
 def get_rtlist(sampledf):
@@ -2534,7 +2547,7 @@ def make_controls_umireport_xlsx(df,
                     ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
                     ndf.reset_index(inplace=True, drop=True)
                     ndf.to_csv(outfile, sep='\t')
-                    sh.add_value('/vbctable',f'n_{fname}_vbcs', len(ndf) )
+                    sh.add_value('/{step}',f'n_{fname}_vbcs', len(ndf) )
                     # If it is a real control, add to control report. 
                     for s in CONTROL_SITES:
                         if s in fname:
