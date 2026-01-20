@@ -347,7 +347,7 @@ def load_sample_info(file_name,
             'Matrix Column'                   : 'matrixcolumn',
         }
     
-    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'si_ratio', 'min_reads', 'rtprimer', 'brain', 'region', 'matrixcolumn'] 
+    sample_columns = ['usertube', 'ourtube', 'samplename', 'siteinfo', 'si_ratio', 'rtprimer', 'brain', 'region', 'matrixcolumn', 'min_reads'] 
 
     if file_name.endswith('.xlsx'):
         edf = pd.read_excel(file_name, sheet_name=sheet_name, header=1, dtype=str)        
@@ -387,7 +387,7 @@ def load_sample_info(file_name,
                 elif scol == 'si_ratio':
                     sdf[scol] = 1.0
                 elif scol == 'min_reads':
-                    sdf[scol] = 1
+                    logging.info('No per-sample min_reads column. setting from config...')
                     sdf = set_min_reads(sdf, cp=cp)
         logging.info(f'loaded DF from Excel {file_name}')
 
@@ -420,14 +420,13 @@ def set_min_reads(df, cp):
     '''
     inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
     target_min_reads = int(cp.get('vbctable','target_min_reads'))
-
+    logging.info(f'setting min_reads: target_min_reads={target_min_reads} inj_min_reads={inj_min_reads}')
     df['min_reads'] = 1
     tmask = df['siteinfo'].str.startswith('target')
     imask = df['siteinfo'].str.startswith('injection')
     df.loc[tmask,'min_reads'] = target_min_reads
-    df.loc[imask, 'min_reads'] = injection_min_reads
+    df.loc[imask, 'min_reads'] = inj_min_reads
     return df
-
 
 
 def get_rtlist(sampledf):
