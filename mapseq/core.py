@@ -111,8 +111,7 @@ CONTROL_SITES=['target-wt-control',
                'target-water-control',
                'injection-water-control',
                'injection-wt-control',
-               'target-lone-control']
-
+               'target-lone']
 
 #
 #             MAPSEQ UTILITY 
@@ -1294,14 +1293,11 @@ def process_make_readtable_pd(df,
     loneregex = cp.get('readtable', 'loneregex' )    
 
     # establish logic for using libtag, if defined. 
+    # optionally keep/remove L1s
     use_libtag = cp.getboolean('readtable','use_libtag', fallback=True)
     filter_by_libtag = cp.getboolean('readtable','filter_by_libtag', fallback=True)
     use_lone = cp.getboolean('readtable','use_lone', fallback=True)
-    
-    # optionally keep/remove L1s
-    # include_lone
     include_lone = cp.getboolean('vbcfilter','include_lone', fallback=False )
-    
     if not use_libtag:
         filter_by_libtag = False
     
@@ -1379,11 +1375,33 @@ def process_make_readtable_pd(df,
             logging.info('identifying L1s by libtag...')
             lmap = df['libtag'].str.match(loneregex)
             df.loc[lmap, 'type'] = 'lone'
+
             if filter_by_libtag:
+                logging.debug('Filtering by bad libtag/type')  
+                badtypedf = df[ df.isna().any(axis=1) ]
+                n_badtype = len(badtypedf)
+                df.drop(badtypedf.index, inplace=True)
+                df.reset_index(inplace=True, drop=True)    
+        
+                of = os.path.join( outdir, 'bad_type.tsv')
+                badtypedf.reset_index(inplace=True, drop=True)
+                badtypedf.to_csv(of, sep='\t')
+                logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
+                badtypedf = None   
+                sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+
                 # find and remove (at least) known template-switch rows from dataframe.
-                # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)  
+                # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)
+                # OR target-lone site but NOT a valid L1 type from libtag.   
                 nonlone = df[ ~df['site'].str.startswith('target-lone') ]
-                tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
+                nonlone_tsdf = nonlone[ nonlone['type'] == 'lone' ]
+                
+                lone = df[ df['site'].str.startswith('target-lone') ]
+                lone_tsdf = lone[ lone['type'] != 'lone' ]
+
+                tsdf = pd.concat( [nonlone_tsdf, lone_tsdf])
+                # tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
+
                 of = os.path.join(outdir, f'{project_id}.template_switch.tsv') 
                 if len(tsdf) > 0:
                     logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
@@ -1391,11 +1409,12 @@ def process_make_readtable_pd(df,
                 n_tswitch = len(tsdf)
                 
                 # remove known template switch from readtable
-                df.drop(tsdf.index, inplace=True)
+                df.drop(nonlone_tsdf.index, inplace=True)
+                df.drop(lone_tsdf.index, inplace=True)
                 df.reset_index(drop=True, inplace=True)
                 sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
                 
-                # remove and save lones.
+                # remove and save epected lones.
                 lones = df[ df['type'] == 'lone']
                 if not include_lone:
                     df = df [df['type']  != 'lone']
@@ -1404,24 +1423,10 @@ def process_make_readtable_pd(df,
                 n_lones = len(lones) 
                 sh.add_value('/readtable', 'n_lones', str(n_lones) )
 
-        if filter_by_libtag:
-            logging.debug('Filtering by bad libtag/type')  
-            badtypedf = df[ df.isna().any(axis=1) ]
-            n_badtype = len(badtypedf)
-            df.drop(badtypedf.index, inplace=True)
-            df.reset_index(inplace=True, drop=True)    
-    
-            of = os.path.join( outdir, 'bad_type.tsv')
-            badtypedf.reset_index(inplace=True, drop=True)
-            badtypedf.to_csv(of, sep='\t')
-            logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
-            badtypedf = None   
-            sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
-
-        else:
-            logging.info('No filtering by libtag. Setting unidentified to real.')
-            namap = df['type'].isna()
-            df.loc[namap, 'type'] = 'real'            
+            else:
+                logging.info('No filtering by libtag. Setting unidentified to real.')
+                namap = df['type'].isna()
+                df.loc[namap, 'type'] = 'real'            
             
     else:
         logging.info('use_libtag = False. Ignoring libtag. Just using spike sequence. ')
@@ -1477,13 +1482,7 @@ def process_make_readtable_pd(df,
     df.fillna({'ourtube': ''}, inplace=True)
     tdf = None
         
-    sh.add_value('/readtable','n_full_sequences', str(len(df)) )
-    
-    # perform optional per-sample read thresholding.
-    if int( sampdf['min_reads'].max()) > 1:
-        df = threshold_by_sample(df, sampdf)
-    df.reset_index(drop=True, inplace=True)
-    
+    sh.add_value('/readtable','n_full_sequences', str(len(df)) )    
     n_final = len(df)
 
     sh.add_value('/readtable', 'n_initial', str(n_initial) ) 
@@ -1691,7 +1690,7 @@ def process_make_vbctable_pd(df,
         logging.debug('sampleinfo DF not provided.')
     
     # threshold by read counts, by siteinfo, before starting...
-    logging.info(f'thresholding by read count. inj={inj_min_reads} target={target_min_reads} len={len(ndf)}') 
+    logging.info(f'thresholding by read count. inj_min_reads={inj_min_reads} target_min_reads={target_min_reads} len={len(ndf)}') 
     tdf = ndf[ndf['site'].str.startswith('target')]
     tdf = tdf[tdf['read_count'] >= int(target_min_reads)]
     idf = ndf[ndf['site'].str.startswith('injection')]
@@ -1705,7 +1704,7 @@ def process_make_vbctable_pd(df,
                           outfile = of,
                           cp = cp )
     
-    logging.info(f'DF after threshold inj={inj_min_reads} tar={target_min_reads}: {len(thdf)}')
+    logging.info(f'DF after threshold inj_min_reads={inj_min_reads} target_min_reads={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
     
     agg_params = {  'umi'       : 'nunique',
