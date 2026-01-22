@@ -1792,7 +1792,7 @@ def process_filter_vbctable(df,
     # include_lone = cp.getboolean('vbcfilter','include_lone', fallback=False )
     if not include_lone:
         logging.info('include_lone is False. Removing L1s...')
-        controls = controls[ controls['site'] != 'target-lone-control']
+        controls = controls[ controls['site'] != 'target-lone']
 
     # save for reference
     if len(controls) > 0:
