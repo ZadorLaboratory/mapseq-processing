@@ -1,0 +1,25 @@
+import logging
+import os
+import sys
+
+from configparser import ConfigParser
+
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+gitpath=os.path.expanduser("~/git/mapseq-processing")
+sys.path.append(gitpath)
+
+from mapseq.core import *
+from mapseq.barcode import *
+from mapseq.utils import *
+from mapseq.stats import *
+
+cp = ConfigParser()
+logging.getLogger().setLevel(logging.DEBUG)
+
+cfile = ''
+sfile = ''
+# cp.read(cfile)
+# sampdf = load_sampleinfo(sfile, cp)

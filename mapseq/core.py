@@ -1721,7 +1721,6 @@ def process_make_vbctable_pd(df,
 
     # output controls by SSI/site, save to TSV
     controls = udf[ udf['site'].isin( CONTROL_SITES ) ]
-    #controls = controls[ controls['type'] == 'real' ]
     controls.reset_index(inplace=True, drop=True)
     controls.to_csv(f'{outdir}/{project_id}.controls.tsv', sep='\t')
 
@@ -1829,7 +1828,7 @@ def process_filter_vbctable(df,
         sh = get_default_stats() 
 
         # remove spikes and save them 
-        # Spikes to NOT get thresholded by UMI, or restricted by injection/target presence 
+        # Spikes do NOT get thresholded by UMI, or restricted by injection/target presence 
         spikes = bdf[ bdf['type'] == 'spike']
         reals = bdf[ bdf ['type'] != 'spike']
     
@@ -1933,7 +1932,7 @@ def process_filter_vbctable(df,
     else:
         logging.warning('No data passed filtering. Creating empty dataframe.')
         df = pd.DataFrame(columns=df.columns)
-    return df
+    return ( df, controls )
 
 
 def filter_targets_min_umi_any(targets, min_umi ):

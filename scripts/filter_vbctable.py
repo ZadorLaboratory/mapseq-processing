@@ -161,7 +161,7 @@ if __name__ == '__main__':
     sh = StatsHandler(outdir=outdir, datestr=datestr)
     
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
-    df = process_filter_vbctable(df, 
+    (df, controls) = process_filter_vbctable(df, 
                                inj_min_umi = args.inj_min_umi,
                                target_min_umi = args.target_min_umi,
                                target_min_umi_absolute = args.target_min_umi_absolute,
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     logging.info('Done filter_vbctable') 
 
     logging.info(f'Making controls report.')
-    make_controls_umireport_xlsx(df, outdir=outdir, cp=cp, cols=['site','type'], step='vbcfiltered' )
+    make_controls_umireport_xlsx( controls, outdir=outdir, cp=cp, cols=['site','type'], step='vbcfiltered' )
 
 
    

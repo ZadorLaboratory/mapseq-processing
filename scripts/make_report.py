@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 #
-#
-#
-#
 import argparse
 import logging
 import os
@@ -11,7 +8,6 @@ import sys
 from configparser import ConfigParser
 
 import pypandoc
-
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
