@@ -1376,58 +1376,58 @@ def process_make_readtable_pd(df,
             lmap = df['libtag'].str.match(loneregex)
             df.loc[lmap, 'type'] = 'lone'
 
-            if filter_by_libtag:
-                logging.debug('Filtering by bad libtag/type')  
-                badtypedf = df[ df.isna().any(axis=1) ]
-                n_badtype = len(badtypedf)
-                df.drop(badtypedf.index, inplace=True)
-                df.reset_index(inplace=True, drop=True)    
-        
-                of = os.path.join( outdir, 'bad_type.tsv')
-                badtypedf.reset_index(inplace=True, drop=True)
-                badtypedf.to_csv(of, sep='\t')
-                logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
-                badtypedf = None   
-                sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
+            # find and remove (at least) known template-switch rows from dataframe.
+            # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)
+            # OR target-lone site but NOT a valid L1 type from libtag.   
+            nonlone = df[ ~df['site'].str.startswith('target-lone') ]
+            nonlone_tsdf = nonlone[ nonlone['type'] == 'lone' ]
+            
+            lone = df[ df['site'].str.startswith('target-lone') ]
+            lone_tsdf = lone[ lone['type'] != 'lone' ]
 
-                # find and remove (at least) known template-switch rows from dataframe.
-                # template switch type is valid L1/lone (from libtag) but is a valid target (from SSI)
-                # OR target-lone site but NOT a valid L1 type from libtag.   
-                nonlone = df[ ~df['site'].str.startswith('target-lone') ]
-                nonlone_tsdf = nonlone[ nonlone['type'] == 'lone' ]
-                
-                lone = df[ df['site'].str.startswith('target-lone') ]
-                lone_tsdf = lone[ lone['type'] != 'lone' ]
+            tsdf = pd.concat( [nonlone_tsdf, lone_tsdf])
+            # tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
 
-                tsdf = pd.concat( [nonlone_tsdf, lone_tsdf])
-                # tsdf = nonlone[ ((nonlone['type'] == 'lone') & ( nonlone['site'].str.startswith('target'))) ]
+            of = os.path.join(outdir, f'{project_id}.template_switch.tsv') 
+            if len(tsdf) > 0:
+                logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
+                tsdf.to_csv(of, sep='\t')
+            n_tswitch = len(tsdf)
+            
+            # remove known template switch from readtable
+            df.drop(nonlone_tsdf.index, inplace=True)
+            df.drop(lone_tsdf.index, inplace=True)
+            df.reset_index(drop=True, inplace=True)
+            sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
+            
+            # remove and save epected lones.
+            lones = df[ df['type'] == 'lone']
+            if not include_lone:
+                df = df [df['type']  != 'lone']
+            of = os.path.join(outdir, f'{project_id}.valid_lones.tsv') 
+            lones.to_csv(of, sep='\t')
+            n_lones = len(lones) 
+            sh.add_value('/readtable', 'n_lones', str(n_lones) )
 
-                of = os.path.join(outdir, f'{project_id}.template_switch.tsv') 
-                if len(tsdf) > 0:
-                    logging.info(f'Writing template switch DF len={len(tsdf)} Writing to {of}')
-                    tsdf.to_csv(of, sep='\t')
-                n_tswitch = len(tsdf)
-                
-                # remove known template switch from readtable
-                df.drop(nonlone_tsdf.index, inplace=True)
-                df.drop(lone_tsdf.index, inplace=True)
-                df.reset_index(drop=True, inplace=True)
-                sh.add_value('/readtable', 'n_tswitch', str(n_tswitch) )
-                
-                # remove and save epected lones.
-                lones = df[ df['type'] == 'lone']
-                if not include_lone:
-                    df = df [df['type']  != 'lone']
-                of = os.path.join(outdir, f'{project_id}.valid_lones.tsv') 
-                lones.to_csv(of, sep='\t')
-                n_lones = len(lones) 
-                sh.add_value('/readtable', 'n_lones', str(n_lones) )
+        if filter_by_libtag:
+            logging.debug('Filtering by bad libtag/type')  
+            badtypedf = df[ df.isna().any(axis=1) ]
+            n_badtype = len(badtypedf)
+            df.drop(badtypedf.index, inplace=True)
+            df.reset_index(inplace=True, drop=True)    
+    
+            of = os.path.join( outdir, 'bad_type.tsv')
+            badtypedf.reset_index(inplace=True, drop=True)
+            badtypedf.to_csv(of, sep='\t')
+            logging.info(f'Wrote bad_type DF len={len(badtypedf)} to {of}')
+            badtypedf = None   
+            sh.add_value('/readtable', 'n_badtype', str(n_badtype) )
 
-            else:
+        else:
                 logging.info('No filtering by libtag. Setting unidentified to real.')
                 namap = df['type'].isna()
                 df.loc[namap, 'type'] = 'real'            
-            
+                
     else:
         logging.info('use_libtag = False. Ignoring libtag. Just using spike sequence. ')
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
