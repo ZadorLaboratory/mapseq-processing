@@ -1776,6 +1776,8 @@ def process_filter_vbctable(df,
     use_target_negative=cp.getboolean('vbcfilter','use_target_negative')
     use_target_water_control=cp.getboolean('vbcfilter','use_target_water_control')
 
+    logging.debug(f'filtering VBC table.  n_rows={len(df)} outdir={outdir} inj_min_umi={inj_min_umi} target_min_umi={target_min_umi} ')
+
     df['brain'] = df['brain'].astype('string')
     bidlist = list(df['brain'].dropna().unique())
     bidlist = [ x for x in bidlist if len(x) > 0 ]
@@ -2614,7 +2616,7 @@ def make_vbctable_parameter_report_xlsx(df,
     testcp.set('vbcfilter', 'include_injection', 'True')
     
     for i, (inj_min_umi, target_min_umi) in enumerate(params):
-        logging.debug(f'inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
+        logging.debug(f'testing parameters: inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
         colname = f'inj:{inj_min_umi}, tar:{target_min_umi}'
         fdf = process_filter_vbctable(df, 
                                       inj_min_umi=inj_min_umi, 
@@ -2622,6 +2624,7 @@ def make_vbctable_parameter_report_xlsx(df,
                                       target_min_umi_absolute=1, 
                                       outdir = outdir, 
                                       cp=testcp)
+        logging.debug(f'got filtered vbctable:\n{fdf}')
         fdf = fdf[fdf['type'] == 'real']
         # deal with duplicated controls originally without a brain ID. 
         xdf = fdf.groupby('label').agg({'vbc_read':'nunique'})
