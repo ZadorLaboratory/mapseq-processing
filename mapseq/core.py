@@ -2618,7 +2618,7 @@ def make_vbctable_parameter_report_xlsx(df,
     for i, (inj_min_umi, target_min_umi) in enumerate(params):
         logging.debug(f'testing parameters: inj_min_umi = {inj_min_umi} target_min_umi = {target_min_umi} ')
         colname = f'inj:{inj_min_umi}, tar:{target_min_umi}'
-        fdf = process_filter_vbctable(df, 
+        (fdf, controls) = process_filter_vbctable(df, 
                                       inj_min_umi=inj_min_umi, 
                                       target_min_umi = target_min_umi, 
                                       target_min_umi_absolute=1, 
