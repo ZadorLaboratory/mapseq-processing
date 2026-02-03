@@ -2479,12 +2479,12 @@ def make_spikein_qctable(df,
 
 
 def make_controls_umireport_xlsx(df, 
-                           outdir=None, 
-                           cp=None, 
-                           cols=['site','type'], 
-                           vals = ['vbc_read','label','umi_count','read_count'], 
-                           sort_by='umi_count',
-                           step='vbctable',
+                                 outdir=None, 
+                                 cp=None, 
+                                 cols=['site','type'], 
+                                 vals = ['vbc_read','label','umi_count','read_count'], 
+                                 sort_by='umi_count',
+                                 step='vbctable',
                             ):
     '''
     write subsetted data from vbctable dataframe for QC checks. 

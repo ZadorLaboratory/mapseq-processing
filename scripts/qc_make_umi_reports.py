@@ -140,13 +140,13 @@ if __name__ == '__main__':
 
     logging.info('Making UMI parameter report.')
     make_vbctable_parameter_report_xlsx(df, 
-                                   outdir=outdir, 
-                                   cp=cp, 
-                                   params=[ (5,3),(10,3),(10,5),(20,5),(30,5),(30,10)] )
+                                        outdir=outdir, 
+                                        cp=cp, 
+                                        params=[ (5,3),(10,3),(10,5),(20,5),(30,5),(30,10)] )
 
 
     logging.debug(f'making qctables')
-    make_vbctable_qctables(df, outdir=outdir, cp=cp, cols=['site','type'] )
+    make_controls_umireport_xlsx( df, outdir=outdir, cp=cp, cols=['site','type'], step='vbcfiltered' )
 
     logging.debug(f'making UMI frequency plots.')
     make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
