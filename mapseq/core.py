@@ -1427,7 +1427,7 @@ def process_make_readtable_pd(df,
                 logging.info('No filtering by libtag. Setting unidentified to real.')
                 namap = df['type'].isna()
                 df.loc[namap, 'type'] = 'real'            
-                
+
     else:
         logging.info('use_libtag = False. Ignoring libtag. Just using spike sequence. ')
         logging.info(f'Identifying spikeins by spikeseq={spikeseq}')
@@ -1753,6 +1753,9 @@ def process_filter_vbctable(df,
     inj_min_umi                VBC UMI must exceed to be kept.
     target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
     target_min_umi_absolute    hard threshold cutoff
+    
+    How to handle controls when include_controls=True?
+    Which controls to return for reporting?
     
     '''
     if cp is None:
