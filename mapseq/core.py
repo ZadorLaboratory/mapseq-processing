@@ -1754,8 +1754,9 @@ def process_filter_vbctable(df,
     target_min_umi             if ANY target area exceeds, keep all of that VBC targets. 
     target_min_umi_absolute    hard threshold cutoff
     
-    How to handle controls when include_controls=True?
-    Which controls to return for reporting?
+    Q: How to handle controls when include_controls=True? Which controls 
+       to return for reporting?
+    A: Threshold controls by target_min_umi and return. 
     
     '''
     if cp is None:
@@ -1798,15 +1799,8 @@ def process_filter_vbctable(df,
         logging.info('include_lone is False. Removing L1s...')
         controls = controls[ controls['site'] != 'target-lone']
 
-    # save for reference
-    if len(controls) > 0:
-        controls.reset_index(inplace=True, drop=True)
-        controls.to_csv(f'{outdir}/{project_id}.controls.tsv', sep='\t')
-
     norm_dict = {}
-
     bdflist = []
-
     for brain_id in bidlist:
         valid = True
         ndf = None 
@@ -1937,7 +1931,21 @@ def process_filter_vbctable(df,
     else:
         logging.warning('No data passed filtering. Creating empty dataframe.')
         df = pd.DataFrame(columns=df.columns)
+
+    # threshold and save non-brain controls for reference
+    scontrols = controls[controls['type'] == 'spike']
+    rcontrols = controls[controls['type'] == 'real']
+    rcontrols = rcontrols[rcontrols['umi_count'] >= target_min_umi]
+    controls =   pd.concat( [scontrols , rcontrols ], ignore_index = True)  
+    controls.reset_index(inplace=True, drop=True)
+
+    if len(controls) > 0:            
+        controls.to_csv(f'{outdir}/{project_id}.controls.{target_min_umi}.tsv', sep='\t')
+
+    # Returning all-brain DF (with brain-specific copied controls, if include_controls) 
+    # and separate non-brain labelled controls. 
     return ( df, controls )
+
 
 
 def filter_targets_min_umi_any(targets, min_umi ):
@@ -2613,8 +2621,7 @@ def make_vbctable_parameter_report_xlsx(df,
 
     outdf = None
     
-    # Explicitly set include_injection for prosective matrix measurement. 
-    # 
+    # Explicitly set include_injection 
     testcp = copy.deepcopy(cp)
     testcp.set('vbcfilter', 'include_injection', 'True')
     
@@ -2627,9 +2634,10 @@ def make_vbctable_parameter_report_xlsx(df,
                                       target_min_umi_absolute=1, 
                                       outdir = outdir, 
                                       cp=testcp)
-        logging.debug(f'got filtered vbctable:\n{fdf}')
+        logging.debug(f'got filtered vbctable and controls:\n{fdf}')
         fdf = fdf[fdf['type'] == 'real']
         # deal with duplicated controls originally without a brain ID. 
+
         xdf = fdf.groupby('label').agg({'vbc_read':'nunique'})
         xdf.reset_index(inplace=True, drop=False)
         xdf.sort_values(by='label', inplace=True, key=lambda x: np.argsort(index_natsorted( xdf['label'])))
