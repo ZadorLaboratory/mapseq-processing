@@ -1936,7 +1936,7 @@ def process_filter_vbctable(df,
     scontrols = controls[controls['type'] == 'spike']
     rcontrols = controls[controls['type'] == 'real']
     rcontrols = rcontrols[rcontrols['umi_count'] >= target_min_umi]
-    controls =   pd.concat( [scontrols , rcontrols ], ignore_index = True)  
+    controls =  pd.concat( [scontrols , rcontrols ], ignore_index = True)  
     controls.reset_index(inplace=True, drop=True)
 
     if len(controls) > 0:            
