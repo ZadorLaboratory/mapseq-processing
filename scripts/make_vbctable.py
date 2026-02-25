@@ -66,6 +66,11 @@ if __name__ == '__main__':
                         type=int, 
                         help='Minimum target reads for inclusion.')
 
+    parser.add_argument('-m','--merge_samples', 
+                        action='store_true',
+                        default=False, 
+                        help='Make everything into one virtual SSI.')
+
     parser.add_argument('-G','--group_column', 
                     metavar='group_column',
                     required=False,

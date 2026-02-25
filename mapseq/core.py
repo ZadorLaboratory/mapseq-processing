@@ -1649,10 +1649,11 @@ def process_make_vbctable_pd(df,
     -- remove nomatches
     -- threshold read_count by site type
     -- collapse by VBC sequence, calculating UMI count
-    
+    -- optionally merge all targets to one SSI (for virus libraries)
+
     Drops source, and possibly other fields since aggregation would make them ambiguous.
     
-    This should  be prepared for input it make VBC matrices    
+    This should be prepared for input it make VBC matrices    
     '''
     if cp is None:
         cp = get_default_config()
@@ -1660,7 +1661,8 @@ def process_make_vbctable_pd(df,
     project_id = cp.get('project','project_id')
     use_lone = cp.getboolean('readtable','use_lone')
     filter_by_libag = cp.getboolean('readtable','filter_by_libtag')
-    
+    merge_samples= cp.getboolean('vbctable','merge_samples', fallback=False)
+
     logging.debug(f'inbound df len={len(df)} columns={df.columns}')
     log_objectinfo(df, 'input-df')
     ndf = df
@@ -1707,6 +1709,14 @@ def process_make_vbctable_pd(df,
     logging.info(f'DF after threshold inj_min_reads={inj_min_reads} target_min_reads={target_min_reads}: {len(thdf)}')
     log_objectinfo(thdf, 'threshold-df')    
     
+    # optionally merge all samples to single dummy SSI
+    if merge_samples:
+        logging.info(f'merging all samples to single SSI. rtprimer|label|ourtube|region = 100')
+        thdf['rtprimer'] = '100'
+        thdf['label'] = 'BC100'
+        thdf['ourtube'] = '100'
+        thdf['region'] = '100'
+
     agg_params = {  'umi'       : 'nunique',
                     'read_count': 'sum', 
                     'brain'     : 'first',

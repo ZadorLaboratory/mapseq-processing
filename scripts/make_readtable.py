@@ -204,13 +204,14 @@ if __name__ == '__main__':
                       cp=cp )    
 
     logging.info(f'making read_count frequency plots...')
-    make_counts_plots(df, 
-                      outdir=outdir, 
-                      groupby='label', 
-                      column='read_count',
-                      min_count = 1,
-                      nranks=None, 
-                      cp=cp )
+#.   Standard min_read = 2, so not needed.
+#    make_counts_plots(df, 
+#                      outdir=outdir, 
+#                      groupby='label', 
+#                      column='read_count',
+#                      min_count = 1,
+#                      nranks=None, 
+#                      cp=cp )
 
     make_counts_plots(df, 
                       outdir=outdir, 
