@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-m','--merge_samples', 
                         action='store_true',
-                        default=False, 
+                        default=None, 
                         help='Make everything into one virtual SSI.')
 
     parser.add_argument('-G','--group_column', 
@@ -184,6 +184,9 @@ if __name__ == '__main__':
         target_min_reads = int(cp.get('vbctable','target_min_reads'))
     else:
         target_min_reads = args.target_min_reads
+
+    if args.merge_samples is not None:
+        cp.set('vbctable','merge_samples', 'True')
 
     logging.info(f'loading {args.infile}') 
     df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
