@@ -188,6 +188,8 @@ if __name__ == '__main__':
     if args.merge_samples is not None:
         cp.set('vbctable','merge_samples', 'True')
 
+    
+
     logging.info(f'loading {args.infile}') 
     df = load_mapseq_df( args.infile, fformat='readtable', use_dask=False)
     logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 

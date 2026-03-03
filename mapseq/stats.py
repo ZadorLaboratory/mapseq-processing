@@ -16,6 +16,7 @@ from jinja2 import Template
 import codecs
 from mergedeep import merge
 
+import pandas as pd
 
 MYSTATS = None
 
@@ -412,6 +413,51 @@ def merge_stats(infiles, outfile):
     with open(outfile ,'w', encoding='utf-8') as jofh:
         json.dump(merged, jofh, ensure_ascii=False, indent=4)
     logging.debug('done.')
+
+
+def calc_unique_fraction(df, 
+                         column='umi_count',
+                         kstart=1000,
+                         kend = 1000000,
+                         kstep=10000
+                         ):
+    '''
+    Generate data (to be plotted) of fraction of uniquely labelled neurons,
+    given distribution of <column> values in <df>. 
+    
+    Pu(k) = 
+             N 
+            Sum.   pi * ( 1 - ( 1 - pi )^(k-1) )
+            i = 1
+
+    '''
+
+    klist = list( range(kstart, kend, kstep ) )
+    prob_list = []
+    pdf = df['umi_count'] / len(df)
+    pdf = pd.DataFrame(pdf)
+    pdf['unique'] = ( df['umi_count'] == 1 )
+    pdf.rename( { 'umi_count' : 'bc_prob'}, axis=1, inplace=True )
+    pdf['inv_prob'] = ( 1 - pdf['bc_prob'] )
+    
+    for k in klist:
+        kprob = calc_prob_unique(pdf, k)
+        prob_list.append( [ k, kprob])
+        logging.debug(f'handled k={k}')
+    
+    udf = pd.DataFrame(prob_list, columns=['k','u_prob'])
+    return udf
+
+
+def calc_prob_unique(pdf, k):
+    '''
+    Calculate cumulative probability given pre-calculated prob df (pdf)
+    '''
+    pdf['inv_pow'] = pdf['inv_prob'] ** (k - 1)
+    pdf['inv_inv_pow'] = (1 - pdf['inv_pow'])
+    pdf['u_prob'] = ( pdf['bc_prob'] * pdf['inv_inv_pow'])
+    kprob = pdf['u_prob'].sum()    
+    return kprob
 
 
 

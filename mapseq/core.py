@@ -100,6 +100,7 @@ FMT_DTYPES = {      'read_count'    : 'int64',
 # target-wt-control         core added          untreated biological sample
 # target-water-control      core added          empty sample
 # injection-water-control   core added          empty sample
+# target-lone               core added          known distinct library
 
 #CONTROL_SITES=['target-negative-control', 
 #               'target-wt-control',
