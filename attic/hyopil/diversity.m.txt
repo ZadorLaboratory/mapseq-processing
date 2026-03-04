@@ -1,0 +1,33 @@
+%including barcodes with at least 2 UMI to only include relible barcodes
+umitresh=2;
+filt_B=barcodematrix(barcodematrix>=umitresh);
+P=filt_B/sum(filt_B);
+
+format long;
+
+N = length(P);
+j=[1:10000 15000 20000 30000 50000 80000 100000 150000 200000 300000 500000 800000 1000000 1500000 2000000 3000000 5000000 8000000 10000000 15000000 20000000 30000000 50000000 80000000 100000000];
+
+uniq_frac = zeros(length(j),1);
+
+for k = 1:length(j)
+    uniq_frac(k) = 1 - sum(P .* (1 - (1 - P).^(j(k) - 1)));
+end
+
+
+% plot
+figure;
+semilogx(j, uniq_frac, 'LineWidth', 1.5);ylim([0 1]);
+set(gca,'FontSize',15);
+grid on;
+findfigs;
+
+
+% barcode rankplot (y: umi, x: barcode)
+sorted=sort(barcodematrix,'descend');
+
+figure;
+semilogy(sorted);
+xlabel('Barcode rank');
+ylabel('Barcode count');
+findfigs;
