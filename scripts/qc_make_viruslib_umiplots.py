@@ -56,6 +56,20 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
 
+    parser.add_argument('-k','--k_terms', 
+                    metavar='k_terms',
+                    required=False,
+                    default=25, 
+                    type=int, 
+                    help='number of N neuron values for unique probability') 
+
+    parser.add_argument('-s','--start', 
+                    metavar='start',
+                    required=False,
+                    default=10000, 
+                    type=int, 
+                    help='start N neurons for unique probability') 
+
     parser.add_argument('-O','--outdir', 
                     metavar='outdir',
                     required=False,
@@ -133,7 +147,9 @@ if __name__ == '__main__':
                       cp=cp )
 
     make_viruslib_uniqprob_plot(df,
-                                outfile=os.path.join( outdir, f'{project_id}.uniqprob_plot.pdf'), 
+                                outfile=os.path.join( outdir, f'{project_id}.uniqprob_plot.pdf'),
+                                n_terms=args.k_terms,
+                                start = args.start,  
                                 cp=cp)
 
     logging.info(f'Plots written to {outdir}')

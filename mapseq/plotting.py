@@ -373,8 +373,10 @@ def make_viruslib_diversity_plot(df,
         cp = get_default_config()
     logging.debug(f'outfile={outfile}')
 
+    project_id = cp.get('project','project_id')
     sdf = df.sort_values(by='umi_count', ascending=False)
-    make_freqplot_single_sns(sdf, 
+    make_freqplot_single_sns(sdf,
+                             title=f'{project_id} Rank Plot',  
                              outfile=outfile, 
                              column='umi_count', 
                              scale='log10')
@@ -387,10 +389,14 @@ DEFAULT_K = [ 10000, 15000, 20000, 30000, 50000, 80000, 100000,
 
 def make_viruslib_uniqprob_plot(df, 
                                 outfile,
-                                k_list = DEFAULT_K,
+                                n_terms=25,
+                                start=10000,
                                 cp=None):
     '''
     make plot of probability of unique infection given library diversity.
+    
+    @arg n_terms int   how many terms in list of N neurons. 
+    
     MATLAB:
         P = filt_B/sum(filt_B)
         uniq_frac(k) = 1 - sum(P .* (1 - (1 - P).^(j(k) - 1))); 
@@ -401,7 +407,12 @@ def make_viruslib_uniqprob_plot(df,
         cp = get_default_config()
     logging.debug(f'outfile={outfile}')
 
+    k_list = generate_k(n_terms=n_terms, 
+                        start=start)
+
     uniq_min_umi = int( cp.get('viruslib','uniq_min_umi', fallback = '2'))
+    project_id = cp.get('project','project_id')
+    
     logging.debug( f'uniq_min_umi={uniq_min_umi}' )
     fdf = df[df['umi_count'] >= uniq_min_umi ]
     P = fdf/fdf['umi_count'].sum()
@@ -418,16 +429,35 @@ def make_viruslib_uniqprob_plot(df,
     logging.debug(f'calculated uniq fraction list = \n{uniq_frac}')
     ufdf = pd.DataFrame( uniq_frac, columns=['k','uniq_prob'])
     logging.debug(f'unique fraction DF=\n{ufdf}')
-    make_generic_single_sns(ufdf, title='Unique Fraction', 
+    make_generic_single_sns(ufdf, 
+                            title=f'{project_id} Unique Fraction', 
                             outfile=outfile, x_col='k', y_col='uniq_prob', 
                             scale='log10' )
 
+def generate_k(n_terms=25, start=10000):
+    '''
+    Generate list of neuron counts following
+    John's Hopkins approach.   
+    
+    '''
+    logging.debug(f'generating list of {n_terms} K values start={start}')
+    cycle = [ 1, 1.5, 2, 3, 5, 8]
+    if start <= 0:
+        start = 10
+    k_list = []
+    for n in range(n_terms):
+        k = int(start * (10 ** (n // 6)) * cycle[n % 6])
+        k_list.append(k)
+    return k_list
+
 
 def make_generic_single_sns(df, 
-                            title='Unique Fraction',  
+                            title='Uniquely Labelled Fraction',  
                             outfile='lineplot.pdf',
                             x_col='k',
                             y_col = 'ufk',
+                            x_label = 'Infected Neurons',
+                            y_label = 'Fraction Uniquely Labelled',
                             scale=None ):    
     '''
     single figure with one plot. 
@@ -445,10 +475,10 @@ def make_generic_single_sns(df,
     with pdfpages(outfile) as pdfpages:
         fig, ax = plt.subplots(figsize=page_dims)
         fig.suptitle(title)
-        #generic_axis_plot_sns(axes, df, scale=scale, x_col=xcol, y_col=y_col, title=title)
-        # np.log10(df[f'{logcol}']
         sns.lineplot(ax=ax, data=df, x=df[x_col], y=df[y_col])
-        ax.set_xscale('log')
+        if scale == 'log10':
+            ax.set_xscale('log')
+        ax.set(xlabel=x_label, ylabel=y_label)
         ax.set_title(title, fontsize=10)
         pdfpages.savefig(fig)
 
