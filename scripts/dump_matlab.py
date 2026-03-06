@@ -49,6 +49,7 @@ import pandas as pd
 import scipy
 
 from scipy.io import loadmat
+import h5py
 
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")

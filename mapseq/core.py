@@ -2671,12 +2671,45 @@ def make_vbctable_parameter_report_xlsx(df,
     return outdf
 
 
+#
+# Virus library analysis. 
+#
+
+def make_viruslib_matrix(df, cp=None):
+    '''
+        take vbctable / vbcfiltered and create simplified non-normalized
+        barcode matrix from reals. optionally filter. collapse
+    '''
+    if cp is None:
+        cp = get_default_config()
+
+    df = df[df['type'] == 'real']
+    df = df[df['site'] == 'target' ]
+    df.reset_index(inplace=True, drop=True)
+    logging.debug(f'filtered df = \n{df}')
+
+    mdf = df.pivot(index='vbc_read', 
+                   columns='label', 
+                   values='umi_count')
+    mdf.columns.name = None
+
+    if len(mdf.columns) > 1:
+        mdf['umi_count'] = mdf.sum(axis=1)
+    else:
+        cname = mdf.columns[0]
+        mdf.rename({cname : 'umi_count'}, inplace=True, axis=1 )
+    logging.debug(f'matrix df = \n{mdf}')
+    return mdf
+
+
+
 
 ############################################################
 #
 #        Assessment/QC/Validation/Simulation
 #
 ############################################################
+
 def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
     '''
     make matrix of SSI vs. FASTQ  
@@ -2966,9 +2999,7 @@ def generate_simulated_vbcreads_df(n_parents=100):
 
     mutated_df = generate_mutated_df(parent_df)    
     logging.debug(f'got flattened mutated list len={len(parent_df)}')
-  
-
-      
+       
 def generate_random(n_sequences=1000, n_bases=30, alphabet='CAGT'):
     '''
     Generate random vbc_reads/sequence dataframe.  
@@ -2999,7 +3030,5 @@ def generate_random(n_sequences=1000, n_bases=30, alphabet='CAGT'):
     df['parent_idx'] = df.index
     seqlist = list(df['sequence'])
     return ( seqlist, df )
-
-
 
 

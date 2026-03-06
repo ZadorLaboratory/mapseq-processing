@@ -247,8 +247,6 @@ def make_logticks(max_value):
     ticklist.append(i)
     return ticklist
 
-
-
 def calc_freq_threshold(df, fraction=0.9, column = 'read_count'):
     '''
     sorts column of input column
@@ -361,4 +359,97 @@ def make_simple_freqplot(df,
     logging.debug(f'done')
     return ax
 
-   
+#
+#               Virus Library plots. 
+# 
+def make_viruslib_diversity_plot(df,
+                                 outfile,
+                                 cp=None):
+    '''
+    takes single-dimension barcode matrix DF, 
+    makes plot file. 
+    '''
+    if cp is None:
+        cp = get_default_config()
+    logging.debug(f'outfile={outfile}')
+
+    sdf = df.sort_values(by='umi_count', ascending=False)
+    make_freqplot_single_sns(sdf, 
+                             outfile=outfile, 
+                             column='umi_count', 
+                             scale='log10')
+
+
+DEFAULT_K = [ 10000, 15000, 20000, 30000, 50000, 80000, 100000, 
+              150000 ,200000, 300000, 500000, 800000, 1000000, 
+              1500000, 2000000, 3000000, 5000000, 8000000, 10000000, 
+              15000000, 20000000, 30000000, 50000000, 80000000, 100000000]
+
+def make_viruslib_uniqprob_plot(df, 
+                                outfile,
+                                k_list = DEFAULT_K,
+                                cp=None):
+    '''
+    make plot of probability of unique infection given library diversity.
+    MATLAB:
+        P = filt_B/sum(filt_B)
+        uniq_frac(k) = 1 - sum(P .* (1 - (1 - P).^(j(k) - 1))); 
+        .* is element-wise multiplication in MATLAB , in Pandas * is elementwise. 
+
+    '''
+    if cp is None:
+        cp = get_default_config()
+    logging.debug(f'outfile={outfile}')
+
+    uniq_min_umi = int( cp.get('viruslib','uniq_min_umi', fallback = '2'))
+    logging.debug( f'uniq_min_umi={uniq_min_umi}' )
+    fdf = df[df['umi_count'] >= uniq_min_umi ]
+    P = fdf/fdf['umi_count'].sum()
+
+    uniq_frac = []
+
+    for k in k_list:
+        logging.debug(f'calculating for k={k}...')
+        x = ( P * ( 1 - ( ( 1 - P).pow( k - 1 ) ) ))
+        ufk_ser = 1 - x.sum()
+        ufk = float(ufk_ser.iloc[0])
+        uniq_frac.append( [k, ufk] )
+
+    logging.debug(f'calculated uniq fraction list = \n{uniq_frac}')
+    ufdf = pd.DataFrame( uniq_frac, columns=['k','uniq_prob'])
+    logging.debug(f'unique fraction DF=\n{ufdf}')
+    make_generic_single_sns(ufdf, title='Unique Fraction', 
+                            outfile=outfile, x_col='k', y_col='uniq_prob', 
+                            scale='log10' )
+
+
+def make_generic_single_sns(df, 
+                            title='Unique Fraction',  
+                            outfile='lineplot.pdf',
+                            x_col='k',
+                            y_col = 'ufk',
+                            scale=None ):    
+    '''
+    single figure with one plot. 
+    scale = log10 | log2 | None  
+    '''
+    from matplotlib.backends.backend_pdf import PdfPages as pdfpages
+    datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
+
+    if scale is not None:
+        title = f'{title} ({scale})'
+
+    logging.debug(f'title={title} scale={scale}, outfile={outfile}')
+
+    page_dims = (8, 6)
+    with pdfpages(outfile) as pdfpages:
+        fig, ax = plt.subplots(figsize=page_dims)
+        fig.suptitle(title)
+        #generic_axis_plot_sns(axes, df, scale=scale, x_col=xcol, y_col=y_col, title=title)
+        # np.log10(df[f'{logcol}']
+        sns.lineplot(ax=ax, data=df, x=df[x_col], y=df[y_col])
+        ax.set_xscale('log')
+        ax.set_title(title, fontsize=10)
+        pdfpages.savefig(fig)
+
+    logging.info(f'saved plot PDF to {outfile}')
