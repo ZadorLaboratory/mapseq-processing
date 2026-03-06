@@ -34,9 +34,9 @@ from mapseq.stats import *
 from mapseq.plotting import *
 from mapseq.collapse import *
 
-#
-# STANDARD FORMATS AND DATATYPES
-#
+############################################################
+#        Standard formats and data types
+############################################################
 
 FFORMATS = ['reads','aggregated','filtered','readtable','collapsed','vbctable']
 
@@ -114,9 +114,9 @@ CONTROL_SITES=['target-wt-control',
                'injection-wt-control',
                'target-lone']
 
-#
-#             MAPSEQ UTILITY 
-#
+############################################################
+#        MAPseq-specific utility
+############################################################
 
 def get_default_config():
     dc = os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf')
@@ -312,9 +312,9 @@ def load_mapseq_matrix_df( infile, use_dask = False ):
 
 
 
-#
-#          SAMPLEINFO/METADATA UTILITY
-#
+############################################################
+#        Sample Metadata
+############################################################
 def load_sample_info(file_name, 
                      sheet_name='Sample information', 
                      cp=None):
@@ -452,13 +452,10 @@ def get_rtlist(sampledf):
     return nrtlist
 
 
-
-
-
 ############################################################
+#        Pipeline Process Stages
 #
-#                       Pipeline process phases
-#
+#        Extract from paired-end FASTQ
 ############################################################
 def process_fastq_pairs(infilelist, 
                         outdir,                         
@@ -841,11 +838,9 @@ def add_split_fields(df, column, cp, section):
     return list(fdict.keys())
 
 
-
-
-#
-#        AGGREGATE  READS 
-#
+############################################################
+#        Aggregate duplicate reads. 
+############################################################
 
 def aggregate_reads(df, 
                     column=['sequence','source'],
@@ -990,7 +985,7 @@ def sequence_value_counts(x):
 
 
 #
-#    SPLIT MAPSEQ COLUMNS, FILTER             
+#    Split MAPseq columns, filter            
 #
 
 def split_fields(df, column='sequence', drop=False, cp=None):
@@ -1255,9 +1250,9 @@ def filter_fields(df,
 
     return df
 
-#
-#            READTABLE,  READ FREQUENCY PLOTS
-#
+############################################################
+#        Read Table
+############################################################
 def process_make_readtable_pd(df,
                               sampdf,
                               bcfile=None, 
@@ -1516,9 +1511,9 @@ def threshold_by_sample(df, sampdf):
     return outdf
 
 
-#
-#    ALIGN, COLLAPSE BY VBC             
-#
+############################################################
+#        Align and Collapse by VBC
+############################################################
 def align_collapse(df,
                       column='vbc_read',
                       pcolumn='read_count',
@@ -1633,9 +1628,9 @@ def align_collapse(df,
     return df
                             
 
-#
-#            VBCTABLE
-#
+############################################################
+#        VBC Table
+############################################################
 def process_make_vbctable_pd(df,
                           outdir=None,
                           inj_min_reads = 2,
@@ -1744,9 +1739,9 @@ def process_make_vbctable_pd(df,
     return udf
 
 
-#
-#        VBCFILTER
-#
+############################################################
+#        VBC Filter
+############################################################
 def process_filter_vbctable(df, 
                                inj_min_umi = None,
                                target_min_umi = None,
@@ -2085,9 +2080,9 @@ def calc_min_umi_threshold(df, site='target-negative', cp=None):
         logging.debug(f'calculated UMI threshold={min_threshold} type={site} ')    
     return min_threshold
 
-#
-#    MATRICES
-#
+############################################################
+#        Matrices
+############################################################
 def process_make_matrices(df,
                           sampdf=None, 
                           outdir=None,
@@ -2352,9 +2347,9 @@ def normalize_weight_grouped(df, weightdf, columns=None, sampdf=None):
 
 
 
-#
-#         REPORTS / QC
-#
+############################################################
+#        QC Reports 
+############################################################
 def make_read_report_xlsx(df,
                      outdir=None,
                      step='collapsed',                      
@@ -2705,9 +2700,7 @@ def make_viruslib_matrix(df, cp=None):
 
 
 ############################################################
-#
 #        Assessment/QC/Validation/Simulation
-#
 ############################################################
 
 def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
