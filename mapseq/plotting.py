@@ -223,7 +223,10 @@ def counts_axis_plot_sns(ax,
     else:
         ax.set_ylabel(f'{column}')
         logging.debug(f'made axis with no scaling.')
-    
+
+    ax.set_xlim(left=0,right=None) 
+    ax.set_ylim(bottom=0, top=None) 
+
     ax.text(lx, ly, s=f"n={n}\ntop={t}\nsum={s}\nest_{proportion}_threshold={h}",
             fontsize=11, 
             horizontalalignment='right',
@@ -479,6 +482,8 @@ def make_generic_single_sns(df,
         if scale == 'log10':
             ax.set_xscale('log')
         ax.set(xlabel=x_label, ylabel=y_label)
+        ax.set_xlim(left=0,right=None) 
+        ax.set_ylim(bottom=0, top=None) 
         ax.set_title(title, fontsize=10)
         pdfpages.savefig(fig)
 
