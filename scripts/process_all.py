@@ -127,6 +127,10 @@ def process_mapseq_all(config_file,
             cmd.append('-s')
             cmd.append(sampleinfo_file)
                     
+        if sname == 'vbctable':
+            cmd.append('-s')
+            cmd.append(sampleinfo_file)
+
         if sname == 'reads':
             cmd.append('-s')
             cmd.append(sampleinfo_file)
