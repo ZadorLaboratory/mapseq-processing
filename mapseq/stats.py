@@ -317,7 +317,7 @@ def assess_readinfo(df,
     realregex = cp.get('readtable', 'realregex' )
     loneregex = cp.get('readtable', 'loneregex' )
     use_libtag = cp.getboolean('readtable','use_libtag')
-    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )
+    bcfile = os.path.expanduser( cp.get('ssi','ssifile') )
     inj_min_reads = int(cp.get('vbctable','inj_min_reads'))
     target_min_reads = int(cp.get('vbctable','target_min_reads'))
 
