@@ -138,8 +138,10 @@ if __name__ == '__main__':
     logging.info(f'loading {args.infile}')    
     df = load_mapseq_df( args.infile)   
     logging.debug(f'loaded. len={len(df)} dtypes = {df.dtypes}') 
+
+    project_id = cp.get('project','project_id')
     make_freqplot_single_sns(df, 
-                           title=f'{args.column} frequency',  
+                           title=f'{project_id} {args.column} frequency',  
                            outfile=args.outfile,
                            column=args.column,
                            scale=args.scale,
