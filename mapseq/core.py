@@ -759,7 +759,7 @@ def filter_by_sampleinfo(df,
     if cp is None:
         cp = get_default_config()
     logging.debug(f'len(df)={len(df)} ourtube={ourtube} type(ourtube)={type(ourtube)} ')
-    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
+    bcfile = os.path.expanduser( cp.get('ssi','ssifile') )    
     logging.debug(f'bcfile={bcfile}')
 
     drop_sampleinfo_columns = cp.getboolean('fastq','drop_sampleinfo_columns')
@@ -1298,7 +1298,7 @@ def process_make_readtable_pd(df,
         filter_by_libtag = False
     
     if bcfile is None:
-        bcfile = os.path.expanduser( cp.get('barcodes','ssifile') )    
+        bcfile = os.path.expanduser( cp.get('ssi','ssifile') )    
     
     logging.debug(f'spikeseq={spikeseq} realregex={realregex} loneregex={loneregex} bcfile={bcfile} use_lones={use_libtag}')
 
@@ -2563,7 +2563,7 @@ def make_controls_umireport_xlsx(df,
                     ndf.sort_values(by=[sort_by], ascending=False, inplace=True)
                     ndf.reset_index(inplace=True, drop=True)
                     ndf.to_csv(outfile, sep='\t')
-                    sh.add_value('/{step}',f'n_{fname}_vbcs', len(ndf) )
+                    sh.add_value(f'/{step}',f'n_{fname}_vbcs', len(ndf) )
                     # If it is a real control, add to control report. 
                     for s in CONTROL_SITES:
                         if s in fname:
@@ -2713,7 +2713,7 @@ def qc_make_readmatrix( df, sampdf=None, outdir='./', cp=None):
 
     if cp is None:
         cp = get_default_config()
-    bcfile = os.path.expanduser( cp.get('barcodes','ssifile') ) 
+    bcfile = os.path.expanduser( cp.get('ssi','ssifile') ) 
     project_id = cp.get('project','project_id')
 
     # Map label, rtprimer to SSIs    
