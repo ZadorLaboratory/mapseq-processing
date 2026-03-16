@@ -3025,3 +3025,36 @@ def generate_random(n_sequences=1000, n_bases=30, alphabet='CAGT'):
     return ( seqlist, df )
 
 
+def qc_calc_vbc_overlap( cdf, vdf, sampdf, cp=None):
+    '''
+
+    '''
+    logging.info(f'got cdf, vdf, and sampldf...')
+    if cp is None:
+        cp=get_default_config()
+
+    inj_samples = sampdf[ sampdf.siteinfo == 'injection' ]
+    inj_primers = list( inj_samples['rtprimer'] )
+    inj_labels = [ f'BC{x}' for x in inj_primers ]
+    logging.debug(f'checking samples {inj_labels}')
+
+    # only deal with reals. 
+    vdf = vdf[ vdf['type'] == 'real'].reset_index(drop=True)
+
+    vbc_list = list( cdf['vbc_read'])
+    logging.debug(f'handling list of {len(vbc_list)} VBCs.')
+    for label in inj_labels:
+        logging.debug(f'handling sample {label}...')
+        sdf = vdf[vdf['label'] == label].reset_index(drop=True)
+        col_list = []
+        for vbc in vbc_list:
+            xdf = sdf[sdf['vbc_read'] == vbc]
+            if len(xdf) > 0:
+                uc = int( xdf['umi_count'].sum())
+                col_list.append(uc)
+            else:
+                col_list.append(0)
+        scol = pd.Series(data=col_list, name=label)
+        cdf[label] = scol        
+    return cdf 
+

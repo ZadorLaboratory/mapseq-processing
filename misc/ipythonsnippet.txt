@@ -25,4 +25,4 @@ logging.getLogger().setLevel(logging.DEBUG)
 cfile = ''
 sfile = ''
 # cp.read(cfile)
-# sampdf = load_sampleinfo(sfile, cp)
+# sampdf = load_sample_info(sfile, cp=cp)
