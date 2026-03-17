@@ -3058,3 +3058,41 @@ def qc_calc_vbc_overlap( cdf, vdf, sampdf, cp=None):
         cdf[label] = scol        
     return cdf 
 
+
+def qc_matrix_vbc_overlap(mdf, cdf, cp=None ):
+    '''
+    add columns for controls in cdf to real barcode matrix (mdf)
+    give umi_counts for matching barcodes...
+    '''
+    logging.info(f'got mdf, cdf...')
+    if cp is None:
+        cp=get_default_config()
+
+    ndf = mdf.copy()
+    cdf = cdf[cdf['type'] == 'real'].reset_index(drop=True)
+
+    vbc_list = list( ndf.index)
+    logging.debug(f'handling list of {len(vbc_list)} VBCs.')
+
+    control_labels = list(cdf['label'].unique() )
+    logging.info(f'got list of controls: {control_labels}')
+    control_labels.sort()
+
+    for label in control_labels:
+        logging.debug(f'handling sample {label}...')
+        ldf = cdf[cdf['label'] == label ].reset_index(drop=True)
+        col_list = []
+        for i, vbc in enumerate( vbc_list ):
+            xdf = ldf[ldf['vbc_read'] == vbc]
+            logging.debug(f'vbc [{i}] {vbc} found {len(xdf)}')
+            if len(xdf) > 0:
+                uc = int( xdf['umi_count'].sum())
+                logging.debug(f'{vbc} found. umi_count = {uc} ')
+                col_list.append(uc)
+            else:
+                col_list.append(0)
+        logging.debug(f'umi_count list for new column=\n{col_list}')
+        #scol = pd.Series(data=col_list, name=label, dtype='int64')
+        logging.debug(f'new column:\n{col_list} ')
+        ndf[label] = col_list        
+    return ndf 
