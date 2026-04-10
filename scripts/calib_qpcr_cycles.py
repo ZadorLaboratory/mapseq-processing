@@ -37,13 +37,6 @@ if __name__ == '__main__':
                         type=str, 
                         help='out file.')    
 
-    parser.add_argument('-S','--samplesheet', 
-                        metavar='samplesheet',
-                        required=False,
-                        default='Sample information',
-                        type=str, 
-                        help='XLS sheet tab name.')
-
     parser.add_argument('-k','--kneed_sensitivity', 
                         metavar='kneed_sensitivity',
                         required=False,

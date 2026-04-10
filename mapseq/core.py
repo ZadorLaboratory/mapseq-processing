@@ -870,6 +870,12 @@ def aggregate_reads(df,
     
     if outdir is None:
         outdir = os.path.abspath('./')
+
+    by_source = cp.getboolean('fastq','aggregate_by_source', fallback=True)
+    by_column = None
+    if by_source:
+        by_column = 'source'
+    
     logging.info(f'aggregate_reads: use_dask={use_dask} dask_temp={dask_temp} min_reads={min_reads}')
     
     if use_dask:
@@ -883,7 +889,8 @@ def aggregate_reads(df,
         df = aggregate_reads_pd(df, 
                                 column, 
                                 outdir=outdir, 
-                                min_reads=min_reads )
+                                min_reads=min_reads,
+                                by_column = by_column )
     return df
     
     
@@ -891,30 +898,49 @@ def aggregate_reads(df,
 def aggregate_reads_pd(df, 
                        column=['sequence','source'], 
                        outdir=None, 
-                       min_reads=1):
+                       min_reads=1,
+                       by_column = 'source'):
     initlen = len(df)
     logging.debug(f'aggregating read counts DF len={len(df)} column={column}')
-    try:
-        # some test files may only have 'sequence' column.
+    
+    outdf = None
+
+    if by_column is not None:
+        by_vals = list( df[by_column].unique() )
+        for bval in by_vals:
+            logging.debug(f'aggregating {by_column}={bval}...')
+            sdf = df[ df[by_column] == bval ]
+            vcs = sdf.value_counts( column )
+            ndf = pd.DataFrame( vcs )
+            ndf.reset_index(inplace=True, drop=False)
+            logging.debug(f'ndf=\n{ndf}')
+            if outdf is None:
+                logging.debug(f'outdf is none, outdf = \n{ndf}')
+                outdf = ndf
+            else:
+                outdf = pd.concat([outdf, ndf], ignore_index=True)
+                logging.debug(f'outdf exists, outdf after another concat = \n{outdf}')
+        
+    else:
         vcs = df.value_counts( column )
-    except KeyError:
-        vcs = df.value_counts( column[0])
-    ndf = pd.DataFrame( vcs )
-    ndf.reset_index(inplace=True, drop=False)
-    ndf.rename({'count':'read_count'}, inplace=True, axis=1)
-    logging.debug(f'DF len={len(ndf)}')
+        ndf = pd.DataFrame( vcs )
+    logging.debug(f'final outdf = \n{outdf}')
+    logging.debug(f'finished aggregating. reindex and adjust count column name... ')
+    outdf.rename({'count':'read_count'}, inplace=True, axis=1)
+    outdf.reset_index(inplace=True, drop=False)
+    logging.debug(f'DF len={len(outdf)}')
     
     if min_reads > 1:
         logging.info(f'Dropping reads with less than {min_reads} read_count.')
-        logging.debug(f'Length before read_count threshold={len(ndf)}')
-        ndf = ndf[ndf['read_count'] >= min_reads]
-        ndf.reset_index(inplace=True, drop=True)
-        logging.info(f'Length after read_count threshold={len(ndf)}')    
+        logging.debug(f'Length before read_count threshold={len(outdf)}')
+        outdf = outdf[outdf['read_count'] >= min_reads]
+        outdf.reset_index(inplace=True, drop=True)
+        logging.info(f'Length after read_count threshold={len(outdf)}')    
     else:
         logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
-    logging.info(f'final output DF len={len(ndf)}')
-    
-    return ndf
+    logging.info(f'final output DF len={len(outdf)}')
+
+    return outdf
 
 def aggregate_reads_dd(seqdf, 
                        column=['sequence','source'], 
