@@ -1,4 +1,5 @@
 import copy
+import gc
 import glob
 import gzip
 import itertools
@@ -920,6 +921,10 @@ def aggregate_reads_pd(df,
             else:
                 outdf = pd.concat([outdf, ndf], ignore_index=True)
                 logging.debug(f'outdf exists, outdf after another concat = \n{outdf}')
+                ndf = None
+                collected_count = gc.collect()
+                logging.debug(f"Garbage collector: collected {collected_count} objects.")
+            log_objectinfo(outdf, 'aggregation outdf:')
         
     else:
         vcs = df.value_counts( column )
