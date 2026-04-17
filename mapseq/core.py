@@ -908,6 +908,8 @@ def aggregate_reads_pd(df,
 
     if by_column is not None:
         by_vals = list( df[by_column].unique() )
+        n_groups_total = len(by_vals)
+        n_groups_done = 0
         for bval in by_vals:
             logging.debug(f'aggregating {by_column}={bval}...')
             sdf = df[ df[by_column] == bval ]
@@ -924,8 +926,10 @@ def aggregate_reads_pd(df,
                 ndf = None
                 collected_count = gc.collect()
                 logging.debug(f"Garbage collector: collected {collected_count} objects.")
+            n_groups_done += 1
+            logging.info(f'[{n_groups_done}/{n_groups_total}]')
             log_objectinfo(outdf, 'aggregation outdf:')
-        
+
     else:
         vcs = df.value_counts( column )
         ndf = pd.DataFrame( vcs )
