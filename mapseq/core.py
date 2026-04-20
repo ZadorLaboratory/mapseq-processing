@@ -393,11 +393,11 @@ def load_sample_info(file_name,
         logging.info(f'loaded DF from Excel {file_name}')
 
         # Fix missing values with defaults. 
-        mmap = sdf['min_reads'] == ''
-        sdf.loc[mmap, 'min_reads'] = 1
+        #mmap = sdf['min_reads'] == ''
+        #sdf.loc[mmap, 'min_reads'] = 1
         
-        rmap = sdf['si_ratio'] == ''
-        sdf.loc[rmap, 'si_ratio'] = 1.0
+        #rmap = sdf['si_ratio'] == ''
+        #sdf.loc[rmap, 'si_ratio'] = 1.0
         
     elif file_name.endswith('.tsv'):
         sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
@@ -1713,7 +1713,7 @@ def process_make_vbctable_pd(df,
 
     # perform optional per-sample read thresholding.
     if sampdf is not None:
-        logging.debug('sampleinfo DF provided....')
+        logging.info('sampleinfo DF provided....')
         sampdf['min_reads'] = sampdf['min_reads'].astype(int)
         if int( sampdf['min_reads'].max()) > 1:
             logging.info('performing per-sample read count thresholding...')
