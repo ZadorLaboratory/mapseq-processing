@@ -936,7 +936,7 @@ def aggregate_reads_pd(df,
     logging.debug(f'final outdf = \n{outdf}')
     logging.debug(f'finished aggregating. reindex and adjust count column name... ')
     outdf.rename({'count':'read_count'}, inplace=True, axis=1)
-    outdf.reset_index(inplace=True, drop=False)
+    outdf.reset_index(inplace=True, drop=True)
     logging.debug(f'DF len={len(outdf)}')
     
     if min_reads > 1:

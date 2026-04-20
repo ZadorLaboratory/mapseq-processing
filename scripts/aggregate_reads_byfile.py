@@ -164,6 +164,8 @@ if __name__ == '__main__':
                             dask_temp = args.dask_temp,
                             cp=cp 
                             )
+        logging.debug(f'got aggregated df len={len(df)}:\n{df} ')
+
         write_mapseq_df(df, outfile)
     logging.info('Done aggregate_reads')
     
