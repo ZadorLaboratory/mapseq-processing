@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 #
-# Aggregate XYZ.reads.tsv by file, 
-# w/ parallel output to XYZ.aggregated.tsv 
-#
-# Needed to overcome Novaseq experiment size which is too
-# large for global aggregation. 
-#
+# Take in one or more aggregated dataframe files
+# Re-aggregate by sequence
+# Output SINGLE fully aggregated dataframe. 
 import argparse
 import logging
 import os
@@ -57,7 +54,6 @@ if __name__ == '__main__':
                     type=str, 
                     help='Logfile for subprocess.')
   
-
     parser.add_argument('-k', '--use_dask', 
                         action="store_true", 
                         dest='use_dask',
@@ -70,19 +66,12 @@ if __name__ == '__main__':
                     type=str, 
                     help='Fast, roomy storage for DASK temp files.')
 
-    parser.add_argument('-m','--min_reads', 
-                        metavar='min_reads',
-                        required=False,
-                        default=None,
-                        type=int, 
-                        help='Min reads to retain initial full read.')
-
     parser.add_argument('-C','--column', 
                     metavar='column',
                     required=False,
-                    default=['sequence','source'], 
+                    default=None, 
                     type=str, 
-                    help='Read column to aggregate.')
+                    help='Column(s) to aggregate on.')
 
     parser.add_argument('-D','--datestr', 
                     metavar='datestr',
@@ -91,19 +80,19 @@ if __name__ == '__main__':
                     type=str, 
                     help='Include datestr in relevant files.')
 
-    parser.add_argument('-O','--outdir', 
-                    metavar='outdir',
-                    required=True,
+    parser.add_argument('-o','--outfile', 
+                    metavar='outfile',
+                    required=False,
                     default=None, 
                     type=str, 
-                    help='outdir. required for parallel operation.')
+                    help='Full dataset table TSV') 
 
     parser.add_argument('infiles' ,
                         metavar='infiles', 
                         type=str,
                         nargs='+',
                         default=None, 
-                        help='Read format TSV or Parquet files. "read" required in name. ')
+                        help='Read format TSV or Parquet files.')
         
     args= parser.parse_args()
     
@@ -145,27 +134,20 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
-    for infile in args.infiles:
-        logging.info(f'handling infile={infile}')
-        infile = os.path.abspath(infile)
-        dirpath, filename = os.path.split(infile)
-        base, ext = os.path.splitext(filename)
-        outbase = base.replace('reads','aggregated')
-        outfile = os.path.join(outdir, f'{outbase}.tsv')
-        logging.info(f'calculated outfile = {outfile}')
+    columns = None
+    if args.column is not None:
+        columns = [ x.strip() for x in args.columns.split(',') ] 
+    else:
+        columns = ['sequence']
 
-        df = load_mapseq_df( infile, fformat='reads', use_dask=args.use_dask, use_arrow=True)
-        logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
-        df = aggregate_reads( df, 
-                              column=args.column,
-                              outdir=outdir,
-                              min_reads = min_reads,
-                              use_dask = args.use_dask, 
-                              dask_temp = args.dask_temp,
-                              cp=cp 
-                            )
-        logging.debug(f'got aggregated df len={len(df)}:\n{df} ')
 
-        write_mapseq_df(df, outfile)
+    df = reaggregate_reads( args.infiles, 
+                            column=args.column,
+                            use_dask = args.use_dask, 
+                            dask_temp = args.dask_temp,
+                            cp=cp )
+    logging.info(f'Got reaggregated DF len={len(df)}')
+
+    write_mapseq_df(df, outfile)
     logging.info('Done aggregate_reads')
     

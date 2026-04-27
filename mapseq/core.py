@@ -393,6 +393,8 @@ def load_sample_info(file_name,
         logging.info(f'loaded DF from Excel {file_name}')
 
         # Fix missing values with defaults. 
+        # If int values are there, this fails with type error 
+        # Better to simply require all rows be filled in, if any will be used. 
         #mmap = sdf['min_reads'] == ''
         #sdf.loc[mmap, 'min_reads'] = 1
         
@@ -1008,6 +1010,43 @@ def aggregate_reads_dd(seqdf,
         logging.info(f'min_reads = {min_reads} skipping initial read count thresholding.')  
     logging.info(f'final output DF len={len(ndf)}')    
     return ndf
+
+
+def reaggregate_reads( infiles, 
+                       column=['sequence'],
+                       use_dask = False, 
+                       dask_temp = None,
+                       cp=None ):
+    '''
+    Re-aggregate on sequence column, 
+    Sum read_count column. 
+    Drop 'source' column if it exists. 
+
+    Used with large Novaseq datasets.
+    '''
+
+    if cp is None:
+        cp = get_default_config()
+    logging.info(f'Reaggregating {len(infiles)} files by {column}')
+    
+    df_list = []
+    for infile in infiles:
+        logging.info(f'handling infile={infile}')
+        infile = os.path.abspath(infile)
+        df = load_mapseq_df( infile, fformat='aggregated', use_dask=use_dask, use_arrow=True)
+        logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}')
+        df_list.append(df)
+
+    mdf = pd.concat(df_list, ignore_index=True )
+    logging.info(f'reaggregating merged DF len={len(mdf)}')
+    if 'source' in list(mdf.columns):
+        mdf.drop(columns='source', inplace=True)
+    agg_params = {'read_count': 'sum' }
+    adf = mdf.groupby( ['sequence'], observed=True).agg(agg_params).reset_index()
+    adf.sort_values(by='read_count', inplace=True, ascending=False)
+    adf.reset_index(inplace=True, drop=True)
+    logging.info(f'reaggregated DF len={len(adf)}')
+    return adf
 
 
 def sequence_value_counts(x):
