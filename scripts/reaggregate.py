@@ -143,6 +143,6 @@ if __name__ == '__main__':
                             cp=cp )
     logging.info(f'Got reaggregated DF len={len(df)}')
 
-    write_mapseq_df(df, outfile)
+    write_mapseq_df(df, args.outfile)
     logging.info('Done aggregate_reads')
     
