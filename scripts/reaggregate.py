@@ -82,8 +82,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
-                    required=False,
-                    default=None, 
+                    required=True, 
                     type=str, 
                     help='Full dataset table TSV') 
 
