@@ -108,7 +108,8 @@ if __name__ == '__main__':
     logging.debug(f'Running with config. {args.config}: {cdict}')
     logging.debug(f'infiles={args.infiles}')
     
-    outdir = os.path.abspath(args.outdir)
+    outpath, of = os.path.split(args.outfile)
+    outdir = os.path.abspath(outpath)
     logging.debug(f'making missing outdir: {outdir} ')
     os.makedirs(outdir, exist_ok=True)
     logging.info(f'outdir={outdir} ')
@@ -123,11 +124,6 @@ if __name__ == '__main__':
         logStream.setFormatter(formatter)
         log.addHandler(logStream)
 
-    if args.min_reads is None:
-        min_reads= int( cp.get('fastq','min_reads') )
-    else:
-        min_reads = int(args.min_reads)
-
     if args.datestr is None:
         datestr = dt.datetime.now().strftime("%Y%m%d%H%M")
     else:
@@ -139,7 +135,6 @@ if __name__ == '__main__':
         columns = [ x.strip() for x in args.columns.split(',') ] 
     else:
         columns = ['sequence']
-
 
     df = reaggregate_reads( args.infiles, 
                             column=args.column,
