@@ -229,12 +229,11 @@ If all parameters are known, and the underlying pipeline commands have been test
 	-c  M253.mapseq.conf                # customized configuration file.   
 	-s  M253.sampleinfo.xlsx 			# sample metadata
 	-H  vbctable						# optional halt step. If omitted will run to matrices 
-	-O ../run1 							# top-level output directory. sub-directories per step will be created.
+	-O  ./run1 							# top-level output directory. sub-directories per step will be created.
 	fastq/M253_CR_S1_R*.fastq			# paired-end input FASTQs.
 ```
 
-
-
+If a sub-command does fail, you can examine the subcommand logging output within the output directory. 
 
 
 ## Auxiliary Utilities
