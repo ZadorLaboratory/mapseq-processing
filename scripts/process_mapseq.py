@@ -19,7 +19,7 @@ from mapseq.utils import *
 from mapseq.stats import *  
 
 
-STEPLIST=[ 'reads'      ,
+NEXTSEQ_STEPLIST=[ 'reads'      ,
            'aggregated',
            'filtered',
            'readtable' ,
@@ -29,7 +29,7 @@ STEPLIST=[ 'reads'      ,
            'matrices' 
          ]
 
-STEPMAP={ 'reads'       : 'process_fastq_pairs',
+NEXTSEQ_STEPMAP={ 'reads'       : 'process_fastq_pairs',
           'aggregated'  : 'aggregate_reads',
           'filtered'    : 'filter_split' ,
           'readtable'   : 'make_readtable',
@@ -39,8 +39,7 @@ STEPMAP={ 'reads'       : 'process_fastq_pairs',
           'matrices'    : 'make_matrices'
         }
 
-
-DIRMAP = { 'process_fastq_pairs': 'reads',
+NEXTSEQ_DIRMAP = { 'process_fastq_pairs': 'reads',
            'aggregate_reads'    : 'aggregated',
            'filter_split'       : 'filtered',
            'make_readtable'     : 'readtable',
@@ -50,8 +49,38 @@ DIRMAP = { 'process_fastq_pairs': 'reads',
            'make_matrices'      : 'matrices'
     }
 
+NOVASEQ_STEPLIST=[  'reads'      ,
+                    'aggregated',
+                    'filtered',
+                    'readtable' ,
+                    'collapsed' ,
+                    'vbctable'  ,
+                    'vbcfiltered',
+                    'matrices' 
+                ]
 
-def process_mapseq_all(config_file, 
+NOVASEQ_STEPMAP={   'reads'       : 'process_fastq_pairs',
+                    'aggregated'  : 'aggregate_reads',
+                    'filtered'    : 'filter_split' ,
+                    'readtable'   : 'make_readtable',
+                    'collapsed'   : 'align_collapse',
+                    'vbctable'    : 'make_vbctable',
+                    'vbcfiltered' : 'filter_vbctable',
+                    'matrices'    : 'make_matrices'
+        }
+
+NOVASEQ_DIRMAP = { 'process_fastq_pairs': 'reads',
+                    'aggregate_reads'    : 'aggregated',
+                    'filter_split'       : 'filtered',
+                    'make_readtable'     : 'readtable',
+                    'align_collapse'     : 'collapsed',
+                    'make_vbctable'      : 'vbctable',
+                    'filter_vbctable'    : 'vbcfiltered',
+                    'make_matrices'      : 'matrices'
+    }
+
+
+def process_mapseq_all_nextseq(config_file, 
                        sampleinfo_file, 
                        infiles , 
                        outdir=None, 
@@ -62,7 +91,7 @@ def process_mapseq_all(config_file,
     executes each pipeline script in an external process. 
     
     '''
-    global STEPLIST
+    global NEXTSEQ_STEPLIST
     
     logging.info(f'{len(infiles)} input files. config={config_file} sampleinfo={sampleinfo_file}, outdir={outdir}, force={force}')
     cp = ConfigParser()
@@ -78,22 +107,22 @@ def process_mapseq_all(config_file,
 
     if halt is not None:
         newstep = []
-        for step in STEPLIST:
+        for step in NEXTSEQ_STEPLIST:
             if step != halt:
                 newstep.append(step)
             elif step == halt:
                 newstep.append(step)
                 logging.debug(f'found halting step {halt}. breaking. ')
                 break
-        logging.debug(f'new STEPLIST={STEPLIST}')
-        STEPLIST = newstep
+        logging.debug(f'new STEPLIST={NEXTSEQ_STEPLIST}')
+        NEXTSEQ_STEPLIST = newstep
 
-    for step in STEPLIST:
+    for step in NEXTSEQ_STEPLIST:
         runstep = True
         soutdir = None
         soutfile = None
-        sprog = STEPMAP[step]
-        sname = DIRMAP[sprog]
+        sprog = NEXTSEQ_STEPMAP[step]
+        sname = NEXTSEQ_DIRMAP[sprog]
         logging.debug(f'handling step={step} sprog={sprog} sname={sname}')
         
         if sname == 'matrices':
@@ -103,9 +132,9 @@ def process_mapseq_all(config_file,
     
         # define infile
         if sname != 'reads':
-            instep = STEPLIST [ STEPLIST.index(step) - 1 ]
-            inprog = STEPMAP[instep]
-            insname = DIRMAP[inprog]
+            instep = NEXTSEQ_STEPLIST [ NEXTSEQ_STEPLIST.index(step) - 1 ]
+            inprog = NEXTSEQ_STEPMAP[instep]
+            insname = NEXTSEQ_DIRMAP[inprog]
             infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.tsv')
         
         log_file = os.path.join(outdir, f'{step}.log')
@@ -210,7 +239,7 @@ if __name__ == '__main__':
                         required=False,
                         default=None,
                         type=str, 
-                        help=f'Stage name to stop after: {STEPLIST}')
+                        help=f'Stage name to stop after: {NEXTSEQ_STEPLIST}')
 
     parser.add_argument('-L','--logfile', 
                     metavar='logfile',
@@ -218,6 +247,13 @@ if __name__ == '__main__':
                     default=None, 
                     type=str, 
                     help='Logfile for subprocess.')
+    
+    parser.add_argument('-t','--technology',
+                        metavar='technology',
+                        required=False,
+                        default='nextseq',
+                        type=str,
+                        help='Sequencing technology/FASTQ type. nextseq|novaseq')
 
     parser.add_argument('infiles' ,
                         metavar='infiles', 
@@ -262,14 +298,22 @@ if __name__ == '__main__':
     # Since we're callling subprocesses, no need for root statshandler...
     #sh = StatsHandler(outdir=outdir, datestr=datestr)
 
-    process_mapseq_all( config_file=args.config, 
-                        sampleinfo_file=args.sampleinfo, 
-                        infiles=args.infiles , 
-                        outdir=outdir, 
-                        force=args.force, 
-                        halt = args.halt
-                        )
-
+    if args.technology == 'nextseq':
+        logging.info('processing all as nextseq.')
+        process_mapseq_all_nextseq( config_file=args.config, 
+                                    sampleinfo_file=args.sampleinfo, 
+                                    infiles=args.infiles , 
+                                    outdir=outdir, 
+                                    force=args.force, 
+                                    halt = args.halt )
+    elif args.technology == 'novaseq':
+        logging.info('processing all as novaseq.')
+        process_mapseq_all_novaseq( config_file=args.config, 
+                                    sampleinfo_file=args.sampleinfo, 
+                                    infiles=args.infiles , 
+                                    outdir=outdir, 
+                                    force=args.force, 
+                                    halt = args.halt )        
     logging.info('Done process_all.') 
  
    

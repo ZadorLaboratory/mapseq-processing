@@ -68,6 +68,11 @@ if __name__ == '__main__':
                     type=str, 
                     help='Include datestr in relevant files.')
 
+    parser.add_argument('-C','--concat', 
+                    action="store_true", 
+                    default=False, 
+                    help='Produce concatenated DF for all inputs.')
+
     parser.add_argument('-f','--force', 
                     action="store_true", 
                     default=False, 
@@ -187,10 +192,13 @@ if __name__ == '__main__':
 
     df = process_fastq_grouped( infilelist, 
                                 outdir,
+                                concat=args.concat, 
                                 sampdf = sampdf,                          
                                 force=args.force,
                                 cp = cp)
-    
-    write_mapseq_df(df, outfile)    
+    if df is not None:
+        write_mapseq_df(df, outfile)    
+    else:
+        logging.info(f'No final output given.')
     logging.info('Done process_fastq_pairs')  
     

@@ -217,6 +217,26 @@ A spike-in barcode matrix (sbcm). Contains raw numbers of spike-in molecules for
 
 A real barcode matrix normalized by spike-ins (nbcm). The normalized matrix adjusts the raw numbers by spike-in amounts. This normalization is done such that the real counts in each column are weighted by the total number of spike-in molecules in that column, in such a way that the weights are always 1.0 or greater. For most further analysis, this can be considered the canonical processing output file. 
 
+
+## All-in-One Processing
+
+If all parameters are known, and the underlying pipeline commands have been tested, there is a top-level all-in-one command to run all pipeline steps in order. 
+
+### process_mapseq.py
+```
+~/git/mapseq-processing/scripts/process_mapseq.py 
+	-v 
+	-c  M253.mapseq.conf                # customized configuration file.   
+	-s  M253.sampleinfo.xlsx 			# sample metadata
+	-H  vbctable						# optional halt step. If omitted will run to matrices 
+	-O ../run1 							# top-level output directory. sub-directories per step will be created.
+	fastq/M253_CR_S1_R*.fastq			# paired-end input FASTQs.
+```
+
+
+
+
+
 ## Auxiliary Utilities
 
 ### make_countsplots.py

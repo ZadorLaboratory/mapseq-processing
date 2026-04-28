@@ -581,12 +581,38 @@ def process_fastq_pairs_pd_chunked( infilelist,
     return df          
 
 
-def process_fastq_grouped(   infilelist, 
-                             outdir,
-                             sampdf=None,                         
-                             force=False, 
-                             cp = None,
-                             ):
+def process_fastq_grouped(  infilelist, 
+                            outdir,
+                            concat=True,
+                            sampdf=None,                       
+                            force=False, 
+                            cp = None,
+                         ):
+    '''
+    determine which sub-fuction per concat...
+    '''
+    df = None
+    if concat:
+        df = process_fastq_grouped_concat(   infilelist, 
+                                    outdir,
+                                    sampdf,                         
+                                    force, 
+                                    cp)
+    else:
+        process_fastq_grouped_noconcat(   infilelist, 
+                                    outdir,
+                                    sampdf,                         
+                                    force, 
+                                    cp)
+    return df        
+                              
+
+def process_fastq_grouped_concat(   infilelist, 
+                                    outdir,
+                                    sampdf=None,                         
+                                    force=False, 
+                                    cp = None,
+                                ):
     '''
     parse infiles by pairs. 
     get extra field(s)
@@ -726,6 +752,155 @@ def process_fastq_grouped(   infilelist,
     sh.add_value('/fastq','pairs_handled', pairnum )
     outdf.reset_index(inplace=True, drop=True)
     return outdf          
+
+
+def process_fastq_grouped_noconcat(   infilelist, 
+                                      outdir,
+                                      sampdf=None,                         
+                                      force=False, 
+                                      cp = None,
+                                  ):
+    '''
+    parse infiles by pairs. 
+    get extra field(s)
+    optionally filter by extra fields values. 
+    Useful for Novaseq raw data, with 1 sample per FASTQ pair. 
+    Do not try to produced merged/final output. Just handle file pairs. 
+
+    '''
+    r1s = int(cp.get('fastq','r1start'))
+    r1e = int(cp.get('fastq','r1end'))
+    r2s = int(cp.get('fastq','r2start'))
+    r2e = int(cp.get('fastq','r2end'))
+    
+    chunksize = int(cp.get('fastq','chunksize', fallback=50000))
+    source_regex = cp.get('fastq','source_regex', fallback='(.+?_S.+?_L.+?)_')
+    ourtube_regex = cp.get('fastq','ourtube_regex', fallback='.+?-(.+?)_')
+
+    logging.info(f' source_regex = {source_regex} ourtube_regex = {ourtube_regex}')
+
+    #write_each = cp.getboolean('fastq','write_each', fallback=True)
+    write_each = True
+
+    filter_by_non_dominant = cp.getboolean('fastq','filter_by_non_dominant', fallback=False )
+    filter_column = cp.get('fastq','filter_column', fallback='ssi')
+    drop_filter_column = cp.getboolean('fastq','drop_filter_column', fallback=False)
+    filter_by_sampleinfo_ssi = cp.getboolean('fastq','filter_by_sampleinfo_ssi', fallback=False)
+    if sampdf is None:
+        filter_by_sampleinfo_ssi = False
+        logging.warning('No sampleinfo provided. Filename-based SSI filtering not possible.')
+    logging.info(f' write_each = {write_each} filter_by_non_dominant={filter_by_non_dominant} filter_column={filter_column} drop_filter_column={drop_filter_column} filter_by_sampleinfo_ssi={filter_by_sampleinfo_ssi} chunksize={chunksize} lines.')
+    logging.debug(f'read1[{r1s}:{r1e}] + read2[{r2s}:{r2e}]')
+    
+    sh = get_default_stats()
+    pairnum = 1
+    chunknum = 1
+
+    n_reads_total = 0
+
+    for (read1file, read2file) in infilelist:
+        df = None
+        source_label = parse_sourcefile(read1file, source_regex, 1 )
+        if filter_by_sampleinfo_ssi:
+            source_tube = parse_sourcefile(read1file, ourtube_regex, 1 )
+            logging.info(f'source_tube={source_tube}')
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label} ')
+        start = dt.datetime.now()
+        fh1 = get_fh(read1file)
+        dfi1 = pd.read_csv(fh1, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize) 
+        fh2 = get_fh(read2file)
+        dfi2 = pd.read_csv(fh2, 
+                           header=None, 
+                           skiprows = lambda x: x % 4 != 1, 
+                           dtype="string[pyarrow]", 
+                           chunksize=chunksize)
+        
+        for chunk1 in dfi1:
+            chunk2 = dfi2.get_chunk()
+            logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
+            if df is None:
+                logging.debug(f'making new read sequence DF...')
+                df = pd.DataFrame(columns=['sequence'])
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={df.dtypes}')           
+                df['source'] = source_label
+            else:
+                logging.debug(f'making additional read sequence DF...')
+                ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
+                logging.info(f'got chunk len={len(chunk1)} slicing...')
+                ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                logging.info(f'chunk df type={ndf.dtypes}')                
+                ndf['source'] = source_label                
+                df = pd.concat([df, ndf], copy=False, ignore_index=True)
+            logging.debug(f'handled chunk number {chunknum}')
+            chunknum += 1
+        # We now have all input from 2 input files.
+        
+        # split out requested fields. 
+        logging.info(f'getting additional field(s)...')
+        fieldlist = add_split_fields(df, 'sequence', cp, 'fastq')
+        
+        # Keep track of total, since we're not making concat DF.
+        n_reads_total = len(df)
+
+        # save to file.
+        if write_each: 
+            logging.info(f'write_each={write_each}  Saving to readfile...')
+            of = os.path.join(outdir, f'{source_label}.reads.tsv')
+            write_mapseq_df(df, of)
+        else:
+            logging.debug(f'write_each={write_each} skipping.')
+        
+        # gather extra field stats. 
+        for field in fieldlist:
+            try:
+                vc = df[field].value_counts()
+                n_dom = vc.iloc[0]
+                logging.debug(f'dominant value count for {field} = {n_dom} ') 
+                pct_dom = n_dom / len(df) * 100
+                spct = f'{pct_dom:.2f}'
+                sh.add_value('/fastq', f'pair{pairnum}_{source_label}_{field}_percent', spct )
+            except Exception as e:
+                logging.warning(f'issue dealing with source={source_label} field={field}')
+        logging.debug(f'handled pair number {pairnum}')
+        
+        # Measure file read speed.
+        end = dt.datetime.now()
+        delta_seconds = (dt.datetime.now() - start).seconds
+        log_transferinfo( [read1file, read2file] , delta_seconds)
+        sh.add_value('/fastq',f'pair{pairnum}_len', len(df) )
+        pairnum += 1
+
+        # Optionally handle per-file non-dominant filtering.
+        if filter_by_non_dominant:
+            filter_column = cp.get('fastq','filter_column')
+            logging.debug(f'filtering by dominant value in source.')
+            df = filter_non_dominant( df, 
+                                      filter_column=filter_column, 
+                                      drop_filter_column=drop_filter_column)
+        else:
+            logging.debug(f'no filtering by non-dominant column value.')
+
+        if filter_by_sampleinfo_ssi:
+            logging.debug(f'filtering by ssi. source_label={source_label} source_tube={source_tube}')
+            filter_column = cp.get('fastq','filter_column')
+            df = filter_by_sampleinfo(df,
+                                      sampdf = sampdf,
+                                      ourtube = source_tube,
+                                      cp=cp
+                                      )
+        else:
+            logging.debug(f'no filtering by sampleinfo SSI.') 
+
+    logging.info('Finished processing all input.')
+    sh.add_value('/fastq','reads_handled', n_reads_total )
+    sh.add_value('/fastq','pairs_handled', pairnum )
+
 
 
 def filter_non_dominant(df,
@@ -909,6 +1084,7 @@ def aggregate_reads_pd(df,
     outdf = None
 
     if by_column is not None:
+        logging.debug(f'by_column = {by_column}')
         by_vals = list( df[by_column].unique() )
         n_groups_total = len(by_vals)
         n_groups_done = 0
@@ -931,10 +1107,14 @@ def aggregate_reads_pd(df,
             n_groups_done += 1
             logging.info(f'[{n_groups_done}/{n_groups_total}]')
             log_objectinfo(outdf, 'aggregation outdf:')
-
     else:
+        logging.debug(f'by_column is None. Aggregating on {column}')
         vcs = df.value_counts( column )
         ndf = pd.DataFrame( vcs )
+        ndf.reset_index(inplace=True)
+        logging.info(f'Made DF len={len(ndf)} columns={ndf.columns}')
+        outdf = ndf
+
     logging.debug(f'final outdf = \n{outdf}')
     logging.debug(f'finished aggregating. reindex and adjust count column name... ')
     outdf.rename({'count':'read_count'}, inplace=True, axis=1)
