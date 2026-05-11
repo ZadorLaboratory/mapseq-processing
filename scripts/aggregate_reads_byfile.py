@@ -42,6 +42,11 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
+
+    parser.add_argument('-f','--force', 
+                    action="store_true", 
+                    default=False, 
+                    help='Recalculate even if output exists.') 
     
     parser.add_argument('-c','--config', 
                         metavar='config',
@@ -154,18 +159,20 @@ if __name__ == '__main__':
         outfile = os.path.join(outdir, f'{outbase}.tsv')
         logging.info(f'calculated outfile = {outfile}')
 
-        df = load_mapseq_df( infile, fformat='reads', use_dask=args.use_dask, use_arrow=True)
-        logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
-        df = aggregate_reads( df, 
-                              column=args.column,
-                              outdir=outdir,
-                              min_reads = min_reads,
-                              use_dask = args.use_dask, 
-                              dask_temp = args.dask_temp,
-                              cp=cp 
-                            )
-        logging.debug(f'got aggregated df len={len(df)}:\n{df} ')
-
-        write_mapseq_df(df, outfile)
+        if (not os.path.exists(outfile) or args.force):
+            df = load_mapseq_df( infile, fformat='reads', use_dask=args.use_dask, use_arrow=True)
+            logging.debug(f'loaded. len={len(df)} dtypes =\n{df.dtypes}') 
+            df = aggregate_reads( df, 
+                                column=args.column,
+                                outdir=outdir,
+                                min_reads = min_reads,
+                                use_dask = args.use_dask, 
+                                dask_temp = args.dask_temp,
+                                cp=cp 
+                                )
+            logging.debug(f'got aggregated df len={len(df)}:\n{df} ')
+            write_mapseq_df(df, outfile)
+        else:
+            logging.info(f'Output {outfile} exists and force={args.force} Skipping.')
     logging.info('Done aggregate_reads')
     

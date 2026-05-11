@@ -14,8 +14,6 @@ sys.path.append(gitpath)
 from mapseq.core import *
 from mapseq.utils import *
 
-
-
 def merge_mapseq_dataframes(infiles, outfile):
     '''
 
@@ -52,7 +50,22 @@ if __name__ == '__main__':
                         action="store_true", 
                         dest='verbose', 
                         help='verbose logging')
-       
+
+    parser.add_argument('-c','--config', 
+                        metavar='config',
+                        required=False,
+                        default=os.path.expanduser('~/git/mapseq-processing/etc/mapseq.conf'),
+                        type=str, 
+                        help='Configuration file.')  
+
+    parser.add_argument('-L','--logfile', 
+                    metavar='logfile',
+                    required=False,
+                    default=None, 
+                    type=str, 
+                    help='Logfile for subprocess.')
+
+
     parser.add_argument('-o','--outfile', 
                     metavar='outfile',
                     required=True,
@@ -73,6 +86,14 @@ if __name__ == '__main__':
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)   
 
+    if args.logfile is not None:
+        log = logging.getLogger()
+        FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(name)s %(filename)s:%(lineno)d %(funcName)s(): %(message)s'
+        formatter = logging.Formatter(FORMAT)
+        logStream = logging.FileHandler(filename=args.logfile)
+        logStream.setFormatter(formatter)
+        log.addHandler(logStream)
+
     logging.debug(f'infile={args.infiles} outfile={args.outfile}')
 
     outfile = os.path.abspath(args.outfile)
@@ -82,8 +103,7 @@ if __name__ == '__main__':
     (base, ext) = os.path.splitext(filename)   
     head = base.split('.')[0]
     outdir = dirname
-    logging.debug(f'outdir set to {outdir}')
-       
+    logging.debug(f'outdir set to {outdir}')       
     outdir = os.path.abspath(outdir)    
     os.makedirs(outdir, exist_ok=True)
         

@@ -39,20 +39,20 @@ NEXTSEQ_STEPMAP={ 'reads'       : 'process_fastq_pairs',
           'matrices'    : 'make_matrices'
         }
 
-NEXTSEQ_DIRMAP = { 'process_fastq_pairs': 'reads',
-           'aggregate_reads'    : 'aggregated',
-           'filter_split'       : 'filtered',
-           'make_readtable'     : 'readtable',
-           'align_collapse'     : 'collapsed',
-           'make_vbctable'      : 'vbctable',
-           'filter_vbctable'    : 'vbcfiltered',
-           'make_matrices'      : 'matrices'
+NEXTSEQ_DIRMAP = {  'process_fastq_pairs': 'reads',
+                    'aggregate_reads'    : 'aggregated',
+                    'filter_split'       : 'filtered',
+                    'make_readtable'     : 'readtable',
+                    'align_collapse'     : 'collapsed',
+                    'make_vbctable'      : 'vbctable',
+                    'filter_vbctable'    : 'vbcfiltered',
+                    'make_matrices'      : 'matrices'
     }
 
 NOVASEQ_STEPLIST=[  'reads'      ,
-                    'aggregated',
+                    'aggregatedfile',
                     'merged',
-                    'reaggregated',
+                    'aggregated',
                     'filtered',
                     'readtable' ,
                     'collapsed' ,
@@ -61,21 +61,22 @@ NOVASEQ_STEPLIST=[  'reads'      ,
                     'matrices' 
                 ]
 
-NOVASEQ_STEPMAP={   'reads'       : 'process_fastq_pairs',
-                    'aggregated'  : 'aggregate_reads_byfile',
-                    'merged'      : 'merge_mapseq_dataframes',
-                    'filtered'    : 'filter_split' ,
-                    'readtable'   : 'make_readtable',
-                    'collapsed'   : 'align_collapse',
-                    'vbctable'    : 'make_vbctable',
-                    'vbcfiltered' : 'filter_vbctable',
-                    'matrices'    : 'make_matrices'
+NOVASEQ_STEPMAP={   'reads'         : 'process_fastq_pairs',
+                    'aggregatedfile'  : 'aggregate_reads_byfile',
+                    'merged'        : 'merge_mapseq_dataframes',
+                    'aggregated'    : 'reaggregate',
+                    'filtered'      : 'filter_split' ,
+                    'readtable'     : 'make_readtable',
+                    'collapsed'     : 'align_collapse',
+                    'vbctable'      : 'make_vbctable',
+                    'vbcfiltered'   : 'filter_vbctable',
+                    'matrices'      : 'make_matrices'
         }
 
-NOVASEQ_DIRMAP = { 'process_fastq_pairs'        : 'reads',
-                    'aggregate_reads_byfile'    : 'aggregated',
+NOVASEQ_DIRMAP = {  'process_fastq_pairs'       : 'reads',
+                    'aggregate_reads_byfile'    : 'aggregatedfile',
                     'merge_mapseq_dataframes'   : 'merged',
-                    'reaggregate'               : 'reaggregated',
+                    'reaggregate'               : 'aggregated',
                     'filter_split'              : 'filtered',
                     'make_readtable'            : 'readtable',
                     'align_collapse'            : 'collapsed',
@@ -83,6 +84,8 @@ NOVASEQ_DIRMAP = { 'process_fastq_pairs'        : 'reads',
                     'filter_vbctable'           : 'vbcfiltered',
                     'make_matrices'             : 'matrices'
     }
+
+
 
 
 def process_mapseq_all_nextseq(config_file, 
@@ -168,6 +171,7 @@ def process_mapseq_all_nextseq(config_file,
         if sname == 'reads':
             cmd.append('-s')
             cmd.append(sampleinfo_file)
+            cmd.append('-C')
             for fn in infiles:
                 cmd.append(fn)
         else:
@@ -205,10 +209,13 @@ def process_mapseq_all_novaseq(config_file,
     '''    
     performs end-to-end default processing. 
     executes each pipeline script in an external process. 
-    
+    infiles are input FASTQ files. 
+
     '''
     global NOVASEQ_STEPLIST
-    
+    DIRECTORY_OUTPUT_STEPS = [ 'matrices','aggregatedfile' ]
+    GLOB_INPUT_STEPS = ['aggregatedfile', 'merged']
+
     logging.info(f'{len(infiles)} input files. config={config_file} sampleinfo={sampleinfo_file}, outdir={outdir}, force={force}')
     cp = ConfigParser()
     cp.read(config_file)
@@ -240,19 +247,33 @@ def process_mapseq_all_novaseq(config_file,
         sprog = NOVASEQ_STEPMAP[step]
         sname = NOVASEQ_DIRMAP[sprog]
         logging.debug(f'handling step={step} sprog={sprog} sname={sname}')
-        
-        if sname == 'matrices':
+
+        # define output target (directory or file)        
+        if sname in DIRECTORY_OUTPUT_STEPS:
             soutdir = os.path.join(outdir, f'{sname}.out/')
+            soutfile = None
         else:
             soutfile = os.path.join(outdir, f'{sname}.out/{project_id}.{sname}.tsv')
-    
-        # define infile
-        if sname != 'reads':
+
+        # define infiles
+        if sname in GLOB_INPUT_STEPS:
+            logging.debug(f'{sname} in {GLOB_INPUT_STEPS} globbing...')
+            instep = NOVASEQ_STEPLIST [ NOVASEQ_STEPLIST.index(step) - 1 ]
+            inprog = NOVASEQ_STEPMAP[instep]
+            insname = NOVASEQ_DIRMAP[inprog]
+            infiles_glob = os.path.join( outdir, f'{insname}.out/*.parquet')
+            infiles = glob.glob(infiles_glob)
+            logging.debug(f'Found infiles: {infiles}')
+            if len(infiles) < 1:
+                logging.error(f"No infiles for step {sname} check {os.path.join( outdir, {insname} + '.out/') }")
+                sys.exit(2)
+
+        elif sname != 'reads':
             instep = NOVASEQ_STEPLIST [ NOVASEQ_STEPLIST.index(step) - 1 ]
             inprog = NOVASEQ_STEPMAP[instep]
             insname = NOVASEQ_DIRMAP[inprog]
             infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.tsv')
-        
+
         log_file = os.path.join(outdir, f'{step}.log')
         cmd = [ os.path.join(dirpath, f'{sprog}.py'),
            '-d',
@@ -281,16 +302,23 @@ def process_mapseq_all_novaseq(config_file,
             cmd.append(sampleinfo_file)
             for fn in infiles:
                 cmd.append(fn)
+
+        elif sname in GLOB_INPUT_STEPS:
+            logging.debug(f'Found infiles: {infiles}')
+            for fn in infiles:
+                cmd.append(fn)
         else:
             cmd.append(infile)
             if not os.path.exists(infile):
                 logging.error(f'required infile {infile} does not exist. Exitting.')
                 sys.exit(1)
         logging.debug(f"made command={' '.join(cmd)}")
-
         
         if sname == 'matrices':
             logging.debug(f'make_matrices. outfile not known, proceed...')
+            runstep = True
+        elif sname in DIRECTORY_OUTPUT_STEPS:
+            logging.debug(f'No specific outfile. Subprogram will check outputs/force?')
             runstep = True
         elif os.path.exists(soutfile):
             logging.info(f'soutfile={soutfile} exists. runstep=False')
@@ -349,6 +377,11 @@ if __name__ == '__main__':
                     action="store_true", 
                     default=False, 
                     help='Recalculate even if output exists.') 
+
+    parser.add_argument('-n','--dryrun', 
+                    action="store_true", 
+                    default=False, 
+                    help='Just print commands.') 
 
     parser.add_argument('-H','--halt', 
                         metavar='halt',

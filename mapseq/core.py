@@ -797,107 +797,109 @@ def process_fastq_grouped_noconcat(   infilelist,
     sh = get_default_stats()
     pairnum = 1
     chunknum = 1
-
     n_reads_total = 0
 
     for (read1file, read2file) in infilelist:
         df = None
         source_label = parse_sourcefile(read1file, source_regex, 1 )
+        logging.info(f'handling {read1file}, {read2file} source_label={source_label} ')
         if filter_by_sampleinfo_ssi:
             source_tube = parse_sourcefile(read1file, ourtube_regex, 1 )
             logging.info(f'source_tube={source_tube}')
-        logging.info(f'handling {read1file}, {read2file} source_label={source_label} ')
-        start = dt.datetime.now()
-        fh1 = get_fh(read1file)
-        dfi1 = pd.read_csv(fh1, 
-                           header=None, 
-                           skiprows = lambda x: x % 4 != 1, 
-                           dtype="string[pyarrow]", 
-                           chunksize=chunksize) 
-        fh2 = get_fh(read2file)
-        dfi2 = pd.read_csv(fh2, 
-                           header=None, 
-                           skiprows = lambda x: x % 4 != 1, 
-                           dtype="string[pyarrow]", 
-                           chunksize=chunksize)
-        
-        for chunk1 in dfi1:
-            chunk2 = dfi2.get_chunk()
-            logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
-            if df is None:
-                logging.debug(f'making new read sequence DF...')
-                df = pd.DataFrame(columns=['sequence'])
-                logging.info(f'got chunk len={len(chunk1)} slicing...')
-                df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
-                logging.info(f'chunk df type={df.dtypes}')           
-                df['source'] = source_label
+        logging.info(f'write_each required. Checking for output')
+        outfile = os.path.join(outdir, f'{source_label}.reads.tsv')
+
+        if (not os.path.exists(outfile)) or force:
+            logging.info(f'output {outfile} does not exist, or force={force} ')
+            start = dt.datetime.now()
+            fh1 = get_fh(read1file)
+            dfi1 = pd.read_csv(fh1, 
+                            header=None, 
+                            skiprows = lambda x: x % 4 != 1, 
+                            dtype="string[pyarrow]", 
+                            chunksize=chunksize) 
+            fh2 = get_fh(read2file)
+            dfi2 = pd.read_csv(fh2, 
+                            header=None, 
+                            skiprows = lambda x: x % 4 != 1, 
+                            dtype="string[pyarrow]", 
+                            chunksize=chunksize)
+            
+            for chunk1 in dfi1:
+                chunk2 = dfi2.get_chunk()
+                logging.debug(f'chunk1={chunk1} chunk2={chunk2}')
+                if df is None:
+                    logging.debug(f'making new read sequence DF...')
+                    df = pd.DataFrame(columns=['sequence'])
+                    logging.info(f'got chunk len={len(chunk1)} slicing...')
+                    df['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                    logging.info(f'chunk df type={df.dtypes}')           
+                    df['source'] = source_label
+                else:
+                    logging.debug(f'making additional read sequence DF...')
+                    ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
+                    logging.info(f'got chunk len={len(chunk1)} slicing...')
+                    ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
+                    logging.info(f'chunk df type={ndf.dtypes}')                
+                    ndf['source'] = source_label                
+                    df = pd.concat([df, ndf], copy=False, ignore_index=True)
+                logging.debug(f'handled chunk number {chunknum}')
+                chunknum += 1
+            # We now have all input from 2 input files.
+            
+            # split out requested fields. 
+            logging.info(f'getting additional field(s)...')
+            fieldlist = add_split_fields(df, 'sequence', cp, 'fastq')
+            
+            # Keep track of total, since we're not making concat DF.
+            n_reads_total = len(df)
+
+            # gather extra field stats. 
+            for field in fieldlist:
+                try:
+                    vc = df[field].value_counts()
+                    n_dom = vc.iloc[0]
+                    logging.debug(f'dominant value count for {field} = {n_dom} ') 
+                    pct_dom = n_dom / len(df) * 100
+                    spct = f'{pct_dom:.2f}'
+                    sh.add_value('/fastq', f'pair{pairnum}_{source_label}_{field}_percent', spct )
+                except Exception as e:
+                    logging.warning(f'issue dealing with source={source_label} field={field}')
+            logging.debug(f'handled pair number {pairnum}')
+            
+            # Measure file read speed.
+            end = dt.datetime.now()
+            delta_seconds = (dt.datetime.now() - start).seconds
+            log_transferinfo( [read1file, read2file] , delta_seconds)
+            sh.add_value('/fastq',f'pair{pairnum}_len', len(df) )
+            pairnum += 1
+
+            # Optionally handle per-file non-dominant filtering.
+            if filter_by_non_dominant:
+                filter_column = cp.get('fastq','filter_column')
+                logging.debug(f'filtering by dominant value in source.')
+                df = filter_non_dominant( df, 
+                                        filter_column=filter_column, 
+                                        drop_filter_column=drop_filter_column)
             else:
-                logging.debug(f'making additional read sequence DF...')
-                ndf = pd.DataFrame(columns=['sequence'], dtype="string[pyarrow]")
-                logging.info(f'got chunk len={len(chunk1)} slicing...')
-                ndf['sequence'] = chunk1[0].str.slice(r1s, r1e) + chunk2[0].str.slice(r2s, r2e) 
-                logging.info(f'chunk df type={ndf.dtypes}')                
-                ndf['source'] = source_label                
-                df = pd.concat([df, ndf], copy=False, ignore_index=True)
-            logging.debug(f'handled chunk number {chunknum}')
-            chunknum += 1
-        # We now have all input from 2 input files.
-        
-        # split out requested fields. 
-        logging.info(f'getting additional field(s)...')
-        fieldlist = add_split_fields(df, 'sequence', cp, 'fastq')
-        
-        # Keep track of total, since we're not making concat DF.
-        n_reads_total = len(df)
+                logging.debug(f'no filtering by non-dominant column value.')
 
-        # save to file.
-        if write_each: 
-            logging.info(f'write_each={write_each}  Saving to readfile...')
-            of = os.path.join(outdir, f'{source_label}.reads.tsv')
-            write_mapseq_df(df, of)
-        else:
-            logging.debug(f'write_each={write_each} skipping.')
-        
-        # gather extra field stats. 
-        for field in fieldlist:
-            try:
-                vc = df[field].value_counts()
-                n_dom = vc.iloc[0]
-                logging.debug(f'dominant value count for {field} = {n_dom} ') 
-                pct_dom = n_dom / len(df) * 100
-                spct = f'{pct_dom:.2f}'
-                sh.add_value('/fastq', f'pair{pairnum}_{source_label}_{field}_percent', spct )
-            except Exception as e:
-                logging.warning(f'issue dealing with source={source_label} field={field}')
-        logging.debug(f'handled pair number {pairnum}')
-        
-        # Measure file read speed.
-        end = dt.datetime.now()
-        delta_seconds = (dt.datetime.now() - start).seconds
-        log_transferinfo( [read1file, read2file] , delta_seconds)
-        sh.add_value('/fastq',f'pair{pairnum}_len', len(df) )
-        pairnum += 1
+            if filter_by_sampleinfo_ssi:
+                logging.debug(f'filtering by ssi. source_label={source_label} source_tube={source_tube}')
+                filter_column = cp.get('fastq','filter_column')
+                df = filter_by_sampleinfo(df,
+                                        sampdf = sampdf,
+                                        ourtube = source_tube,
+                                        cp=cp
+                                        )
+            else:
+                logging.debug(f'no filtering by sampleinfo SSI.')
 
-        # Optionally handle per-file non-dominant filtering.
-        if filter_by_non_dominant:
-            filter_column = cp.get('fastq','filter_column')
-            logging.debug(f'filtering by dominant value in source.')
-            df = filter_non_dominant( df, 
-                                      filter_column=filter_column, 
-                                      drop_filter_column=drop_filter_column)
+            logging.info(f'Writing final paired output to {outfile} ')    
+            write_mapseq_df(df, outfile) 
         else:
-            logging.debug(f'no filtering by non-dominant column value.')
+            logging.info(f'output {outfile} exists and force={force} skipping.')
 
-        if filter_by_sampleinfo_ssi:
-            logging.debug(f'filtering by ssi. source_label={source_label} source_tube={source_tube}')
-            filter_column = cp.get('fastq','filter_column')
-            df = filter_by_sampleinfo(df,
-                                      sampdf = sampdf,
-                                      ourtube = source_tube,
-                                      cp=cp
-                                      )
-        else:
-            logging.debug(f'no filtering by sampleinfo SSI.') 
 
     logging.info('Finished processing all input.')
     sh.add_value('/fastq','reads_handled', n_reads_total )
