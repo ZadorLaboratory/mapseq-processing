@@ -51,6 +51,8 @@ NEXTSEQ_DIRMAP = { 'process_fastq_pairs': 'reads',
 
 NOVASEQ_STEPLIST=[  'reads'      ,
                     'aggregated',
+                    'merged',
+                    'reaggregated',
                     'filtered',
                     'readtable' ,
                     'collapsed' ,
@@ -60,7 +62,8 @@ NOVASEQ_STEPLIST=[  'reads'      ,
                 ]
 
 NOVASEQ_STEPMAP={   'reads'       : 'process_fastq_pairs',
-                    'aggregated'  : 'aggregate_reads',
+                    'aggregated'  : 'aggregate_reads_byfile',
+                    'merged'      : 'merge_mapseq_dataframes',
                     'filtered'    : 'filter_split' ,
                     'readtable'   : 'make_readtable',
                     'collapsed'   : 'align_collapse',
@@ -69,14 +72,16 @@ NOVASEQ_STEPMAP={   'reads'       : 'process_fastq_pairs',
                     'matrices'    : 'make_matrices'
         }
 
-NOVASEQ_DIRMAP = { 'process_fastq_pairs': 'reads',
-                    'aggregate_reads'    : 'aggregated',
-                    'filter_split'       : 'filtered',
-                    'make_readtable'     : 'readtable',
-                    'align_collapse'     : 'collapsed',
-                    'make_vbctable'      : 'vbctable',
-                    'filter_vbctable'    : 'vbcfiltered',
-                    'make_matrices'      : 'matrices'
+NOVASEQ_DIRMAP = { 'process_fastq_pairs'        : 'reads',
+                    'aggregate_reads_byfile'    : 'aggregated',
+                    'merge_mapseq_dataframes'   : 'merged',
+                    'reaggregate'               : 'reaggregated',
+                    'filter_split'              : 'filtered',
+                    'make_readtable'            : 'readtable',
+                    'align_collapse'            : 'collapsed',
+                    'make_vbctable'             : 'vbctable',
+                    'filter_vbctable'           : 'vbcfiltered',
+                    'make_matrices'             : 'matrices'
     }
 
 
@@ -189,7 +194,118 @@ def process_mapseq_all_nextseq(config_file,
             logging.debug(f"ran cmd='{cmd}' return={cp.returncode} {elapsed.seconds} seconds.")        
         else:
             logging.debug(f'Output exists, skipping.')
+
+
+def process_mapseq_all_novaseq(config_file, 
+                       sampleinfo_file, 
+                       infiles , 
+                       outdir=None, 
+                       force=False,
+                       halt=None ):    
+    '''    
+    performs end-to-end default processing. 
+    executes each pipeline script in an external process. 
+    
+    '''
+    global NOVASEQ_STEPLIST
+    
+    logging.info(f'{len(infiles)} input files. config={config_file} sampleinfo={sampleinfo_file}, outdir={outdir}, force={force}')
+    cp = ConfigParser()
+    cp.read(config_file)
+    project_id = cp.get('project','project_id')
+
+    if outdir is None:
+        outdir = os.path.abspath('./')
+  
+    logging.debug(f'exe={sys.executable} sys.argv={sys.argv}')
+    (dirpath, base, ext) = split_path(sys.argv[0])
+    logging.debug(f'script_dir = {dirpath}')
+
+    if halt is not None:
+        newstep = []
+        for step in NOVASEQ_STEPLIST:
+            if step != halt:
+                newstep.append(step)
+            elif step == halt:
+                newstep.append(step)
+                logging.debug(f'found halting step {halt}. breaking. ')
+                break
+        logging.debug(f'new STEPLIST={NOVASEQ_STEPLIST}')
+        NOVASEQ_STEPLIST = newstep
+
+    for step in NOVASEQ_STEPLIST:
+        runstep = True
+        soutdir = None
+        soutfile = None
+        sprog = NOVASEQ_STEPMAP[step]
+        sname = NOVASEQ_DIRMAP[sprog]
+        logging.debug(f'handling step={step} sprog={sprog} sname={sname}')
         
+        if sname == 'matrices':
+            soutdir = os.path.join(outdir, f'{sname}.out/')
+        else:
+            soutfile = os.path.join(outdir, f'{sname}.out/{project_id}.{sname}.tsv')
+    
+        # define infile
+        if sname != 'reads':
+            instep = NOVASEQ_STEPLIST [ NOVASEQ_STEPLIST.index(step) - 1 ]
+            inprog = NOVASEQ_STEPMAP[instep]
+            insname = NOVASEQ_DIRMAP[inprog]
+            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.tsv')
+        
+        log_file = os.path.join(outdir, f'{step}.log')
+        cmd = [ os.path.join(dirpath, f'{sprog}.py'),
+           '-d',
+           '-c', config_file, 
+           '-L', log_file,
+           ]
+
+        if soutfile is not None:
+            cmd.append('-o')
+            cmd.append(soutfile)
+        
+        if soutdir is not None:
+            cmd.append('-O')
+            cmd.append(soutdir)            
+        
+        if sname == 'readtable':
+            cmd.append('-s')
+            cmd.append(sampleinfo_file)
+                    
+        if sname == 'vbctable':
+            cmd.append('-s')
+            cmd.append(sampleinfo_file)
+
+        if sname == 'reads':
+            cmd.append('-s')
+            cmd.append(sampleinfo_file)
+            for fn in infiles:
+                cmd.append(fn)
+        else:
+            cmd.append(infile)
+            if not os.path.exists(infile):
+                logging.error(f'required infile {infile} does not exist. Exitting.')
+                sys.exit(1)
+        logging.debug(f"made command={' '.join(cmd)}")
+
+        
+        if sname == 'matrices':
+            logging.debug(f'make_matrices. outfile not known, proceed...')
+            runstep = True
+        elif os.path.exists(soutfile):
+            logging.info(f'soutfile={soutfile} exists. runstep=False')
+            runstep = False
+            
+        if runstep:
+            logging.debug(f'will run {cmd} Logging to ')
+            start = dt.datetime.now()
+            cp = run_command_shell(cmd)
+            end = dt.datetime.now()
+            elapsed =  end - start
+            logging.debug(f"ran cmd='{cmd}' return={cp.returncode} {elapsed.seconds} seconds.")        
+        else:
+            logging.debug(f'Output exists, skipping.')
+
 
 if __name__ == '__main__':
     FORMAT='%(asctime)s (UTC) [ %(levelname)s ] %(filename)s:%(lineno)d %(name)s.%(funcName)s(): %(message)s'

@@ -593,17 +593,19 @@ def process_fastq_grouped(  infilelist,
     '''
     df = None
     if concat:
+        logging.debug(f'concat={concat} Concat outputs.')
         df = process_fastq_grouped_concat(   infilelist, 
                                     outdir,
                                     sampdf,                         
                                     force, 
                                     cp)
     else:
+        logging.debug(f'concat={concat} Do not concat outputs.')
         process_fastq_grouped_noconcat(   infilelist, 
-                                    outdir,
-                                    sampdf,                         
-                                    force, 
-                                    cp)
+                                        outdir,
+                                        sampdf,                         
+                                        force, 
+                                        cp)
     return df        
                               
 
