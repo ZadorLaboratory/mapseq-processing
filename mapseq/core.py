@@ -609,8 +609,8 @@ def process_fastq_grouped(  infilelist,
     return df        
                               
 
-def process_fastq_grouped_concat(   infilelist, 
-                                    outdir,
+def process_fastq_grouped_concat(   infiles, 
+                                    outfile,
                                     sampdf=None,                         
                                     force=False, 
                                     cp = None,
@@ -619,9 +619,10 @@ def process_fastq_grouped_concat(   infilelist,
     parse infiles by pairs. 
     get extra field(s)
     optionally filter by extra fields values. 
-    Useful for Novaseq raw data, with 1 sample per FASTQ pair. 
-        
+    Useful for Novaseq raw data, with 1 sample per FASTQ pair.        
     '''
+    infilelist = package_pairs(infiles)
+
     r1s = int(cp.get('fastq','r1start'))
     r1e = int(cp.get('fastq','r1end'))
     r2s = int(cp.get('fastq','r2start'))
@@ -630,7 +631,6 @@ def process_fastq_grouped_concat(   infilelist,
     chunksize = int(cp.get('fastq','chunksize', fallback=50000))
     source_regex = cp.get('fastq','source_regex', fallback='(.+?_S.+?_L.+?)_')
     ourtube_regex = cp.get('fastq','ourtube_regex', fallback='.+?-(.+?)_')
-
     logging.info(f' source_regex = {source_regex} ourtube_regex = {ourtube_regex}')
 
     write_each = cp.getboolean('fastq','write_each', fallback=False)
@@ -650,6 +650,11 @@ def process_fastq_grouped_concat(   infilelist,
     chunknum = 1
 
     for (read1file, read2file) in infilelist:
+        infile = os.path.abspath( os.path.expanduser( read1file ) )
+        filepath = os.path.abspath(outfile)    
+        dirname = os.path.dirname(filepath)
+        outdir = dirname
+        
         df = None
         source_label = parse_sourcefile(read1file, source_regex, 1 )
         if filter_by_sampleinfo_ssi:
@@ -753,10 +758,11 @@ def process_fastq_grouped_concat(   infilelist,
     sh.add_value('/fastq','reads_handled', len(outdf) )
     sh.add_value('/fastq','pairs_handled', pairnum )
     outdf.reset_index(inplace=True, drop=True)
+    write_mapseq_df(outdf, outfile)
     return outdf          
 
 
-def process_fastq_grouped_noconcat(   infilelist, 
+def process_fastq_grouped_noconcat(   infiles, 
                                       outdir,
                                       sampdf=None,                         
                                       force=False, 
@@ -770,6 +776,8 @@ def process_fastq_grouped_noconcat(   infilelist,
     Do not try to produced merged/final output. Just handle file pairs. 
 
     '''
+    infilelist = package_pairs(infiles)
+    
     r1s = int(cp.get('fastq','r1start'))
     r1e = int(cp.get('fastq','r1end'))
     r2s = int(cp.get('fastq','r2start'))
@@ -899,7 +907,6 @@ def process_fastq_grouped_noconcat(   infilelist,
             write_mapseq_df(df, outfile) 
         else:
             logging.info(f'output {outfile} exists and force={force} skipping.')
-
 
     logging.info('Finished processing all input.')
     sh.add_value('/fastq','reads_handled', n_reads_total )

@@ -21,31 +21,37 @@ authors = [
 requires-python = ">= 3.9"
 
 dependencies = [
- 	"pandas", 
+ 	"biopython",
+ 	"bowtie",
+  	"dask", 
+ 	"fastcluster",
+ 	"h5py",
+ 	"matplotlib",
+ 	"mergedeep",
+ 	"natsort",
+ 	"networkx",
+ 	"openpyxl", 
+ 	"paramiko",
+	"pandas", 
  	"pyarrow", 
  	"numpy", 
  	"scikit-learn", 
- 	"matplotlib", 
+ 	"scipy",
  	"seaborn", 
- 	"biopython", 
- 	"scipy", 
- 	"fastcluster", 
- 	"openpyxl", 
- 	"bowtie",
- 	"bowtie2", 
- 	"natsort", 
- 	"paramiko", 
- 	"h5py", 
- 	"dask", 
- 	"networkx", 
- 	"mergedeep",
 ]
 
 [tool.setuptools.packages.find]
 include = ["mapseq*"]
 
 [project.scripts]
-process_fastq_pairs = "mapseq.cli:process_fastq_pairs" 
+'process_fastq_pairs.py' = "mapseq.cli:process_fastq_pairs" 
+'process_fastq_pairs_concat.py' = "mapseq.cli:process_fastq_pairs_concat"
+'aggregate_reads_byfile.py' = "mapseq.cli:aggregate_reads_byfile"
+'aggregate_reads.py' = "mapseq.cli:aggregate_reads"
+'merge_mapseq_dfs.py' = "mapseq.cli:merge_mapseq_dfs"
+
+'align_collapse.py' = "mapseq.cli:align_collapse"
+
 
 
 [project.urls]

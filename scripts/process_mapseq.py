@@ -325,7 +325,7 @@ def process_mapseq_all_novaseq(config_file,
             runstep = False
             
         if runstep:
-            logging.debug(f'will run {cmd} Logging to ')
+            logging.debug(f'will run {cmd} Logging to {log_file} ')
             start = dt.datetime.now()
             cp = run_command_shell(cmd)
             end = dt.datetime.now()

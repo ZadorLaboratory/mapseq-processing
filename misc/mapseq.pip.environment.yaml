@@ -1,0 +1,31 @@
+name: mapseq-pip
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - biopython
+  - bowtie
+  - bowtie2
+  - dask
+  - fastcluster
+  - git
+  - h5py
+  - ipython
+  - joblib
+  - jupyter
+  - matplotlib
+  - mergedeep
+  - natsort
+  - networkx
+  - numpy
+  - openpyxl
+  - pandas
+  - paramiko
+  - pyarrow==24.0
+  - pypandoc
+  - python==3.12
+  - scikit-learn
+  - scipy
+  - seaborn
+  - texlive-core

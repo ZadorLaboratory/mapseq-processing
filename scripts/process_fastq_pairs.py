@@ -162,7 +162,7 @@ if __name__ == '__main__':
     logging.info(f'outdir={outdir} outfile={outfile}')
 
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
-    infilelist = package_pairs(args.infiles)   
+       
     
     logging.debug(f'infilelist = {infilelist}')
     

@@ -9,7 +9,6 @@ from configparser import ConfigParser
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-#from lib2to3.pgen2.pgen import DFAState
 
 gitpath=os.path.expanduser("~/git/mapseq-processing")
 sys.path.append(gitpath)
