@@ -222,8 +222,11 @@ if __name__ == '__main__':
                                    params=None )
 
     logging.info(f'Making frequency plots.')
-    make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
-    
+    try:
+        make_counts_plots(df, outdir=outdir, type=None, column='umi_count', cp=cp )
+    except Exception as e:
+        logging.warning('Got exception making plots...')
+
     logging.info('Done make_vbctable.')
     
     
