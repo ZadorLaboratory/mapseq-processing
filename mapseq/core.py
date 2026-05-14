@@ -410,8 +410,12 @@ def load_sample_info(file_name,
 
     # fix datatypes for important columns
     sdf['min_reads'] = sdf['min_reads'].astype(int)
-    sdf['si_ratio'] = sdf['si_ratio'].astype(float)
-    
+    try:
+        sdf['si_ratio'] = sdf['si_ratio'].astype(float)
+    except ValueError:
+        rmap = sdf['si_ratio'] == ''
+        sdf.loc[rmap, 'si_ratio'] = 1.0
+
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
 

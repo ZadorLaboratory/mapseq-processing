@@ -143,7 +143,7 @@ def process_mapseq_all_nextseq(config_file,
             instep = NEXTSEQ_STEPLIST [ NEXTSEQ_STEPLIST.index(step) - 1 ]
             inprog = NEXTSEQ_STEPMAP[instep]
             insname = NEXTSEQ_DIRMAP[inprog]
-            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.tsv')
+            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.parquet')
         
         log_file = os.path.join(outdir, f'{step}.log')
         cmd = [ os.path.join(dirpath, f'{sprog}.py'),
@@ -272,7 +272,7 @@ def process_mapseq_all_novaseq(config_file,
             instep = NOVASEQ_STEPLIST [ NOVASEQ_STEPLIST.index(step) - 1 ]
             inprog = NOVASEQ_STEPMAP[instep]
             insname = NOVASEQ_DIRMAP[inprog]
-            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.tsv')
+            infile = os.path.join( outdir, f'{insname}.out/{project_id}.{insname}.parquet')
 
         log_file = os.path.join(outdir, f'{step}.log')
         cmd = [ os.path.join(dirpath, f'{sprog}.py'),
