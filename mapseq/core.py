@@ -407,15 +407,13 @@ def load_sample_info(file_name,
         sdf['min_reads'] = sdf['min_reads'].astype(int)
     except ValueError:
         logging.warning(f'Got ValueError for min_reads column. Setting to default={default_min_reads}')
-        rmap = sdf['min_reads'] == ''
-        sdf.loc[rmap, 'min_reads'] = default_min_reads        
-    
+        sdf['min_reads'] = default_min_reads        
+
     try:
         sdf['si_ratio'] = sdf['si_ratio'].astype(float)
     except ValueError:
         logging.warning('Got ValueError for si_ratio column. Setting to default = 1.0')
-        rmap = sdf['si_ratio'] == ''
-        sdf.loc[rmap, 'si_ratio'] = 1.0
+        sdf['si_ratio'] = 1.0
 
     logging.debug(f'created reduced sample info df:\n{sdf}')
     return sdf
