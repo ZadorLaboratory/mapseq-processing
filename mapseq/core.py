@@ -334,6 +334,8 @@ def load_sample_info(file_name,
     if cp is None:
         cp = get_default_config()
     
+    default_min_reads = cp.getint('fastq','min_reads')
+
     # Mappings for excel columns. 
     sheet_to_sample = {
             'Tube # by user'                  : 'usertube', 
@@ -392,15 +394,7 @@ def load_sample_info(file_name,
                     sdf = set_min_reads(sdf, cp=cp)
         logging.info(f'loaded DF from Excel {file_name}')
 
-        # Fix missing values with defaults. 
-        # If int values are there, this fails with type error 
-        # Better to simply require all rows be filled in, if any will be used. 
-        #mmap = sdf['min_reads'] == ''
-        #sdf.loc[mmap, 'min_reads'] = 1
-        
-        #rmap = sdf['si_ratio'] == ''
-        #sdf.loc[rmap, 'si_ratio'] = 1.0
-        
+       
     elif file_name.endswith('.tsv'):
         sdf = pd.read_csv(file_name, sep='\t', index_col=0, keep_default_na=False, dtype =str, comment="#")
         sdf = sdf.astype('str', copy=False)    
@@ -409,10 +403,17 @@ def load_sample_info(file_name,
         sdf = None
 
     # fix datatypes for important columns
-    sdf['min_reads'] = sdf['min_reads'].astype(int)
+    try:
+        sdf['min_reads'] = sdf['min_reads'].astype(int)
+    except ValueError:
+        logging.warning(f'Got ValueError for min_reads column. Setting to default={default_min_reads}')
+        rmap = sdf['min_reads'] == ''
+        sdf.loc[rmap, 'min_reads'] = default_min_reads        
+    
     try:
         sdf['si_ratio'] = sdf['si_ratio'].astype(float)
     except ValueError:
+        logging.warning('Got ValueError for si_ratio column. Setting to default = 1.0')
         rmap = sdf['si_ratio'] == ''
         sdf.loc[rmap, 'si_ratio'] = 1.0
 
