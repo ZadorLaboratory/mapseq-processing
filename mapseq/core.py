@@ -584,7 +584,7 @@ def process_fastq_pairs_pd_chunked( infilelist,
     return df          
 
 
-def process_fastq_grouped(  infilelist, 
+def process_fastq_grouped(  infiles, 
                             outdir,
                             concat=True,
                             sampdf=None,                       
@@ -597,14 +597,14 @@ def process_fastq_grouped(  infilelist,
     df = None
     if concat:
         logging.debug(f'concat={concat} Concat outputs.')
-        df = process_fastq_grouped_concat(   infilelist, 
+        df = process_fastq_grouped_concat(   infiles, 
                                     outdir,
                                     sampdf,                         
                                     force, 
                                     cp)
     else:
         logging.debug(f'concat={concat} Do not concat outputs.')
-        process_fastq_grouped_noconcat(   infilelist, 
+        process_fastq_grouped_noconcat(   infiles, 
                                         outdir,
                                         sampdf,                         
                                         force, 
