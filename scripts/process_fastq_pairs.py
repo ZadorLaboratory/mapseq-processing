@@ -164,7 +164,7 @@ if __name__ == '__main__':
     logging.info(f'handling {args.infiles[0]} and {args.infiles[1]} to outdir {args.outfile}')
        
     
-    logging.debug(f'infilelist = {infilelist}')
+    logging.debug(f'infiles = {args.infiles}')
     
     if args.logfile is not None:
         log = logging.getLogger()
@@ -190,7 +190,7 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
-    df = process_fastq_grouped( infilelist, 
+    df = process_fastq_grouped( infiles, 
                                 outdir,
                                 concat=args.concat, 
                                 sampdf = sampdf,                          
