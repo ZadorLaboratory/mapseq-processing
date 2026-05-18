@@ -190,7 +190,7 @@ if __name__ == '__main__':
         datestr = args.datestr
     sh = StatsHandler(outdir=outdir, datestr=datestr) 
 
-    df = process_fastq_grouped( infiles, 
+    df = process_fastq_grouped( args.infiles, 
                                 outdir,
                                 concat=args.concat, 
                                 sampdf = sampdf,                          
