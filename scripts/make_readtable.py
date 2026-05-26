@@ -187,13 +187,13 @@ if __name__ == '__main__':
     write_mapseq_df(df, outfile)
       
     logging.info(f'making read_count frequency plots...')
-    make_counts_plots(df, 
-                      outdir=outdir, 
-                      groupby='label', 
-                      column='read_count',
-                      min_count = 1,
-                      nranks=1000000, 
-                      cp=cp )
+    #make_counts_plots(df, 
+    #                  outdir=outdir, 
+    #                  groupby='label', 
+    #                  column='read_count',
+    #                  min_count = 1,
+    #                  nranks=1000000, 
+    #                  cp=cp )
 
     make_counts_plots(df, 
                       outdir=outdir, 
