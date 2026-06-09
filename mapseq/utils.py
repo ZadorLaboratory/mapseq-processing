@@ -220,6 +220,41 @@ def get_configstr(cp):
         ss.seek(0)  # rewind
         return ss.read()
 
+def get_config_list(cp, section, option):
+    '''
+    parses comma and/or space-separated values from ConfigParser entry. 
+    should be forgiving, dealing with mixed combinations and uneven
+    whitespace. 
+
+    '''
+    s = cp.get(section, option)
+    if s == 'None':
+        slist = None
+    else:
+        slist = parse_list_string(s)
+    return slist
+
+def parse_list_string(s):
+    '''
+    parses commma and/or space-separated values. 
+    forgiving of mix of commas, whitespace. 
+    returns list of items in string
+    if already list, return as-is
+    '''
+    if type(s) == list:
+        slist = s
+    else:    
+        is_list = False
+        slist = []
+        if s.find(',') > -1: is_list = True
+        if s.find(' ') > -1: is_list = True
+        if is_list:
+            s = s.replace(',',' ')
+            slist = s.split()
+        else:
+            slist = [ s ]
+    return slist
+
 def format_config(cp):
     '''
         Pretty print ConfigParser to standard string for logging.  
