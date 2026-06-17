@@ -1538,6 +1538,8 @@ def process_make_readtable_pd(df,
     -- aggregate and sum read counts 
     -- remove redudant info (SSI, libtag, spikeseg)
 
+    https://regex101.com/ useful for definiing regular expressions, using Python flavor. 
+
     '''        
     logging.info(f'inbound df len={len(df)} columns={list( df.columns )}')
     sh = get_default_stats()
@@ -2166,6 +2168,7 @@ def process_filter_vbctable(df,
         if require_injection:
             logging.debug(f'[{brain_id}]: require_injection={require_injection} inj_min_umi={inj_min_umi}')
             targets = ftargets
+            injection = finjection
             if len(targets) < 1:
                 logging.warning(f'[{brain_id}]: brain {brain_id} did not have any targets passing injection filtering.')
         else:
@@ -2174,7 +2177,7 @@ def process_filter_vbctable(df,
         if len(targets) > 1 : 
             if include_injection:
                     logging.debug(f'[{brain_id}]: include_injection={include_injection} Merging {len(targets)} targets + {len(injection)} injection VBCs')
-                    ndf = pd.concat( [ targets, finjection], ignore_index=True )
+                    ndf = pd.concat( [ targets, injection], ignore_index=True )
                     ndf.reset_index(inplace=True, drop=True) 
             else:
                 logging.debug(f'[{brain_id}]: include_injection={include_injection} excluding injection VBCs from table.')
